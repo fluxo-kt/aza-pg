@@ -466,7 +466,7 @@ bun run test:all                              # build + validate:all + every rou
 bun scripts/test-all.ts --group stacks        # one group; comma-separate several
 bun scripts/test-all.ts --image ghcr.io/fluxo-kt/aza-pg:18
 bun scripts/test-all.ts --shuffle             # random order; prints the seed, replay with --shuffle=<seed>
-bun scripts/test/test-pgflow.ts [image]       # one suite on its own
+bun scripts/test-all.ts scripts/test/test-pgflow.ts   # one suite (bun:test suites need this runner)
 ```
 
 | Group        | Proves                                                                                                                      |

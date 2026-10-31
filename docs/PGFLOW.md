@@ -287,7 +287,7 @@ SELECT realtime.send(
 ### Automated Tests
 
 ```bash
-bun scripts/test/test-pgflow.ts   # pgflow in the built image (aza-pg:pg18 by default)
+bun scripts/test-all.ts scripts/test/test-pgflow.ts   # pgflow in the built image (aza-pg:pg18 by default)
 ```
 
 ## Troubleshooting

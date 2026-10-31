@@ -306,7 +306,7 @@ bun scripts/extensions/check-updates.ts                                         
 ```
 
 A digest pin without a tag gets a "could not check" row (exit 2): rewrite it as `repo:tag@sha256:…`.
-A wrapper image's tag versions the wrapper, not the tool, so also run the pinned binary's `--version`
+`nixos/nix` (local Nix, `scripts/nix/nix.ts`) must equal CI's Nix: set its tag to the `nix_version=` in the pinned `cachix/install-nix-action`'s `install-nix.sh` after every `actions-up` run. A newer Docker Hub tag waits until that action ships it. A wrapper image's tag versions the wrapper, not the tool, so also run the pinned binary's `--version`
 against the tool's upstream release: a wrapper that stopped publishing reads as "up to date".
 
 For each, read the latest release, resolve the index digest with `docker buildx imagetools inspect`,
@@ -328,7 +328,7 @@ version, so a bumped package's entry no longer matches: re-check its CVEs, then 
 Judge a hit from the CVE record and the nixpkgs source (applied patches, affected code path), never vulnix's version
 match alone: it reports name collisions and already-patched builds. vulnix sees only CVEs NVD has matched to a package
 name, so also read the security pages of PostgreSQL, OpenSSL and glibc for the shipped versions.
-After `bun run build`, `bun run security:scan HEAD aza-pg:pg18` runs both scanners on what this round will release:
+After `bun run build` and before (never beside) `test:all`, `bun run security:scan HEAD aza-pg:pg18` runs both scanners on what this round will release:
 vulnix on HEAD's closure, Trivy on the local image (Rust crates, bundled JS). Without the image argument Trivy scans
 the last release, not HEAD.
 

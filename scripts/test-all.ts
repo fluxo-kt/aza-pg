@@ -14,13 +14,15 @@
  * the run exit 1; a failed suite's output ends with its containers' last log lines, read before the sweep. Before the
  * suites, whatever earlier killed runs left is removed (sweepOrphanedTestResources).
  *
- * Usage: bun scripts/test-all.ts [--group G[,G…]] [--image REF] [--shuffle[=SEED]]
+ * Usage: bun scripts/test-all.ts [SUITE…] [--group G[,G…]] [--image REF] [--shuffle[=SEED]]
+ *   SUITE      registered suite paths to run (default: all). The one way to run a single suite: suites differ in
+ *              runner (`bun test` vs `bun`), and only this runner adds the timeout and the leftover sweep
  *   --group    default: every group
  *   --image    default: POSTGRES_IMAGE, else the local build (aza-pg:pg18)
  *   --shuffle  random suite order; prints the seed so a failing order can be replayed
  */
 
-import { availableParallelism } from "node:os";
+import { availableParallelism, loadavg } from "node:os";
 import { join } from "node:path";
 import {
   ensureImageAvailable,
@@ -121,8 +123,14 @@ function shuffle<T>(items: T[], seed: number): T[] {
   return out;
 }
 
-function parseArgs(argv: string[]): { groups: Group[]; image: string; seed: number | null } {
+function parseArgs(argv: string[]): {
+  groups: Group[];
+  paths: string[];
+  image: string;
+  seed: number | null;
+} {
   let groups: string[] = [...GROUPS];
+  const paths: string[] = [];
   let image = Bun.env.POSTGRES_IMAGE || DEFAULT_TEST_IMAGE;
   let seed: number | null = null;
   for (let i = 0; i < argv.length; i++) {
@@ -139,17 +147,23 @@ function parseArgs(argv: string[]): { groups: Group[]; image: string; seed: numb
     else if (flag === "--image") image = value();
     else if (flag === "--shuffle")
       seed = inline === undefined ? Math.floor(Math.random() * 2 ** 31) : Number(inline);
+    else if (!arg.startsWith("-")) paths.push(arg.replace(/^\.\//, ""));
     else
       throw new Error(
-        `unknown argument ${arg}; usage: bun scripts/test-all.ts [--group G[,G…]] [--image REF] [--shuffle[=SEED]]`
+        `unknown argument ${arg}; usage: bun scripts/test-all.ts [SUITE…] [--group G[,G…]] [--image REF] [--shuffle[=SEED]]`
       );
   }
+  const unregistered = paths.filter((p) => !SUITES.some((s) => s.path === p));
+  if (unregistered.length > 0)
+    throw new Error(
+      `not a registered suite: ${unregistered.join(", ")}; suites: ${SUITES.map((s) => s.path).join(", ")}`
+    );
   const unknown = groups.filter((g) => !(GROUPS as readonly string[]).includes(g));
   if (unknown.length > 0)
     throw new Error(`unknown group ${unknown.join(", ")}; groups: ${GROUPS.join(", ")}`);
   if (seed !== null && !Number.isInteger(seed))
     throw new Error("--shuffle=SEED needs an integer seed");
-  return { groups: groups as Group[], image, seed };
+  return { groups: groups as Group[], paths, image, seed };
 }
 
 /**
@@ -243,9 +257,14 @@ async function runSuiteUnguarded(
   // `remaining` also holds listings that failed until the deadline: an unread scope is not a clean one.
   const passed = code === 0 && found.length === 0 && remaining.length === 0;
   const name = [suite.path, ...(suite.args ?? [])].join(" ");
+  // A suite killed at its timeout is either hung or starved by work outside the lane (a scan, another agent's
+  // build); the load sampled at the kill, beside the CPU count, tells which.
+  const cpus = availableParallelism();
+  const load = loadavg()[0] ?? 0;
+  const hostLoad = `; host load ${load.toFixed(1)} on ${cpus} CPUs${load > cpus ? ": rerun with the host idle before suspecting the image" : ""}`;
   const verdict = passed
     ? "✅ PASS"
-    : `❌ FAIL (exit ${code}${timedOut ? ", killed at timeout" : ""})`;
+    : `❌ FAIL (exit ${code}${timedOut ? `, killed at timeout${hostLoad}` : ""})`;
   const leftNote =
     (found.length === 0
       ? ""
@@ -283,8 +302,10 @@ function stopAllOnSignal(): void {
 }
 
 async function main(): Promise<void> {
-  const { groups, image, seed } = parseArgs(Bun.argv.slice(2));
-  let queue = SUITES.filter((s) => groups.includes(s.group));
+  const { groups, paths, image, seed } = parseArgs(Bun.argv.slice(2));
+  let queue = SUITES.filter(
+    (s) => groups.includes(s.group) && (paths.length === 0 || paths.includes(s.path))
+  );
   if (seed !== null) {
     queue = shuffle(queue, seed);
     console.log(`Shuffle seed: ${seed} (replay with --shuffle=${seed})`);

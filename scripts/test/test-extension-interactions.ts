@@ -20,6 +20,7 @@ import { EPHEMERAL_PGDATA, generateUniqueContainerName, waitForPostgres } from "
 import { resolveImageTag } from "./image-resolver";
 import { detectTestMode, getSharedPreloadLibraries } from "./lib/test-mode";
 import type { TestMode } from "./lib/test-mode";
+import { sqlOk } from "../utils/psql";
 
 const modeArg = Bun.argv.find((a) => a.startsWith("--mode="))?.slice("--mode=".length);
 if (modeArg !== undefined && modeArg !== "production" && modeArg !== "regression") {
@@ -30,14 +31,7 @@ const mode: TestMode = modeArg ?? detectTestMode();
 const container = generateUniqueContainerName("aza-pg-interactions");
 const marker = `hook_chain_${Date.now()}`;
 
-async function psql(...commands: string[]): Promise<string> {
-  const args = commands.flatMap((c) => ["-c", c]);
-  const r = await $`docker exec ${container} psql -X -v ON_ERROR_STOP=1 -U postgres -tA ${args}`
-    .quiet()
-    .nothrow();
-  if (r.exitCode !== 0) throw new Error(`${commands.join("; ")}\n${r.stderr.toString().trim()}`);
-  return r.stdout.toString().trim();
-}
+const psql = (...commands: string[]) => sqlOk(container, commands);
 
 let failure: string | null = null;
 try {

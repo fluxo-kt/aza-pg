@@ -18,6 +18,7 @@ import { TIMEOUTS } from "../config/test-timeouts";
 import { waitForPostgres } from "../utils/docker";
 import { resolveImageTag } from "./image-resolver";
 import { stageStack, type StagedStack } from "./staged-stack";
+import { sqlOk } from "../utils/psql";
 
 const image = resolveImageTag();
 const suffix = crypto.randomUUID().slice(0, 8);
@@ -38,7 +39,7 @@ const LIMIT_SETTINGS = [
 const limits = async (container: string) =>
   new Map(
     (
-      await psql(
+      await sqlOk(
         container,
         `SELECT string_agg(name || '=' || setting, ',') FROM pg_settings WHERE name IN ('${LIMIT_SETTINGS.join("','")}')`
       )
@@ -59,14 +60,6 @@ async function step(name: string, body: () => Promise<void>): Promise<void> {
   }
 }
 
-async function psql(container: string, sql: string): Promise<string> {
-  const r = await $`docker exec ${container} psql -X -v ON_ERROR_STOP=1 -U postgres -tAc ${sql}`
-    .nothrow()
-    .quiet();
-  if (r.exitCode !== 0) throw new Error(`psql exited ${r.exitCode}: ${r.stderr.toString().trim()}`);
-  return r.stdout.toString().trim();
-}
-
 /** Poll `sql` until it returns `expected`; readiness is observed, the sleep only paces polling. */
 async function until(
   container: string,
@@ -77,7 +70,7 @@ async function until(
   const deadline = Date.now() + seconds * 1000;
   let last = "";
   while (Date.now() < deadline) {
-    last = await psql(container, sql).catch((e: Error) => e.message);
+    last = await sqlOk(container, sql).catch((e: Error) => e.message);
     if (last === expected) return;
     await Bun.sleep(250);
   }
@@ -153,7 +146,7 @@ try {
   );
 
   await step("replica runs the stack's own config and the primary's pgsodium key", async () => {
-    const feedback = await psql(
+    const feedback = await sqlOk(
       replicaDb,
       "SELECT setting || '@' || sourcefile FROM pg_settings WHERE name = 'hot_standby_feedback'"
     );
@@ -164,8 +157,8 @@ try {
     }
     const derive = "SELECT encode(pgsodium.derive_key(1), 'hex')";
     const [keyPrimary, keyReplica] = await Promise.all([
-      psql(primaryDb, derive),
-      psql(replicaDb, derive),
+      sqlOk(primaryDb, derive),
+      sqlOk(replicaDb, derive),
     ]);
     if (keyPrimary !== keyReplica) throw new Error("replica derives a different pgsodium key");
   });
@@ -186,7 +179,7 @@ try {
   });
 
   await step(`${ROWS} rows written on the primary arrive on the replica`, async () => {
-    await psql(
+    await sqlOk(
       primaryDb,
       `CREATE TABLE streamed AS SELECT g AS id FROM generate_series(1, ${ROWS}) g`
     );
@@ -213,7 +206,10 @@ try {
     async () => {
       // The tool must refuse while the replica still streams from a live primary (split-brain guard), and leave it a standby.
       const refused = await $`bun ${PROMOTE_TOOL} -c ${replicaDb} -y`.nothrow().quiet();
-      if (refused.exitCode === 0 || (await psql(replicaDb, "SELECT pg_is_in_recovery()")) !== "t") {
+      if (
+        refused.exitCode === 0 ||
+        (await sqlOk(replicaDb, "SELECT pg_is_in_recovery()")) !== "t"
+      ) {
         throw new Error(
           `promote-replica.ts promoted a standby streaming from a live primary: ${refused.stdout.toString().trim()}`
         );
@@ -234,8 +230,8 @@ try {
         );
       }
       await until(replicaDb, "SELECT pg_is_in_recovery()", "f", TIMEOUTS.health);
-      await psql(replicaDb, `INSERT INTO streamed VALUES (${ROWS + 1})`);
-      const count = await psql(replicaDb, "SELECT count(*) FROM streamed");
+      await sqlOk(replicaDb, `INSERT INTO streamed VALUES (${ROWS + 1})`);
+      const count = await sqlOk(replicaDb, "SELECT count(*) FROM streamed");
       if (count !== String(ROWS + 1))
         throw new Error(`row count after promotion and insert: ${count}`);
     }

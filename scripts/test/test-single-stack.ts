@@ -18,6 +18,7 @@ import { TIMEOUTS } from "../config/test-timeouts";
 import { generateUniqueContainerName, waitForPostgres } from "../utils/docker";
 import { resolveImageTag } from "./image-resolver";
 import { stageStack } from "./staged-stack";
+import { sqlOk } from "../utils/psql";
 
 const image = resolveImageTag();
 const POSTGRES_PASSWORD = `pg_${crypto.randomUUID().slice(0, 8)}`;
@@ -34,16 +35,8 @@ async function step(name: string, body: () => Promise<void>): Promise<void> {
   }
 }
 
-async function psql(container: string, sql: string): Promise<string> {
-  const r = await $`docker exec ${container} psql -X -v ON_ERROR_STOP=1 -U postgres -tAc ${sql}`
-    .nothrow()
-    .quiet();
-  if (r.exitCode !== 0) throw new Error(`psql exited ${r.exitCode}: ${r.stderr.toString().trim()}`);
-  return r.stdout.toString().trim();
-}
-
 async function expectRows(container: string, expected: number): Promise<void> {
-  const count = await psql(container, "SELECT count(*) FROM handoff");
+  const count = await sqlOk(container, "SELECT count(*) FROM handoff");
   if (count !== String(expected))
     throw new Error(`handoff has ${count} rows, expected ${expected}`);
 }
@@ -70,7 +63,7 @@ try {
   await step("data initialised by `docker run` is served by the compose stack", async () => {
     await $`docker run -d --name ${bare} -e POSTGRES_PASSWORD=${POSTGRES_PASSWORD} -v ${volume}:/var/lib/postgresql ${image}`.quiet();
     await waitForPostgres({ container: bare, timeout: TIMEOUTS.startup });
-    await psql(bare, "CREATE TABLE handoff AS SELECT g AS id FROM generate_series(1, 100) g");
+    await sqlOk(bare, "CREATE TABLE handoff AS SELECT g AS id FROM generate_series(1, 100) g");
     await $`docker stop ${bare}`.quiet();
     await $`docker rm -v ${bare}`.quiet(); // -v drops anonymous volumes only; the named data volume stays
 
@@ -98,7 +91,7 @@ try {
   });
 
   await step("`compose down` without -v, then `up`, keeps the data", async () => {
-    await psql(postgres, "INSERT INTO handoff SELECT g FROM generate_series(101, 150) g");
+    await sqlOk(postgres, "INSERT INTO handoff SELECT g FROM generate_series(101, 150) g");
     await stage.compose("down").quiet();
     await stage.compose("up", "-d").quiet();
     await waitForPostgres({ container: postgres, timeout: TIMEOUTS.startup });

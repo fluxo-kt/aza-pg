@@ -17,8 +17,7 @@ Evidence (nixpkgs `31ecbac`, read 2026-10-29): the nixpkgs-built server closure 
 Work:
 
 - Trim ncurses' terminfo database (11.6 MB, every terminal type) to the types a container's interactive `psql` meets (xterm*, screen*, tmux*, linux, vt100, dumb): the only data file in the closure without a consumer. Overriding nixpkgs' `ncurses` rebuilds everything above it, so give readline a trimmed copy instead. Every other store path names its consumer (`nix/image.nix`, or the package referencing it); `/update` repeats that review each round.
-- Replace every script the image runs with one Rust binary of ours, as Karakuri does: subcommands for the entrypoint (auto-config, then the upstream `docker-entrypoint.sh` flow: initdb, `POSTGRES_*` variables, init files), the healthcheck, `pgsodium_getkey`, `pgflow-upgrade`, the `pg_repack` wrapper and the shipped init scripts. One static, optimised executable brings no runtime, and its logic gets unit tests that shell cannot have. bash, coreutils, grep, sed, gawk, findutils, diffutils, getent and su-exec then leave the image. Open before the rewrite: operators' own `*.sh` files in `/docker-entrypoint-initdb.d` need a shell; decide whether the image keeps one for them.
-- Prove `ci.yml` and `publish.yml` on GitHub (native amd64/arm64 runners, `.github/actions/setup-nix` store cache, sbomnix SBOM attestation): only a CI run does, and the first one needs Art's push.
+- Swap a tool the image's scripts call (coreutils, grep, sed, gawk, findutils, diffutils) only for a widely used Rust tool that is a drop-in for how the scripts call it; the scripts stay. Rejected: rewriting the scripts as one Rust binary of ours. It is a large new codebase to own, and bash stays anyway for operators' `*.sh` files in `/docker-entrypoint-initdb.d`.
 
 ## Medium
 
@@ -28,17 +27,9 @@ Option A in `docs/UPGRADING.md` needs the old and new PostgreSQL binaries, and e
 
 ## Low
 
-### Docker suites carry their own psql wrapper
-
-Several Docker suites declare their own psql helper although `scripts/docker/test-image-lib.ts` exports `psql` and `sqlOk`, so a fix to one (quoting, session handling, error reporting) misses the others.
-
-### pg_partman sits in `public` beside an empty `partman` schema
-
-`docker/postgres/docker-entrypoint-initdb.d/04-pg_partman-init.sh` creates the extension in `public` and also creates an empty `partman` schema; upstream installs into `partman`. **Needs a decision:** moving it breaks operators who call `public.create_parent`, and dropping the empty schema is visible to them too.
-
 ### Unmeasured speed: `-O3` per component, Rust CPU baseline, slow suites
 
-Speed waits for correctness. Candidates for `-O3` (rule in AGENTS.md) need a pgbench or own-workload measurement. Rust profiles need nothing: pg_jsonschema, timescaledb_toolkit and vectorscale release with fat LTO and `codegen-units=1`, wrappers (network-bound) with 16 units. Rust code still targets the generic CPU; adding the baseline must keep each crate's own `.cargo/config` rustflags (vectorscale's `+avx2,+fma`), which an env `RUSTFLAGS` replaces, and needs a speed measurement to justify the rebuild. Several Docker suites run past 30 s (backup-restore, pgbouncer-healthcheck and pgflow-upgrade longest), mostly container and stack start-up.
+Speed waits for correctness. The server at `-O3` measured no faster (reason at `flake.nix`'s -O comment); extension `-O3` candidates still need a measurement. Rust profiles need nothing: pg_jsonschema, timescaledb_toolkit and vectorscale release with fat LTO and `codegen-units=1`, wrappers (network-bound) with 16 units. Rust code still targets the generic CPU; adding the baseline must keep each crate's own `.cargo/config` rustflags (vectorscale's `+avx2,+fma`), which an env `RUSTFLAGS` replaces, and needs a speed measurement to justify the rebuild. Several Docker suites run past 30 s (backup-restore, pgbouncer-healthcheck and pgflow-upgrade longest), mostly container and stack start-up.
 
 ### A replica on an unsupported CPU dies without the named error
 
@@ -46,12 +37,4 @@ Speed waits for correctness. Candidates for `-O3` (rule in AGENTS.md) need a pgb
 
 ### arm64 BTI is off; restore it before running on Armv8.5+ hosts
 
-BTI does nothing on current hosts (Hetzner CAX: Ampere Altra, Armv8.2, which treats `bti` as a no-op), so it waits until a host enforces it (AWS Graviton 3+, Azure Cobalt, Google Axion). The linker marks a binary only if every object in it is marked, and only the C startup files block that. gcc's `crtbegin*.o`/`crtend*.o` have no landing pads at all: forcing the mark (`-z force-bti`) would crash the server at start, since `.init_array` calls them indirectly, so they must be recompiled (compiler-rt's `crtbegin.c`/`crtend.c` with `-mbranch-protection=standard` compile in seconds). glibc's `crt1.o`/`Scrt1.o` already have their landing pads and only lack the mark: `ld -r -z force-bti` adds it. Link the server and C extensions with `-mbranch-protection=standard -B<those files>` and never use `-z force-bti` on final links, which would hide an unmarked static library. Rust extensions stay unmarked (precompiled std), as do nixpkgs' shared libraries; the kernel enforces BTI per object, so they keep working. Prove it on a BTI CPU: the arm64 test lane must first check that `/proc/cpuinfo` lists `bti`.
-
-### The SBOM lacks licences for packages we build ourselves
-
-sbomnix reads each package's licence from nixpkgs' `meta`, and our own derivations (the server override, extensions built by `nix/extensions.nix`) do not carry it, so they are `NOASSERTION`, `postgresql` among them. Set `meta.license` on each, from the manifest entry so no side table appears.
-
-### Local Nix runs in `nixos/nix:latest`
-
-`scripts/nix/nix.ts` pulls a floating tag on hosts without Linux Nix, so a local build can use another Nix than CI's `install-nix-action`, against the rule that local checks run under CI's conditions. Pin it by digest and have `/update` bump it with the other images.
+BTI does nothing on current hosts (Hetzner CAX: Ampere Altra, Armv8.2, which treats `bti` as a no-op), so it waits until a host enforces it (AWS Graviton 3+, Azure Cobalt, Google Axion). The linker marks a binary only if every object in it is marked, and only the C startup files block that. gcc's `crtbegin*.o`/`crtend*.o` have no landing pads at all: forcing the mark (`-z force-bti`) would crash the server at start, since `.init_array` calls them indirectly, so they must be recompiled (compiler-rt's `crtbegin.c`/`crtend.c` with `-mbranch-protection=standard` compile in seconds). glibc's `crt1.o`/`Scrt1.o` already have their landing pads and only lack the mark: `ld -r -z force-bti` adds it. Pass `-mbranch-protection=standard` in `NIX_CFLAGS_COMPILE` and `-B<those files>` in `NIX_CFLAGS_COMPILE_BEFORE` (cc-wrapper's own `-B` leads `NIX_CFLAGS_COMPILE`, and the first `-B` holding a file wins); never `-z force-bti` on final links, which would hide an unmarked static library. Done that way, contrib modules and most tools come out marked, but `postgres`, `psql`, `initdb`, the `pg_basebackup` family and most third-party C modules do not: some further input is unmarked. Find it by relinking one of them with `-z force-bti -z bti-report=warning`, which names every unmarked input. The server builds with nixpkgs' LLVM stdenv (clang, LLD, `-flto`), extensions with gcc and `ld.bfd`. Ship it with an image check reading each ELF file's `PT_GNU_PROPERTY` note, since losing the mark breaks no build. Rust extensions stay unmarked (precompiled std), as do nixpkgs' shared libraries; the kernel enforces BTI per object, so they keep working. Prove it where BTI is enforced: an arm64 CI runner whose `/proc/cpuinfo` lists `bti` (checked first), or locally under user-mode `qemu-aarch64 -cpu max` (a force-marked binary without landing pads dies there with SIGILL and runs natively; Docker Desktop's VM hides the host's BTI even on Apple M4). `initdb` execs `postgres` outside qemu, so run the server as `postgres --single` under it.

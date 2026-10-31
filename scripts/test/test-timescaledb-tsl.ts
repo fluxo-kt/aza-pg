@@ -16,16 +16,11 @@ import { $ } from "bun";
 import { TIMEOUTS } from "../config/test-timeouts";
 import { EPHEMERAL_PGDATA, generateUniqueContainerName, waitForPostgres } from "../utils/docker";
 import { resolveImageTag } from "./image-resolver";
+import { sqlOk } from "../utils/psql";
 
 const container = generateUniqueContainerName("aza-pg-tsdb-tsl");
 
-async function sql(query: string): Promise<string> {
-  const r = await $`docker exec ${container} psql -X -v ON_ERROR_STOP=1 -U postgres -tA -c ${query}`
-    .quiet()
-    .nothrow();
-  if (r.exitCode !== 0) throw new Error(`${query}\n${r.stderr.toString().trim()}`);
-  return r.stdout.toString().trim();
-}
+const sql = (query: string) => sqlOk(container, query);
 
 async function run(): Promise<void> {
   await $`docker run -d --name ${container} ${EPHEMERAL_PGDATA} -e POSTGRES_PASSWORD=postgres ${resolveImageTag()}`.quiet();

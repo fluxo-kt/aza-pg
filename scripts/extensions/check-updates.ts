@@ -516,6 +516,8 @@ const IMAGE_SOURCES: Record<
   string,
   { repository: string; tagPrefix?: string; tags?: "docker-hub" }
 > = {
+  // Local Nix: its tag must equal CI's (the nix_version in install-nix-action's install-nix.sh), see /update.
+  "nixos/nix": { repository: "https://github.com/NixOS/nix", tags: "docker-hub" },
   "edoburu/pgbouncer": {
     repository: "https://github.com/edoburu/docker-pgbouncer",
     tags: "docker-hub",

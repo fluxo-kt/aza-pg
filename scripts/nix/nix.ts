@@ -52,7 +52,9 @@ export function nixCommand(command: string[], container = `aza-pg-nix-${process.
     `${path.resolve(import.meta.dir, "../..")}:/src`,
     "-w",
     "/src",
-    "nixos/nix:latest",
+    // CI's Nix: the tag is the nix_version that setup-nix's cachix/install-nix-action pin installs (its
+    // install-nix.sh), so a local build runs the same Nix. Bump both together.
+    "nixos/nix:2.35.4@sha256:f159a58f390677f41e8e900a74b6e2f9c7f27b364122ae6acf7a652ce6c551c0",
     ...command,
   ];
 }

@@ -63,7 +63,7 @@ CREATE EXTENSION supabase_vault;   -- Supabase Vault secrets management
 ```sql
 CREATE EXTENSION pg_cron;          -- Job scheduler (preloaded)
 CREATE EXTENSION pg_repack;        -- Online table reorganization
-CREATE EXTENSION pg_partman;       -- Partition management
+CREATE EXTENSION pg_partman SCHEMA partman; -- Partition management (after CREATE SCHEMA partman)
 ```
 
 See [docs/EXTENSIONS.md](docs/EXTENSIONS.md) for complete catalog.

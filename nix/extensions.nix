@@ -138,6 +138,11 @@ let
     let keep = e.nix.bin or (lib.optional (e ? binaryPath) (baseNameOf e.binaryPath));
     in drv.overrideAttrs (old: {
       hardeningEnable = (old.hardeningEnable or [ ]) ++ hardeningEnable;
+      # The SBOM's licence per package (ManifestEntry.license); meta is not part of the derivation, so no rebuild.
+      meta = (old.meta or { }) // {
+        license = old.meta.license or (lib.getLicenseFromSpdxId
+          (e.license or (throw "${e.name}: its build has no meta.license; set license (SPDX id from upstream's LICENSE) on its entry in manifest-data.ts")));
+      };
     } // lib.optionalAttrs (!(old ? cargoDeps)) (targetCpu old // {
       # Nothing may compile below upstream's own release level (AGENTS.md), and an upstream that lowers it may do so
       # on purpose (a compiler-bug workaround, timing-sensitive code) or by accident (pgsodium's PG_CPPFLAGS = -O0, no

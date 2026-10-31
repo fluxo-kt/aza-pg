@@ -134,6 +134,7 @@
     },
     {
       "name": "index_advisor",
+      "license": "PostgreSQL",
       "kind": "extension",
       "category": "performance",
       "description": "Suggest indexes by pairing HypoPG simulations with cost heuristics.",
@@ -190,6 +191,7 @@
     },
     {
       "name": "pg_hashids",
+      "license": "MIT",
       "kind": "extension",
       "category": "utilities",
       "description": "Encode integers into short hashids for obfuscated identifiers.",
@@ -214,6 +216,7 @@
     },
     {
       "name": "pg_jsonschema",
+      "license": "Apache-2.0",
       "kind": "extension",
       "category": "validation",
       "description": "JSON Schema validation for JSONB documents on INSERT/UPDATE.",
@@ -305,6 +308,7 @@
     },
     {
       "name": "pg_plan_filter",
+      "license": "PostgreSQL",
       "kind": "tool",
       "category": "safety",
       "description": "Block high-cost plans or disallowed operations using planner hooks.",
@@ -389,6 +393,7 @@
     },
     {
       "name": "pg_stat_monitor",
+      "license": "PostgreSQL",
       "kind": "extension",
       "category": "observability",
       "description": "Enhanced query performance telemetry with bucketed metrics.",
@@ -798,6 +803,7 @@
     },
     {
       "name": "set_user",
+      "license": "PostgreSQL",
       "displayName": "pgaudit_set_user",
       "kind": "extension",
       "soFileName": "set_user.so",
@@ -822,6 +828,7 @@
     },
     {
       "name": "supabase_vault",
+      "license": "Apache-2.0",
       "nix": {
         "inputs": [
           "libsodium"
@@ -853,6 +860,7 @@
     },
     {
       "name": "supautils",
+      "license": "Apache-2.0",
       "enabled": true,
       "kind": "extension",
       "category": "safety",
@@ -1031,6 +1039,7 @@
     },
     {
       "name": "wrappers",
+      "license": "Apache-2.0",
       "nix": {
         "inputs": [
           "openssl",

@@ -1,7 +1,7 @@
 -- pg_partman Extension Basic Functionality Test
 -- Tests table partitioning and maintenance automation
 
-CREATE EXTENSION IF NOT EXISTS pg_partman;
+CREATE EXTENSION IF NOT EXISTS pg_partman SCHEMA partman;
 
 -- Test 1: Verify extension loaded
 SELECT extname FROM pg_extension WHERE extname = 'pg_partman';
@@ -11,13 +11,13 @@ SELECT schema_name FROM information_schema.schemata WHERE schema_name = 'partman
 
 -- Test 3: Verify part_config table exists (core partman metadata)
 SELECT table_name FROM information_schema.tables
-WHERE table_schema = 'public' AND table_name = 'part_config';
+WHERE table_schema = 'partman' AND table_name = 'part_config';
 
 -- Test 4: Verify key pg_partman functions exist
 SELECT count(*) >= 3 AS has_core_functions
 FROM pg_proc p
 JOIN pg_namespace n ON p.pronamespace = n.oid
-WHERE n.nspname = 'public'
+WHERE n.nspname = 'partman'
   AND p.proname IN ('create_parent', 'run_maintenance', 'undo_partition');
 
 -- Test 5: Create test partitioned table
@@ -29,7 +29,7 @@ CREATE TABLE test_partitioned (
 ) PARTITION BY RANGE (created_at);
 
 -- Test 6: Use pg_partman to create partitions
-SELECT public.create_parent(
+SELECT partman.create_parent(
     p_parent_table := 'public.test_partitioned',
     p_control := 'created_at',
     p_interval := '1 day',
@@ -43,7 +43,7 @@ WHERE tablename LIKE 'test_partitioned_p%';
 
 -- Test 8: Verify part_config entry was created with correct settings
 SELECT parent_table, partition_interval, premake
-FROM public.part_config
+FROM partman.part_config
 WHERE parent_table = 'public.test_partitioned';
 
 -- Test 9: Insert test data to verify partition routing works
@@ -56,4 +56,4 @@ FROM test_partitioned;
 
 -- Cleanup (DROP CASCADE removes partitions and parent table)
 DROP TABLE IF EXISTS test_partitioned CASCADE;
-DELETE FROM public.part_config WHERE parent_table = 'public.test_partitioned';
+DELETE FROM partman.part_config WHERE parent_table = 'public.test_partitioned';

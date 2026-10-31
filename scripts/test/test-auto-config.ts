@@ -21,6 +21,7 @@ import { join } from "node:path";
 import { TIMEOUTS } from "../config/test-timeouts";
 import { generateUniqueProjectName, waitForPostgres } from "../utils/docker";
 import { resolveImageTag } from "./image-resolver";
+import { sqlOk } from "../utils/psql";
 
 const IMAGE = resolveImageTag();
 const RUN_ID = generateUniqueProjectName("aza-pg-autoconfig");
@@ -485,24 +486,6 @@ async function probeConfig(row: Row, seed: string, dir: string): Promise<void> {
   }
 }
 
-async function psql(container: string, sql: string): Promise<string> {
-  const result = await run([
-    "docker",
-    "exec",
-    container,
-    "psql",
-    "-X",
-    "-U",
-    "postgres",
-    "-v",
-    "ON_ERROR_STOP=1",
-    "-tAc",
-    sql,
-  ]);
-  if (result.code !== 0) throw new Error(`psql failed (${result.code}): ${result.stderr}`);
-  return result.stdout.trim();
-}
-
 /** Every setting in the generated file must be in effect from that file: PostgreSQL accepted and applied it. */
 async function assertGeneratedSettingsApplied(
   container: string,
@@ -514,7 +497,7 @@ async function assertGeneratedSettingsApplied(
   if (names.length === 0)
     throw new Error(`no settings parsed from ${AUTO_CONFIG_FILE}:\n${file.stdout}`);
   const list = names.map((n) => `'${n}'`).join(",");
-  const rows = await psql(
+  const rows = await sqlOk(
     container,
     `SELECT n || '|' || coalesce(s.sourcefile, '<' || coalesce(s.source, 'missing') || '>')
        FROM unnest(ARRAY[${list}]) AS n LEFT JOIN pg_settings s ON s.name = n ORDER BY n`
@@ -597,29 +580,29 @@ async function main(): Promise<void> {
             // Base settings reach a plain container, and the operator's file still beats them: initdb writes
             // log_timezone into the data directory's postgresql.conf, which the base file also sets. pg_settings
             // spells timezone TimeZone, so that name would match no row.
-            const sources = await psql(
+            const sources = await sqlOk(
               container,
               `SELECT string_agg(name || '=' || setting || '@' || sourcefile, ',' ORDER BY name) FROM pg_settings
                  WHERE name IN ('pg_stat_statements.track', 'timescaledb.telemetry_level', 'log_timezone')`
             );
-            const pgConf = `${await psql(container, "SHOW data_directory")}/postgresql.conf`;
+            const pgConf = `${await sqlOk(container, "SHOW data_directory")}/postgresql.conf`;
             const want = `log_timezone=Etc/UTC@${pgConf},pg_stat_statements.track=all@${BASE_CONFIG},timescaledb.telemetry_level=off@${BASE_CONFIG}`;
             if (sources !== want) {
               throw new Error(`base/operator precedence: ${sources}; want ${want}`);
             }
-            const preload = await psql(container, "SHOW shared_preload_libraries");
+            const preload = await sqlOk(container, "SHOW shared_preload_libraries");
             if (preload !== `${defaultPreload},set_user`) {
               throw new Error(
                 `shared_preload_libraries = ${preload}, expected ${defaultPreload},set_user`
               );
             }
-            await psql(container, "ALTER SYSTEM SET work_mem = '77MB'");
-            await psql(container, "SELECT pg_reload_conf()");
+            await sqlOk(container, "ALTER SYSTEM SET work_mem = '77MB'");
+            await sqlOk(container, "SELECT pg_reload_conf()");
             // Reload is asynchronous: poll until the postmaster has re-read the files.
             const deadline = Date.now() + TIMEOUTS.health * 1000;
             let workMem = "";
             while (Date.now() < deadline) {
-              workMem = await psql(container, "SHOW work_mem");
+              workMem = await sqlOk(container, "SHOW work_mem");
               if (workMem === "77MB") break;
               await Bun.sleep(100);
             }

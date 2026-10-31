@@ -36,7 +36,7 @@ Rules for code under `scripts/`. Root `AGENTS.md` applies too.
 
 **Custom index types with external storage (PGroonga keeps Groonga files)**: `TRUNCATE` does NOT reliably clear that storage. A check MUST: (1) `DROP INDEX IF EXISTS`, which purges it; (2) insert all rows; (3) then run `CREATE INDEX` without `IF NOT EXISTS`. `IF NOT EXISTS` skips the rebuild, so stale data piles up. DROP may come before or after TRUNCATE. RUM uses normal PostgreSQL pages (no external storage) but follows the same pattern for consistency.
 
-**psql Session Isolation**: Each `psql()`/`sqlOk()` call (`test-image-lib.ts`) spawns a new `docker exec ... psql` process — `SET` statements do NOT persist between calls. `SET enable_seqscan = OFF` and the `SELECT` it affects MUST go in one call (one string, or an array: its `-c` statements share one session).
+**psql Session Isolation**: Docker suites run SQL only through `psql()`/`sqlOk()` (`scripts/utils/psql.ts`; options pick user, database, host, port, env), never a local `docker exec … psql` wrapper. Each call spawns a new `docker exec ... psql` process — `SET` statements do NOT persist between calls. `SET enable_seqscan = OFF` and the `SELECT` it affects MUST go in one call (one string, or an array: its `-c` statements share one session).
 
 **Postgres Entrypoint Readiness**: `pg_isready` can pass during the official image's temporary initdb server, right before entrypoint shutdown/restart. Fresh-container smoke tests MUST wait for `PostgreSQL init process complete; ready for start up.` in logs, then re-check `pg_isready` + `SELECT 1` against the final server.
 

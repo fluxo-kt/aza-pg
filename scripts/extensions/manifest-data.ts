@@ -161,6 +161,12 @@ export interface ManifestEntry {
    * `postInstall`: shell run after install with `$out` the entry's output, for fixes to what the recipe installs;
    * `@pgMajor@` becomes the PostgreSQL major.
    */
+  /**
+   * SPDX id of the upstream licence (its LICENSE file), for an entry whose build has none: the image SBOM reads each
+   * package's licence from Nix `meta.license`, which a `nix.package` recipe carries and our generic builds do not.
+   * nix/extensions.nix refuses to build an entry that has neither, so no package ships as NOASSERTION.
+   */
+  license?: string;
   nix?: {
     package?: string;
     inputs?: string[];
@@ -361,6 +367,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
   },
   {
     name: "index_advisor",
+    license: "PostgreSQL",
     kind: "extension",
     category: "performance",
     description: "Suggest indexes by pairing HypoPG simulations with cost heuristics.",
@@ -427,6 +434,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
   },
   {
     name: "supautils",
+    license: "Apache-2.0",
     enabled: true,
     kind: "extension",
     category: "safety",
@@ -495,6 +503,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
   },
   {
     name: "wrappers",
+    license: "Apache-2.0",
     nix: { inputs: ["openssl", "pkg-config"] },
     displayName: "supabase-wrappers",
     kind: "extension",
@@ -642,6 +651,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
   },
   {
     name: "supabase_vault",
+    license: "Apache-2.0",
     nix: { inputs: ["libsodium"] },
     displayName: "vault",
     kind: "extension",
@@ -665,6 +675,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
   },
   {
     name: "pg_jsonschema",
+    license: "Apache-2.0",
     kind: "extension",
     category: "validation",
     description: "JSON Schema validation for JSONB documents on INSERT/UPDATE.",
@@ -691,6 +702,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
   },
   {
     name: "pg_hashids",
+    license: "MIT",
     kind: "extension",
     category: "utilities",
     description: "Encode integers into short hashids for obfuscated identifiers.",
@@ -817,6 +829,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
   },
   {
     name: "pg_stat_monitor",
+    license: "PostgreSQL",
     kind: "extension",
     category: "observability",
     description: "Enhanced query performance telemetry with bucketed metrics.",
@@ -839,6 +852,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
   },
   {
     name: "pg_plan_filter",
+    license: "PostgreSQL",
     kind: "tool",
     category: "safety",
     description: "Block high-cost plans or disallowed operations using planner hooks.",
@@ -1060,6 +1074,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
   },
   {
     name: "set_user",
+    license: "PostgreSQL",
     displayName: "pgaudit_set_user",
     kind: "extension",
     soFileName: "set_user.so",

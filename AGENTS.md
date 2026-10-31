@@ -84,6 +84,10 @@ bun run lint                # Alias for validate
 bun run test                # Optimized: uses existing build
 bun run test:all            # Complete: rebuilds image + all tests
 bun run test:unit           # Alias for validate (fast checks + unit tests, no Docker)
+bun scripts/test-all.ts scripts/test/test-x.ts  # one suite: never `bun <suite>`, bun:test suites crash outside this runner
+# Suite runs are evidence only with nothing else loading the host: run builds, scans (security:scan, vulnix) and other
+# test runs before or after, never beside. A starved suite dies at its timeout and looks like an image defect;
+# the verdict prints host load against CPUs.
 
 # Build/Generation
 bun run build               # Build Docker image

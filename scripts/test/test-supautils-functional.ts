@@ -16,40 +16,23 @@ import { TIMEOUTS } from "../config/test-timeouts";
 import { EPHEMERAL_PGDATA, generateUniqueContainerName, waitForPostgres } from "../utils/docker";
 import { resolveImageTag } from "./image-resolver";
 import { getSharedPreloadLibraries } from "./lib/test-mode";
+import { psql, sqlOk } from "../utils/psql";
 
 const image = resolveImageTag();
 const withSupautils = generateUniqueContainerName("aza-pg-supautils");
 const withoutSupautils = generateUniqueContainerName("aza-pg-supautils-off");
 
-async function sql(
-  container: string,
-  ...commands: string[]
-): Promise<{ ok: boolean; out: string }> {
-  const args = commands.flatMap((c) => ["-c", c]);
-  const r = await $`docker exec ${container} psql -X -v ON_ERROR_STOP=1 -U postgres -tA ${args}`
-    .quiet()
-    .nothrow();
-  return { ok: r.exitCode === 0, out: (r.stdout.toString() + r.stderr.toString()).trim() };
-}
-
-async function must(container: string, ...commands: string[]): Promise<string> {
-  const r = await sql(container, ...commands);
-  if (!r.ok) throw new Error(`${commands.join("; ")}\n${r.out}`);
-  return r.out;
-}
-
 /** reserved_roles is sighup-scoped: wait until a new session sees the reloaded value. */
 async function setReservedRoles(value: string | null): Promise<void> {
-  await must(
-    withSupautils,
+  await sqlOk(withSupautils, [
     value === null
       ? "ALTER SYSTEM RESET supautils.reserved_roles"
       : `ALTER SYSTEM SET supautils.reserved_roles = '${value}'`,
-    "SELECT pg_reload_conf()"
-  );
+    "SELECT pg_reload_conf()",
+  ]);
   const deadline = Date.now() + TIMEOUTS.health * 1000;
   while (Date.now() < deadline) {
-    if ((await must(withSupautils, "SHOW supautils.reserved_roles")) === (value ?? "")) return;
+    if ((await sqlOk(withSupautils, "SHOW supautils.reserved_roles")) === (value ?? "")) return;
     await Bun.sleep(100);
   }
   throw new Error(`supautils.reserved_roles did not reload to '${value ?? ""}'`);
@@ -84,46 +67,43 @@ try {
       .split("\n")
       .filter((l) => /(FATAL|WARNING).*supautils|could not load library.*supautils/i.test(l));
     if (bad.length > 0) throw new Error(bad.join("\n"));
-    if (!(await must(withSupautils, "SHOW shared_preload_libraries")).includes("supautils")) {
+    if (!(await sqlOk(withSupautils, "SHOW shared_preload_libraries")).includes("supautils")) {
       throw new Error("supautils missing from shared_preload_libraries");
     }
   });
 
   await check("reserved_roles blocks ALTER ROLE on a reserved role", async () => {
-    await must(
-      withSupautils,
+    await sqlOk(withSupautils, [
       "CREATE ROLE reserved_probe",
       "CREATE ROLE admin_probe CREATEROLE",
-      "GRANT reserved_probe TO admin_probe WITH ADMIN OPTION"
-    );
+      "GRANT reserved_probe TO admin_probe WITH ADMIN OPTION",
+    ]);
     const alter = ["SET ROLE admin_probe", "ALTER ROLE reserved_probe CONNECTION LIMIT 5"];
     try {
       await setReservedRoles("reserved_probe");
-      const blocked = await sql(withSupautils, ...alter);
-      if (blocked.ok || !blocked.out.includes('"reserved_probe" is a reserved role')) {
+      const blocked = await psql(withSupautils, alter);
+      if (blocked.ok || !blocked.err.includes('"reserved_probe" is a reserved role')) {
         throw new Error(
-          `ALTER ROLE on a reserved role was not blocked by supautils: ${blocked.out}`
+          `ALTER ROLE on a reserved role was not blocked by supautils: ${blocked.err}`
         );
       }
       await setReservedRoles(null);
-      const allowed = await sql(withSupautils, ...alter);
-      if (!allowed.ok) throw new Error(`control ALTER ROLE failed once unreserved: ${allowed.out}`);
+      const allowed = await psql(withSupautils, alter);
+      if (!allowed.ok) throw new Error(`control ALTER ROLE failed once unreserved: ${allowed.err}`);
     } finally {
-      await sql(
-        withSupautils,
+      await psql(withSupautils, [
         "ALTER SYSTEM RESET supautils.reserved_roles",
-        "SELECT pg_reload_conf()"
-      );
-      await sql(
-        withSupautils,
+        "SELECT pg_reload_conf()",
+      ]);
+      await psql(withSupautils, [
         "DROP ROLE IF EXISTS admin_probe",
-        "DROP ROLE IF EXISTS reserved_probe"
-      );
+        "DROP ROLE IF EXISTS reserved_probe",
+      ]);
     }
   });
 
   await check("supautils is not active in the default image", async () => {
-    const count = await must(
+    const count = await sqlOk(
       withoutSupautils,
       "SELECT count(*) FROM pg_settings WHERE name LIKE 'supautils.%'"
     );

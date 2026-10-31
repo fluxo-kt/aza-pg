@@ -24,6 +24,7 @@ import { join } from "node:path";
 import { TIMEOUTS } from "../config/test-timeouts";
 import { EPHEMERAL_PGDATA, generateUniqueContainerName, waitForPostgres } from "../utils/docker";
 import { resolveImageTag } from "./image-resolver";
+import { sqlOk } from "../utils/psql";
 
 const image = resolveImageTag();
 const userFile = join(tmpdir(), `${generateUniqueContainerName("aza-pg-cron-user")}.secret`);
@@ -73,14 +74,8 @@ const cases: Case[] = [
   },
 ];
 
-async function sql({ container, user }: Case, database: string, query: string): Promise<string> {
-  const r =
-    await $`docker exec ${container} psql -X -v ON_ERROR_STOP=1 -U ${user} -d ${database} -tA -c ${query}`
-      .quiet()
-      .nothrow();
-  if (r.exitCode !== 0) throw new Error(`[${database}] ${query}\n${r.stderr.toString().trim()}`);
-  return r.stdout.toString().trim();
-}
+const sql = ({ container, user }: Case, database: string, query: string) =>
+  sqlOk(container, query, { user, database });
 
 async function verify(c: Case): Promise<void> {
   const { container, database } = c;

@@ -21,18 +21,11 @@ import path from "node:path";
 import { generateUniqueContainerName, waitForPostgres } from "../utils/docker";
 import { resolveImageTag } from "./image-resolver";
 import { getSharedPreloadLibraries } from "./lib/test-mode";
+import { sqlOk } from "../utils/psql";
 
 const image = resolveImageTag();
 const PLAINTEXT = "sk_test_vault_1234567890abcdef";
 const containers: string[] = [];
-
-async function sql(container: string, query: string): Promise<string> {
-  const r = await $`docker exec ${container} psql -X -v ON_ERROR_STOP=1 -U postgres -tA -c ${query}`
-    .quiet()
-    .nothrow();
-  if (r.exitCode !== 0) throw new Error(`${query}\n${r.stderr.toString().trim()}`);
-  return r.stdout.toString().trim();
-}
 
 /** Starts a container with the given extra `docker run` arguments; readiness is the caller's choice. */
 async function start(label: string, args: string[] = []): Promise<string> {
@@ -43,7 +36,7 @@ async function start(label: string, args: string[] = []): Promise<string> {
 }
 
 const derive = (container: string) =>
-  sql(container, "SELECT encode(pgsodium.derive_key(1), 'hex')");
+  sqlOk(container, "SELECT encode(pgsodium.derive_key(1), 'hex')");
 
 const failures: string[] = [];
 async function check(name: string, fn: () => Promise<void>): Promise<void> {
@@ -168,10 +161,10 @@ try {
       const hc = await $`docker exec ${nopre} /usr/local/bin/healthcheck.sh`.quiet().nothrow();
       if (hc.exitCode !== 0) throw new Error(`healthcheck failed: ${hc.stderr.toString().trim()}`);
       // pgflow installs without pg_cron (its cron setup reports "skipped") instead of being skipped or failing init.
-      const pgflow = await sql(nopre, "SELECT to_regnamespace('pgflow') IS NOT NULL");
+      const pgflow = await sqlOk(nopre, "SELECT to_regnamespace('pgflow') IS NOT NULL");
       if (pgflow !== "t") throw new Error("pgflow schema missing without pg_cron preloaded");
       // Skipping must not blind it: an extension that needs no preload and is gone still fails it.
-      await sql(nopre, "DROP EXTENSION pg_trgm");
+      await sqlOk(nopre, "DROP EXTENSION pg_trgm");
       const dropped = await $`docker exec ${nopre} /usr/local/bin/healthcheck.sh`.quiet().nothrow();
       if (dropped.exitCode === 0 || !dropped.stderr.toString().includes("pg_trgm")) {
         throw new Error(
@@ -260,19 +253,19 @@ try {
   });
 
   await check("ENABLE_PGSODIUM_INIT creates the server root key", async () => {
-    const keys = await sql(c1, "SELECT count(*) FROM pgsodium.key WHERE name = 'pgsodium_root'");
+    const keys = await sqlOk(c1, "SELECT count(*) FROM pgsodium.key WHERE name = 'pgsodium_root'");
     if (keys !== "1") throw new Error(`pgsodium_root keys: ${keys}`);
   });
 
   await check("vault round-trips a secret and stores it encrypted, on defaults", async () => {
-    await sql(a, "CREATE EXTENSION IF NOT EXISTS supabase_vault CASCADE");
-    await sql(a, `SELECT vault.create_secret('${PLAINTEXT}', 'vault_api_key')`);
-    const decrypted = await sql(
+    await sqlOk(a, "CREATE EXTENSION IF NOT EXISTS supabase_vault CASCADE");
+    await sqlOk(a, `SELECT vault.create_secret('${PLAINTEXT}', 'vault_api_key')`);
+    const decrypted = await sqlOk(
       a,
       "SELECT decrypted_secret FROM vault.decrypted_secrets WHERE name = 'vault_api_key'"
     );
     if (decrypted !== PLAINTEXT) throw new Error(`decrypted secret is "${decrypted}"`);
-    const raw = await sql(a, "SELECT secret FROM vault.secrets WHERE name = 'vault_api_key'");
+    const raw = await sqlOk(a, "SELECT secret FROM vault.secrets WHERE name = 'vault_api_key'");
     if (raw === "" || raw.includes(PLAINTEXT)) {
       throw new Error(`secret column is not ciphertext: "${raw}"`);
     }

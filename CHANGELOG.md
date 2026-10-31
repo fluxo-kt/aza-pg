@@ -10,6 +10,18 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
 
 ## [Unreleased]
 
+## [v18.6-202610311330] - 2026-10-31
+
+### Breaking
+
+- **New clusters install pg_partman into the `partman` schema** (was `public`, beside an empty `partman` schema), as upstream's docs do. Call `partman.create_parent(…)` and read `partman.part_config`; existing data directories keep pg_partman in `public`.
+
+### Fixed
+
+- **amd64 pulls download compressed layers again**: release v18.6-202610301512 served its amd64 layers as uncompressed tar while declaring gzip, so amd64 pulls downloaded the image uncompressed. Layers are now gzip at level 9 on both architectures.
+- **Peer authentication works for UID 65534 again** (`nobody`, as on the Debian image): a rootless PgBouncer's socket connection was refused with `local user with ID 65534 does not exist`. The shipped stacks map no role to `nobody`. UID 65534 is how every user outside a container's UID map appears, so a `pg_ident.conf` line mapping `nobody` grants its role to every process that can open the socket: map it only to a role with no more rights than PgBouncer's `auth_user`, and share the socket directory with PgBouncer alone.
+- The SBOM attestation names the licence of PostgreSQL and of every extension (several read `NOASSERTION`).
+
 ## [v18.6-202610301512] - 2026-10-30
 
 ### Breaking

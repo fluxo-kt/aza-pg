@@ -93,7 +93,13 @@ let
     mkdir -p $out/etc
     echo 'root:x:0:0:root:/root:/bin/bash' > $out/etc/passwd
     echo 'postgres:x:999:999:PostgreSQL:/var/lib/postgresql:/bin/bash' >> $out/etc/passwd
-    printf 'root:x:0:\npostgres:x:999:\n' > $out/etc/group
+    # The overflow UID: a peer outside a rootless container's UID map (a PgBouncer socket client) arrives as 65534, and
+    # peer authentication needs its name ("local user with ID 65534 does not exist" otherwise). Debian's exact line,
+    # so pg_ident.conf maps written for `nobody` keep working; it owns nothing and has no grants or login shell. The
+    # name grants nothing by itself (the stacks map only postgres), but 65534 is every unmapped user, so a map for
+    # nobody reaches every process that can open the socket.
+    echo 'nobody:x:65534:65534:nobody:/nonexistent:/usr/sbin/nologin' >> $out/etc/passwd
+    printf 'root:x:0:\npostgres:x:999:\nnogroup:x:65534:\n' > $out/etc/group
   '';
 
   # Directories a tool writes by default (manifest postgresOwnedDirs), created postgres:0750 as on Debian so a named

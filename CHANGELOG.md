@@ -16,6 +16,7 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
 
 ### Fixed
 
+- **Peer authentication works for UID 65534 again** (`nobody`, as on the Debian image): a rootless PgBouncer's socket connection was refused with `local user with ID 65534 does not exist`.
 - The SBOM attestation names the licence of PostgreSQL and of every extension (several read `NOASSERTION`).
 
 ## [v18.6-202610301512] - 2026-10-30

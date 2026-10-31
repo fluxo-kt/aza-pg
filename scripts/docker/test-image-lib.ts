@@ -216,6 +216,21 @@ export function testImageMetadataFiles(container: string): Promise<TestResult> {
 }
 
 /**
+ * Peer authentication names the connecting UID with getpwuid, the lookup `getent passwd` makes. A client outside a
+ * rootless container's UID map (a PgBouncer socket peer) arrives as the overflow UID 65534; without its passwd line
+ * the server refuses it ("local user with ID 65534 does not exist"), and pg_ident.conf maps name it `nobody`.
+ */
+export function testOverflowUidResolves(container: string): Promise<TestResult> {
+  return check("The overflow UID 65534 resolves to nobody", async () => {
+    const entry = await execCommand(["getent", "passwd", "65534"], container);
+    expect(
+      entry.output.trim().startsWith("nobody:x:65534:65534:"),
+      `getent passwd 65534: ${entry.output}`
+    );
+  });
+}
+
+/**
  * Nothing build-only reaches the Nix image. One stray reference ships its whole closure: nixpkgs' pg_config once
  * pulled clang, GCC, Perl, Python and every -dev output (about 2.3 GB) in, and every behaviour check still passed.
  * Store paths are named by role (-dev, -doc, -man outputs) and package, so a name is enough. LLVM's -lib output is

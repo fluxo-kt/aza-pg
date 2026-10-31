@@ -38,6 +38,7 @@ const PHASES: Array<[string, Check[]]> = [
       lib.testToolsPresent,
       lib.testPgBackRestFunctional,
       lib.testImageMetadataFiles,
+      lib.testOverflowUidResolves,
       lib.testNoBuildOnlyStorePaths,
     ],
   ],

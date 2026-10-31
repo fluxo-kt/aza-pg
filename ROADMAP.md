@@ -19,6 +19,16 @@ Work:
 - Trim ncurses' terminfo database (11.6 MB, every terminal type) to the types a container's interactive `psql` meets (xterm*, screen*, tmux*, linux, vt100, dumb): the only data file in the closure without a consumer. Overriding nixpkgs' `ncurses` rebuilds everything above it, so give readline a trimmed copy instead. Every other store path names its consumer (`nix/image.nix`, or the package referencing it); `/update` repeats that review each round.
 - Swap a tool the image's scripts call (coreutils, grep, sed, gawk, findutils, diffutils) only for a widely used Rust tool that is a drop-in for how the scripts call it; the scripts stay. Rejected: rewriting the scripts as one Rust binary of ours. It is a large new codebase to own, and bash stays anyway for operators' `*.sh` files in `/docker-entrypoint-initdb.d`.
 
+### Auto-config overruns memory below 2 GB, and starves queries to stay inside it
+
+At 1 GB without swap and every connection busy (2 CPUs; sort, hash join and aggregate per session), the shipped tuning:
+
+- `oltp` (150 connections) is OOM-killed;
+- `web` (100) fits at 643 MB of private memory but serves under 1 transaction per second;
+- `mixed` (60) fits at about 400 MB.
+
+`work_mem` is 1 MB at every workload from 2 GB down: the formula charges 10 MB per connection (measured: about 3 MB idle) and subtracts a 512 MB OS reserve from a cgroup limit, which already excludes the host OS. Fix: derive `max_connections` and `work_mem` from the fit rule in `AGENTS.md` instead of fixed tiers. Prove it with a suite that runs a full busy pool for each workload at 1, 1.5 and 3 GB and fails on any `oom_kill` or backend crash. Document how operators choose the memory limit, workload and connection count, and what each trade-off costs. **Needs a decision**: whether connections or memory per query wins when both cannot fit.
+
 ## Medium
 
 ### Restore PostgreSQL's fast stop signal in the Nix image

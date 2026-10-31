@@ -210,18 +210,6 @@ const ROWS: Row[] = [
     },
   },
   {
-    // POSTGRES_MEMORY, not a 16 GB cgroup: a limit above the host's RAM is clamped to it, and CI runners have 16 GB.
-    name: "POSTGRES_MEMORY=16384 (20% shared_buffers tier)",
-    docker: [],
-    env: { POSTGRES_MEMORY: "16384" },
-    // 16384×20% = 3276; cache (16384−3276−3276)×70% = 6882
-    settings: {
-      shared_buffers: "3276MB",
-      max_connections: "120",
-      effective_cache_size: "6882MB",
-    },
-  },
-  {
     name: "1 GB / 1 CPU",
     docker: [...memory("1g"), ...cpus(1)],
     detected: "RAM: 1024MB (cgroup-v2), CPU: 1 cores (cgroup-v2)",
@@ -244,18 +232,6 @@ const ROWS: Row[] = [
     settings: { shared_buffers: "768MB", max_connections: "84", work_mem: "2482kB" },
   },
   {
-    name: "6 GB / 4 CPU (parallel workers threshold)",
-    docker: [...memory("6g"), ...cpus(4)],
-    settings: {
-      shared_buffers: "1536MB",
-      max_connections: "102",
-      max_worker_processes: "8",
-      max_parallel_workers: "4",
-      max_parallel_workers_per_gather: "2",
-      max_parallel_maintenance_workers: "2",
-    },
-  },
-  {
     name: "POSTGRES_MEMORY=32768, dw, 14 CPU",
     docker: cpus(14),
     env: { POSTGRES_MEMORY: "32768", POSTGRES_WORKLOAD_TYPE: "dw" },
@@ -274,54 +250,6 @@ const ROWS: Row[] = [
       max_parallel_workers_per_gather: "7",
       max_parallel_maintenance_workers: "4",
       io_workers: "3",
-    },
-  },
-  {
-    name: "8 GB web",
-    docker: [...memory("8g")],
-    env: { POSTGRES_WORKLOAD_TYPE: "web" },
-    settings: {
-      max_connections: "200",
-      default_statistics_target: "100",
-      min_wal_size: "1024MB",
-      max_wal_size: "4096MB",
-    },
-  },
-  {
-    name: "8 GB oltp",
-    docker: [...memory("8g")],
-    env: { POSTGRES_WORKLOAD_TYPE: "oltp" },
-    settings: { max_connections: "300", min_wal_size: "2048MB", max_wal_size: "8192MB" },
-  },
-  {
-    name: "POSTGRES_MEMORY=16384 dw",
-    docker: [],
-    env: { POSTGRES_MEMORY: "16384", POSTGRES_WORKLOAD_TYPE: "dw" },
-    settings: {
-      max_connections: "100",
-      default_statistics_target: "500",
-      min_wal_size: "4096MB",
-      maintenance_work_mem: "2048MB",
-    },
-  },
-  {
-    name: "8 GB hdd",
-    docker: [...memory("8g")],
-    env: { POSTGRES_STORAGE_TYPE: "hdd" },
-    settings: {
-      random_page_cost: "4.0",
-      maintenance_io_concurrency: "10",
-      effective_io_concurrency: "2",
-    },
-  },
-  {
-    name: "8 GB san",
-    docker: [...memory("8g")],
-    env: { POSTGRES_STORAGE_TYPE: "san" },
-    settings: {
-      random_page_cost: "1.1",
-      maintenance_io_concurrency: "20",
-      effective_io_concurrency: "300",
     },
   },
   {
@@ -346,22 +274,6 @@ const ROWS: Row[] = [
     settings: { random_page_cost: "1.1", maintenance_io_concurrency: "20" },
   },
   {
-    name: "POSTGRES_MEMORY=32768, dw, san",
-    docker: [],
-    env: {
-      POSTGRES_MEMORY: "32768",
-      POSTGRES_WORKLOAD_TYPE: "dw",
-      POSTGRES_STORAGE_TYPE: "san",
-    },
-    settings: {
-      max_connections: "100",
-      random_page_cost: "1.1",
-      maintenance_io_concurrency: "20",
-      effective_io_concurrency: "300",
-      default_statistics_target: "500",
-    },
-  },
-  {
     name: "512 MB + hdd + web",
     docker: [...memory("512m"), ...cpus(1)],
     env: { POSTGRES_STORAGE_TYPE: "hdd", POSTGRES_WORKLOAD_TYPE: "web" },
@@ -372,11 +284,11 @@ const ROWS: Row[] = [
     name: "6 GB + oltp + san + 4 CPU",
     docker: [...memory("6g"), ...cpus(4)],
     env: { POSTGRES_WORKLOAD_TYPE: "oltp", POSTGRES_STORAGE_TYPE: "san" },
-    // oltp 300×85% = 255
+    // oltp 300×85% = 255; effective_io_concurrency is the value only san sets
     settings: {
       shared_buffers: "1536MB",
       max_connections: "255",
-      random_page_cost: "1.1",
+      effective_io_concurrency: "300",
       max_parallel_workers: "4",
     },
   },

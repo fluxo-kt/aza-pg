@@ -69,7 +69,9 @@ readonly BUSY_SESSION_MB=4          # a running query beyond work_mem: executor 
 readonly WORK_MEM_UNITS_PER_SESSION=4
 readonly AUTOVACUUM_MAX_WORKERS=3     # PostgreSQL's default, set explicitly because the budget counts it
 readonly AUTOVACUUM_WORK_MEM_CAP_MB=256 # dead tuple IDs per vacuum pass before it must scan the indexes again
-readonly MIN_CONNECTIONS=20
+# Fewest connections the fit may leave: 3 superuser-reserved slots (PostgreSQL's default) plus 7 ordinary ones. Below
+# what fits, a higher floor would ship a configuration the container cannot hold.
+readonly MIN_CONNECTIONS=10
 
 # Fixed parameters
 readonly CHECKPOINT_COMPLETION_TARGET="0.9"

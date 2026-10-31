@@ -73,6 +73,9 @@ async function crashCauses(container: string): Promise<string[]> {
     .filter((l) => /PANIC|out of memory|was terminated by signal/.test(l));
 }
 
+/** Memory settings plus active share → the case that measures them. */
+const loaded = new Map<string, string>();
+
 /** Runs one case; returns null when it held, else what broke. */
 async function runCase(c: Case, entrypoint: string | null): Promise<string | null> {
   const name = generateUniqueContainerName("aza-pg-memfit");
@@ -95,6 +98,19 @@ async function runCase(c: Case, entrypoint: string | null): Promise<string | nul
   try {
     await $`docker run -d --name ${name} --memory ${limit} --memory-swap ${limit} --cpus 2 -v ${volume}:/var/lib/postgresql ${env} ${mount} ${IMAGE}`.quiet();
     await waitForPostgres({ container: name, timeout: 120 });
+    // Read before the load: a backend killed under it puts the server into crash recovery, refusing queries.
+    const tuning = await sql(
+      "SELECT string_agg(name || '=' || current_setting(name), ' ' ORDER BY name) FROM unnest(ARRAY['max_connections','work_mem','maintenance_work_mem','shared_buffers']) name"
+    );
+    // Workloads the fit caps to the same memory settings (at 1 GB web and oltp equal mixed) would repeat one
+    // measurement and add load beside the other cases; read from the server, so a tuning that diverges is measured.
+    const key = `${tuning} ${c.activePercent ?? 100}`;
+    const twin = loaded.get(key);
+    if (twin) {
+      console.log(`➖ ${label(c)}: same memory settings as ${twin}, measured there (${tuning})`);
+      return null;
+    }
+    loaded.set(key, label(c));
     await sql(
       "CREATE TABLE s AS SELECT g, md5(g::text) v FROM generate_series(1, 400000) g; ANALYZE s"
     );
@@ -112,10 +128,6 @@ async function runCase(c: Case, entrypoint: string | null): Promise<string | nul
               `pgbench -U postgres -n -c ${sessions - busy} -j 1 -t 1 -f /tmp/idle.sql postgres`
           )
         : null;
-    // Read before the load: a backend killed under it puts the server into crash recovery, refusing queries.
-    const tuning = await sql(
-      "SELECT string_agg(name || '=' || current_setting(name), ' ' ORDER BY name) FROM unnest(ARRAY['max_connections','work_mem','maintenance_work_mem','shared_buffers']) name"
-    );
     const maintenance = exec(
       `end=$(( $(date +%s) + ${LOAD_SECONDS} )); while [ "$(date +%s)" -lt "$end" ]; do ` +
         "psql -U postgres -qc 'CREATE INDEX s_v ON s (v)' -c 'DROP INDEX s_v' -c 'VACUUM s'; done"

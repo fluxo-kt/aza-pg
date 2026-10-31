@@ -8,9 +8,11 @@
  * version, and it is exactly the change an author names for one extension and forgets for the next.
  * An entry names a component by its manifest name (case-insensitive), e.g. "Vault (supabase_vault) …".
  *
- * The baseline is the tag of the newest dated heading. Without that tag in this clone (CI's shallow
- * checkout, or a release commit whose tag publish.yml has not created yet) there is nothing to compare;
- * the check prints that instead of passing as if it had compared. Pre-commit and /release run where tags exist.
+ * The baseline is the tag of the newest dated heading. A release commit dates its own heading before
+ * publish.yml creates that tag, so when the newest tag is missing the previous heading's tag is the baseline
+ * and the newest section counts as unreleased: the /release edit of the changelog is checked too. Without
+ * either tag in this clone (CI's shallow checkout) there is nothing to compare; the check prints that
+ * instead of passing as if it had compared. Pre-commit and /release run where tags exist.
  */
 
 import { $ } from "bun";
@@ -32,11 +34,23 @@ if (!release) {
   console.log("CHANGELOG.md has no dated release: nothing to compare against.");
   process.exit(0);
 }
-const tag = `v${release.version}`;
-const oldManifest = await $`git show ${`${tag}:${MANIFEST}`}`.nothrow().quiet();
+const manifestAt = (tag: string) => $`git show ${`${tag}:${MANIFEST}`}`.nothrow().quiet();
+let tag = `v${release.version}`;
+let oldManifest = await manifestAt(tag);
+// Sections that count as unreleased end at this heading.
+let baselineHeading = `\n## [${tag}]`;
 if (oldManifest.exitCode !== 0) {
-  console.log(`Release tag ${tag} is not in this clone: changelog coverage NOT checked.`);
-  process.exit(0);
+  const previous = newestRelease(
+    changelog.slice(changelog.indexOf(baselineHeading) + 1).replace(/^.*\n/, "")
+  );
+  const previousManifest = previous ? await manifestAt(`v${previous.version}`) : null;
+  if (!previous || previousManifest?.exitCode !== 0) {
+    console.log(`Release tag ${tag} is not in this clone: changelog coverage NOT checked.`);
+    process.exit(0);
+  }
+  tag = `v${previous.version}`;
+  oldManifest = previousManifest;
+  baselineHeading = `\n## [${tag}]`;
 }
 
 const readAt = async (ref: string | null, file: string): Promise<string> =>
@@ -59,7 +73,7 @@ const byName = (entries: Entry[]) => new Map(entries.map((e) => [e.name, e]));
 const before = byName(JSON.parse(oldManifest.stdout.toString()).entries);
 const now = byName((await Bun.file(MANIFEST).json()).entries);
 const start = changelog.indexOf("## [Unreleased]");
-const unreleased = changelog.slice(start, changelog.indexOf("\n## [v", start)).toLowerCase();
+const unreleased = changelog.slice(start, changelog.indexOf(baselineHeading, start)).toLowerCase();
 
 const missing: string[] = [];
 for (const name of new Set([...before.keys(), ...now.keys()])) {
@@ -69,7 +83,7 @@ for (const name of new Set([...before.keys(), ...now.keys()])) {
 
 if (missing.length > 0) {
   console.error(
-    `CHANGELOG.md [Unreleased] does not name: ${missing.join(", ")}.\n` +
+    `CHANGELOG.md does not name, in the sections after ${tag}: ${missing.join(", ")}.\n` +
       `Their shipped code (pinned commit or build.patches content) differs from release ${tag}, so an operator ` +
       `upgrading from it gets a change the changelog does not mention. Add one entry per component as AGENTS.md ` +
       `"Changelog" says: "<name> <version in ${tag}> → <current>" with the concrete fix from upstream's notes for ` +
@@ -78,4 +92,4 @@ if (missing.length > 0) {
   );
   process.exit(1);
 }
-console.log(`Every component changed since ${tag} is named in [Unreleased].`);
+console.log(`Every component changed since ${tag} is named in the changelog sections after it.`);

@@ -43,7 +43,9 @@ services:
     entrypoint: ["/usr/local/bin/tini", "--", "/usr/local/bin/replica-entrypoint.sh"]
     command: postgres -c config_file=/etc/postgresql/postgresql.conf -c hba_file=/etc/postgresql/pg_hba.conf -c ident_file=/etc/postgresql/pg_ident.conf
 
-    mem_limit: ${POSTGRES_MEMORY_LIMIT:-512m}
+    # The primary's: a standby must run at least the primary's max_connections, which auto-config fits to the
+    # primary's limit, so a smaller limit cannot hold them (the log warns of OOM kills).
+    mem_limit: ${POSTGRES_MEMORY_LIMIT:-1536m}
     mem_reservation: ${POSTGRES_MEMORY_RESERVATION:-256m}
 
     cpus: ${POSTGRES_CPU_LIMIT:-0.5}

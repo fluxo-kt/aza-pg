@@ -65,16 +65,16 @@ Auto-tuning from container resource limits (cgroup v2) and system memory.
 
 ## Container Resources
 
-| Variable                          | Primary | Replica/Single | Description             |
-| --------------------------------- | ------- | -------------- | ----------------------- |
-| `POSTGRES_MEMORY_LIMIT`           | `1536m` | `512m`         | Hard memory limit       |
-| `POSTGRES_MEMORY_RESERVATION`     | `1024m` | `256m`         | Soft memory reservation |
-| `POSTGRES_CPU_LIMIT`              | `2`     | `0.5`          | CPU cores               |
-| `PGBOUNCER_MEMORY_LIMIT`          | `200m`  | N/A            | PgBouncer memory        |
-| `POSTGRES_EXPORTER_MEMORY_LIMIT`  | `64m`   | `64m`          | Prometheus exporter     |
-| `PGBOUNCER_EXPORTER_MEMORY_LIMIT` | `32m`   | N/A            | PgBouncer exporter      |
+| Variable                          | Primary | Replica/Single   | Description                                                                              |
+| --------------------------------- | ------- | ---------------- | ---------------------------------------------------------------------------------------- |
+| `POSTGRES_MEMORY_LIMIT`           | `1536m` | `1536m` / `512m` | Hard memory limit; a replica needs its primary's (it runs the primary's max_connections) |
+| `POSTGRES_MEMORY_RESERVATION`     | `1024m` | `256m`           | Soft memory reservation                                                                  |
+| `POSTGRES_CPU_LIMIT`              | `2`     | `0.5`            | CPU cores                                                                                |
+| `PGBOUNCER_MEMORY_LIMIT`          | `200m`  | N/A              | PgBouncer memory                                                                         |
+| `POSTGRES_EXPORTER_MEMORY_LIMIT`  | `64m`   | `64m`            | Prometheus exporter                                                                      |
+| `PGBOUNCER_EXPORTER_MEMORY_LIMIT` | `32m`   | N/A              | PgBouncer exporter                                                                       |
 
-Each `*_MEMORY_LIMIT` has a matching `*_MEMORY_RESERVATION` (half the limit by default).
+Each `*_MEMORY_LIMIT` has a matching `*_MEMORY_RESERVATION`.
 
 ## Networking
 

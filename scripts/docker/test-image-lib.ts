@@ -629,6 +629,39 @@ export function testPgCronScheduling(container: string): Promise<TestResult> {
   });
 }
 
+/**
+ * JIT is a shipped feature (flake.nix keeps it on for measured speedups), and a broken one fails silently: when
+ * llvmjit.so or libLLVM cannot load, the server runs the query interpreted and only EXPLAIN shows no JIT. So the
+ * plan must report compiled functions with inlining and optimisation forced on, and the result must equal the
+ * interpreted one. Anything that touches the JIT layer (its RPATH copy, stripping) is judged here.
+ */
+export function testJitCompiles(container: string): Promise<TestResult> {
+  return check("jit - compiles, inlines and matches interpreted results", async () => {
+    const query =
+      "SELECT sum(g * 3 + 1), count(*) FILTER (WHERE g % 7 = 0) FROM generate_series(1, 200000) g";
+    const forced = [
+      "SET jit = on",
+      "SET jit_above_cost = 0",
+      "SET jit_inline_above_cost = 0",
+      "SET jit_optimize_above_cost = 0",
+    ];
+    // The SETs print "SET" lines first; the JSON plan spans the remaining lines.
+    const out = await sqlOk(container, [...forced, `EXPLAIN (ANALYZE, FORMAT JSON) ${query}`]);
+    const plan = JSON.parse(out.slice(out.indexOf("["))) as {
+      JIT?: { Functions: number; Options: { Inlining: boolean; Optimization: boolean } };
+    }[];
+    const jit = plan[0]?.JIT;
+    expect(jit !== undefined && jit.Functions > 0, `no JIT in the plan:\n${JSON.stringify(plan)}`);
+    expect(
+      jit?.Options.Inlining === true && jit.Options.Optimization === true,
+      `JIT without inlining or optimisation: ${JSON.stringify(jit)}`
+    );
+    const compiled = lastLine(await sqlOk(container, [...forced, query]));
+    const interpreted = lastLine(await sqlOk(container, ["SET jit = off", query]));
+    expect(compiled === interpreted, `JIT gave ${compiled}, interpreted gave ${interpreted}`);
+  });
+}
+
 /** The planner must choose the hypothetical index, which exists only inside hypopg. */
 export function testHypopgHypotheticalIndexes(container: string): Promise<TestResult> {
   return check("hypopg - planner uses a hypothetical index", async () => {

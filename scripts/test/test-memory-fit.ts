@@ -61,12 +61,16 @@ const BUSY_SQL = [
   "SELECT count(*) FROM (SELECT v, count(*) FROM s GROUP BY v) t;",
 ].join("\n");
 
-/** Server log lines naming why sessions failed (pgbench reports any SQL error as a backend that may have died). */
+/**
+ * Server log lines showing memory exhaustion or a crash, which a failing client cannot name. Not every ERROR: the log
+ * spans init and background jobs, whose unrelated errors would read as an overrun; a query error under the load
+ * already reaches the report through pgbench's `aborted … ERROR: …` line.
+ */
 async function crashCauses(container: string): Promise<string[]> {
   const logs = await $`docker logs ${container}`.quiet().nothrow();
   return (logs.stdout.toString() + logs.stderr.toString())
     .split("\n")
-    .filter((l) => /ERROR|PANIC|out of memory|was terminated by signal/.test(l));
+    .filter((l) => /PANIC|out of memory|was terminated by signal/.test(l));
 }
 
 /** Runs one case; returns null when it held, else what broke. */

@@ -38,8 +38,9 @@ services:
       - ./scripts/replica-entrypoint.sh:/usr/local/bin/replica-entrypoint.sh:ro
 
     # Clones the primary on an empty volume, then runs the image's entrypoint (see the script for why it runs first).
-    # Setting entrypoint clears the image's CMD, so command repeats it, with the stack's config and pg_hba.
-    entrypoint: ["/usr/local/bin/replica-entrypoint.sh"]
+    # Setting entrypoint clears the image's CMD, so command repeats it, with the stack's config and pg_hba. It also
+    # replaces the image's tini, which must stay PID 1 (reason at tini in nix/image.nix).
+    entrypoint: ["/usr/local/bin/tini", "--", "/usr/local/bin/replica-entrypoint.sh"]
     command: postgres -c config_file=/etc/postgresql/postgresql.conf -c hba_file=/etc/postgresql/pg_hba.conf -c ident_file=/etc/postgresql/pg_ident.conf
 
     mem_limit: ${POSTGRES_MEMORY_LIMIT:-512m}

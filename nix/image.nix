@@ -64,6 +64,11 @@ let
     install -Dm0755 ${src "docker/postgres/pg_repack-wrapper.sh"} $out/usr/local/bin/pg_repack
     install -Dm0755 ${./bin/mountpoint} $out/usr/local/bin/mountpoint
     ln -s ${pkgs.su-exec}/bin/su-exec $out/usr/local/bin/gosu
+    # PID 1. A process orphaned inside the container (a docker exec child whose shell exited first, a healthcheck
+    # killed on timeout) is re-parented to PID 1; when the postmaster is PID 1 and such an orphan dies by a signal, it
+    # cannot tell it from a crashed backend and resets every session through crash recovery. tini reaps orphans and
+    # forwards signals to the server, nothing else. Compose files overriding entrypoint must start it too.
+    ln -s ${pkgs.tini}/bin/tini $out/usr/local/bin/tini
     # The documented mount point for an operator's own script (the entrypoint sets pgsodium.getkey_script to it); the
     # second, never-run copy lets the entrypoint tell the image's script from a mounted one.
     install -Dm0755 ${src "docker/postgres/pgsodium_getkey.sh"} $out/usr/share/postgresql/${pgMajor}/extension/pgsodium_getkey
@@ -152,7 +157,7 @@ pkgs.dockerTools.streamLayeredImage {
   enableFakechroot = false;
   config = {
     User = "postgres";
-    Entrypoint = [ "/usr/local/bin/docker-auto-config-entrypoint.sh" ];
+    Entrypoint = [ "/usr/local/bin/tini" "--" "/usr/local/bin/docker-auto-config-entrypoint.sh" ];
     Cmd = [ "postgres" ];
     ExposedPorts."5432/tcp" = { };
     Env = [

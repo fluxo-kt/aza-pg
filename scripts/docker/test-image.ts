@@ -52,6 +52,7 @@ const PHASES: Array<[string, Check[]]> = [
       lib.testLocales,
       lib.testJitCompiles,
       lib.testOomKillsBackendsFirst,
+      lib.testOrphanDeathKeepsSessions,
     ],
   ],
   ["Extension creation", [lib.testEnabledExtensions, lib.testDisabledExtensionsUnavailable]],

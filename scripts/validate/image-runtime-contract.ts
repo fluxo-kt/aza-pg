@@ -13,6 +13,8 @@
  *      to start with a mount at the pre-18 path, which is what memory and old examples produce. Scanning lines rather
  *      than parsed volumes also catches `"${VOL:-name}:<path>"` mounts, whose `:` inside the default defeats a split.
  *      Naming it as the legacy path inside backticks stays legal.
+ *   4. An `entrypoint:` override starts with tini: it replaces the image's whole Entrypoint, tini included, and the
+ *      postmaster as PID 1 resets every session when an orphaned process dies by a signal.
  * Compose override files (compose.<name>.yml beside a compose.yml) are merged onto that base, so rule 1 judges the
  * base only. The stacks are also booted by their suites; this check is the only detector for everything else.
  *
@@ -23,6 +25,7 @@ import { Glob } from "bun";
 type Service = {
   image?: string;
   environment?: Record<string, unknown> | string[];
+  entrypoint?: string | string[];
 };
 const problems: string[] = [];
 // Assembled so this file does not contain the literal it forbids.
@@ -70,6 +73,13 @@ for (const file of composeFiles) {
           `${where}: set environment POSTGRES_BIND_IP: "0.0.0.0" (found ${bind ?? "nothing"}) — the image listens on 127.0.0.1 by default, so this file's other services cannot connect; host exposure is chosen by "ports", not by this variable`
         );
       }
+    }
+    const entrypoint =
+      typeof svc.entrypoint === "string" ? svc.entrypoint.split(/\s+/) : svc.entrypoint;
+    if (entrypoint && entrypoint[0] !== "/usr/local/bin/tini") {
+      problems.push(
+        `${where}: entrypoint must start with "/usr/local/bin/tini", "--" (found ${JSON.stringify(entrypoint)}) — setting entrypoint replaces the image's, and without tini as PID 1 any orphaned process dying by a signal makes PostgreSQL reset every session (reason at tini in nix/image.nix)`
+      );
     }
     if (e.has("POSTGRES_MEMORY")) {
       const mem = composeDefault(e.get("POSTGRES_MEMORY"));

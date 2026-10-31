@@ -691,6 +691,31 @@ export function testOomKillsBackendsFirst(container: string): Promise<TestResult
   });
 }
 
+/**
+ * A process orphaned in the container is re-parented to PID 1. With the postmaster as PID 1, such an orphan dying by
+ * a signal reads as a crashed backend and resets every session; tini as PID 1 (nix/image.nix) reaps it instead.
+ * Crash recovery restarts every server process, so a changed checkpointer PID is the reset.
+ */
+export function testOrphanDeathKeepsSessions(container: string): Promise<TestResult> {
+  return check("PID 1 - an orphan dying by a signal does not reset the server", async () => {
+    const checkpointer = "SELECT pid FROM pg_stat_activity WHERE backend_type = 'checkpointer'";
+    const before = await sqlOk(container, checkpointer);
+    // The inner shell outlives its parent, is orphaned, then kills itself with SIGPIPE.
+    const orphan = await execCommand(
+      ["sh", "-c", 'sh -c "sleep 0.5; kill -PIPE \\$\\$" & exit 0'],
+      container
+    );
+    expect(orphan.ok, `starting the orphan failed: ${orphan.output}`);
+    await Bun.sleep(2000);
+    const after = await sqlOk(container, checkpointer);
+    expect(
+      before === after,
+      `checkpointer ${before} became ${after}: the server reset all sessions`
+    );
+    return `checkpointer ${after} kept`;
+  });
+}
+
 /** The planner must choose the hypothetical index, which exists only inside hypopg. */
 export function testHypopgHypotheticalIndexes(container: string): Promise<TestResult> {
   return check("hypopg - planner uses a hypothetical index", async () => {

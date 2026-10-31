@@ -10,9 +10,11 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
 
 ## [Unreleased]
 
+## [v18.6-202610301512] - 2026-10-30
+
 ### Breaking
 
-- **The image is built with Nix instead of on Debian (`postgres:18-trixie`).** It is half the size (647 MB uncompressed, 290 MB of it the JIT compiler; was 1.3 GB), has no package manager, and gets PostgreSQL and every library at nixpkgs' patched versions. If you build `FROM` it: `apt-get` is gone, and binaries live under `/nix/store` instead of `/usr/lib/postgresql/18/bin`. They are on `PATH`, so call them by name. `postgres` is still uid 999, so existing volumes need no ownership change. The `org.opencontainers.image.base.*` labels are gone: they name the image a build starts `FROM`, and this one starts from nothing. The SPDX SBOM attestation lists every package in the image with its version.
+- **The image is built with Nix instead of on Debian (`postgres:18-trixie`).** It is half the size (647 MB uncompressed, 302 MB of it the JIT compiler; was 1.3 GB), has no package manager, and gets PostgreSQL and every library at nixpkgs' patched versions. If you build `FROM` it: `apt-get` is gone, and binaries live under `/nix/store` instead of `/usr/lib/postgresql/18/bin`. They are on `PATH`, so call them by name. `postgres` is still uid 999, so existing volumes need no ownership change. The `org.opencontainers.image.base.*` labels are gone: they name the image a build starts `FROM`, and this one starts from nothing. The SPDX SBOM attestation lists every package in the image with its version.
 - **New clusters sort text by Unicode code point** (PostgreSQL's builtin `PG_UNICODE_FAST` collation, was glibc `en_US.utf8`). Existing data directories keep their collation. Why: no glibc or ICU upgrade can then change the sort order or force a `REINDEX`, and comparisons are faster. `ORDER BY` puts uppercase before lowercase (`'B' < 'a'`) and accented letters after `z`. Where people read the order, use ICU per column or query: `COLLATE "en-US-x-icu"`. For language-aware sorting by default, pass `POSTGRES_INITDB_ARGS="--locale-provider=icu --icu-locale=en-US"`. Your `POSTGRES_INITDB_ARGS` now override the image's initdb flags; before, the image's `--locale` overrode yours.
 - **The server and extensions need an x86-64-v3 CPU (AVX2, BMI2, FMA; Intel Haswell 2013 or AMD Excavator 2015 and later) or an Armv8.2-A CPU with dot product (Neoverse N1 / Graviton2 and later)**, which every Hetzner Cloud line (CX, CPX, CCX, CAX) has. Older CPUs (Graviton1, Raspberry Pi 4, pre-2013 x86) no longer run the image: the container stops at start and names the missing feature instead of crashing. If the host CPU has the features but the container says it lacks them, the hypervisor hides them: set the VM's CPU model to `host`.
 - **TimescaleDB is updated automatically** at the first start after an image upgrade, in every database, before the server accepts connections (was a manual `ALTER EXTENSION timescaledb UPDATE`). If an update fails, the container stops and names the database.
@@ -36,7 +38,7 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
 ### Added
 
 - **Image labels for the repository, documentation, license, author and PostgreSQL version**: `docker inspect` now shows `org.opencontainers.image.source`, `.url`, `.documentation`, `.licenses` (`MIT`), `.authors` and `io.fluxo-kt.aza-pg.postgresql.version`. Before, only the registry's index annotations had them.
-- **Locales for number, currency and date formatting in 42 languages and regions**, among them `de_DE`, `fr_FR`, `ru_RU`, `uk_UA`, `pt_BR`, `ja_JP` and `zh_CN` (was `en_US` only). A session can `SET lc_monetary = 'de_DE.utf8'` (likewise `lc_numeric`, `lc_time`), and `to_char(1234.5, 'L9G999D99')` then prints `€ 1.234,50`. The server default stays `en_US.utf8`. The locales add 45 MB to the image.
+- **Locales for number, currency and date formatting in 42 languages and regions**, among them `de_DE`, `fr_FR`, `ru_RU`, `uk_UA`, `pt_BR`, `ja_JP` and `zh_CN` (was `en_US` only). A session can `SET lc_monetary = 'de_DE.utf8'` (likewise `lc_numeric`, `lc_time`), and `to_char(1234.5, 'L9G999D99')` then prints `€ 1.234,50`. The server default stays `en_US.utf8`. The locales add 50 MB to the image.
 
 ### Removed
 

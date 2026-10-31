@@ -61,6 +61,14 @@ const BUSY_SQL = [
   "SELECT count(*) FROM (SELECT v, count(*) FROM s GROUP BY v) t;",
 ].join("\n");
 
+/** Server log lines naming why sessions died; connection refusals during recovery are only their echo. */
+async function crashCauses(container: string): Promise<string[]> {
+  const logs = await $`docker logs ${container}`.quiet().nothrow();
+  return (logs.stdout.toString() + logs.stderr.toString())
+    .split("\n")
+    .filter((l) => /PANIC|out of memory|was terminated by signal/.test(l));
+}
+
 /** Runs one case; returns null when it held, else what broke. */
 async function runCase(c: Case, entrypoint: string | null): Promise<string | null> {
   const name = generateUniqueContainerName("aza-pg-memfit");
@@ -71,7 +79,13 @@ async function runCase(c: Case, entrypoint: string | null): Promise<string | nul
   const mount = entrypoint
     ? ["-v", `${entrypoint}:/usr/local/bin/docker-auto-config-entrypoint.sh:ro`]
     : [];
-  const exec = (script: string) => $`docker exec ${name} sh -c ${script}`.quiet().nothrow();
+  // .then starts the command now: Bun's $ runs only once awaited, so the maintenance loop, idle sessions and memory
+  // sampler started beside the load would otherwise run after it.
+  const exec = (script: string) =>
+    $`docker exec ${name} sh -c ${script}`
+      .quiet()
+      .nothrow()
+      .then((result) => result);
   const sql = async (query: string) =>
     (await $`docker exec ${name} psql -U postgres -Atqc ${query}`.quiet().text()).trim();
   try {
@@ -98,56 +112,55 @@ async function runCase(c: Case, entrypoint: string | null): Promise<string | nul
               `pgbench -U postgres -n -c ${sessions - busy} -j 1 -t 1 -f /tmp/idle.sql postgres`
           )
         : null;
+    // Read before the load: a backend killed under it puts the server into crash recovery, refusing queries.
+    const tuning = await sql(
+      "SELECT string_agg(name || '=' || current_setting(name), ' ' ORDER BY name) FROM unnest(ARRAY['max_connections','work_mem','maintenance_work_mem','shared_buffers']) name"
+    );
     const maintenance = exec(
       `end=$(( $(date +%s) + ${LOAD_SECONDS} )); while [ "$(date +%s)" -lt "$end" ]; do ` +
         "psql -U postgres -qc 'CREATE INDEX s_v ON s (v)' -c 'DROP INDEX s_v' -c 'VACUUM s'; done"
+    );
+    // Peak private memory: how close a passing case came to the limit, the margin the memory model must keep.
+    // anon, not memory.peak, which counts reclaimable page cache.
+    const sampler = exec(
+      `end=$(( $(date +%s) + ${LOAD_SECONDS} )); p=0; while [ "$(date +%s)" -lt "$end" ]; do ` +
+        'a=$(awk \'/^anon / {print $2}\' /sys/fs/cgroup/memory.stat); [ "$a" -gt "$p" ] && p=$a; sleep 0.2; done; echo $p'
     );
     const load = await exec(
       `pgbench -U postgres -n -c ${busy} -j 2 -T ${LOAD_SECONDS} -f /tmp/busy.sql postgres 2>&1`
     );
     await maintenance;
     await idle;
+    const peak = `peak anon ${Math.round(Number((await sampler).text().trim()) / 1048576)} of ${c.limitMb} MB`;
     const oomKills = (await exec("awk '/^oom_kill / {print $2}' /sys/fs/cgroup/memory.events"))
       .text()
       .trim();
-    const logs = await $`docker logs ${name}`.quiet().nothrow();
-    const killed = (logs.stdout.toString() + logs.stderr.toString())
-      .split("\n")
-      .filter((l) => l.includes("terminated by signal"));
     const output = load.stdout.toString();
     const aborted = output.split("\n").filter((l) => /aborted|error/i.test(l));
-    const tuning = await sql(
-      "SELECT string_agg(name || '=' || current_setting(name), ' ' ORDER BY name) FROM unnest(ARRAY['max_connections','work_mem','maintenance_work_mem','shared_buffers']) name"
-    );
+    // The server log names what a failing client cannot: a backend killed by a signal, a memory error, a PANIC.
+    const causes = await crashCauses(name);
     const problems = [
       oomKills !== "0" ? `${oomKills} OOM kill(s) in the container's cgroup` : "",
-      killed.length > 0 ? `backends killed: ${killed[0]}` : "",
+      causes.length > 0 ? `server: ${causes.slice(0, 3).join(" | ")}` : "",
       aborted.length > 0 ? `clients failed: ${aborted[0]}` : "",
       load.exitCode !== 0 && aborted.length === 0
         ? `pgbench exited ${load.exitCode}: ${output.trim()}`
         : "",
     ].filter(Boolean);
-    // An aborted client names no cause; the server log says whether it was memory, a limit or a crash.
-    const serverErrors = (logs.stdout.toString() + logs.stderr.toString())
-      .split("\n")
-      .filter((l) => /FATAL|PANIC|out of memory|terminated by signal/.test(l));
-    if (problems.length && serverErrors.length)
-      problems.push(`server: ${serverErrors.slice(0, 3).join(" | ")}`);
     console.log(
-      `${problems.length ? "❌" : "✅"} ${label(c)}: ${busy} busy + ${sessions - busy} idle sessions, ${tuning}`
+      `${problems.length ? "❌" : "✅"} ${label(c)}: ${busy} busy + ${sessions - busy} idle sessions, ${peak}, ${tuning}`
     );
     return problems.length ? `${label(c)} (${tuning}): ${problems.join("; ")}` : null;
   } catch (err) {
     // A Bun shell error's message is only "Failed with exit code N"; the cause is in its stderr and the server log.
     const stderr = err instanceof $.ShellError ? err.stderr.toString().trim() : String(err);
-    const logs = await $`docker logs --tail 15 ${name}`.quiet().nothrow();
     // A container killed whole (OOM on the postmaster) leaves only its exit state to read.
     const state =
       await $`docker inspect -f ${"{{.State.Status}}/exit={{.State.ExitCode}}/oom={{.State.OOMKilled}}"} ${name}`
         .quiet()
         .nothrow();
-    const tail = (logs.stdout.toString() + logs.stderr.toString()).trim();
-    return `${label(c)}: ${stderr} [container ${state.stdout.toString().trim()}]\n    server log:\n${tail.replace(/^/gm, "      ")}`;
+    const causes = (await crashCauses(name)).slice(0, 3).join(" | ");
+    return `${label(c)}: ${stderr} [container ${state.stdout.toString().trim()}] ${causes}`;
   } finally {
     await $`docker rm -f -v ${name}`.quiet().nothrow();
     await $`docker volume rm ${volume}`.quiet().nothrow();

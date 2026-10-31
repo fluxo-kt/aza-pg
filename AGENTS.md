@@ -128,7 +128,7 @@ Enable/disable: Edit `scripts/extensions/manifest-data.ts` → `bun run generate
 
 **Storage** (`POSTGRES_STORAGE_TYPE`): `ssd` (default) | `hdd` | `san`
 
-**Fit rule**: the tuned settings must fit the detected memory with every connection busy and no swap (shared_buffers + max_connections × a busy session + maintenance work), because the common deployment is a 2 GB VPS where PostgreSQL gets 1–1.5 GB, and an overrun there OOM-kills backends. A formula change is proven by a real full pool under `--memory X --memory-swap X`, read from the container's cgroup (`oom_kill`, `anon`), never by arithmetic on the formula alone. Measured at 1 GB: an idle session costs about 3 MB, a busy one about 7 MB at work_mem 1 MB.
+**Memory**: the tuned settings must work at 1–1.5 GB without swap, what PostgreSQL gets on the 2 GB VPS most deployments run on; an overrun there OOM-kills backends. Prove a formula change with real concurrent load under `--memory X --memory-swap X`, read from the container's cgroup (`oom_kill` in `memory.events`, `anon` in `memory.stat`), never by arithmetic on the formula alone. How much load the tuning must fit is open (ROADMAP "Auto-config overruns memory below 2 GB").
 
 **Caps**: shared_buffers ≤32GB; work_mem ≤32MB for web/oltp, mixed/dw up to 64/128/256MB from 2/8/32GB RAM; connections RAM-scaled by tier. Formulas: `calculate_*` in the entrypoint (rules in README "Auto-Config")
 

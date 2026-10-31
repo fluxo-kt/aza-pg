@@ -27,7 +27,7 @@ At 1 GB without swap and every connection busy (2 CPUs; sort, hash join and aggr
 - `web` (100) fits at 643 MB of private memory but serves under 1 transaction per second;
 - `mixed` (60) fits at about 400 MB.
 
-`work_mem` is 1 MB at every workload from 2 GB down: the formula charges 10 MB per connection (measured: about 3 MB idle) and subtracts a 512 MB OS reserve from a cgroup limit, which already excludes the host OS. Fix: derive `max_connections` and `work_mem` from the fit rule in `AGENTS.md` instead of fixed tiers. Prove it with a suite that runs a full busy pool for each workload at 1, 1.5 and 3 GB and fails on any `oom_kill` or backend crash. Document how operators choose the memory limit, workload and connection count, and what each trade-off costs. **Needs a decision**: whether connections or memory per query wins when both cannot fit.
+`work_mem` is 1 MB at every workload from 2 GB down: the formula charges 10 MB per connection (one run at 1 GB measured about 3 MB per idle session and 7 MB per busy one; at work_mem 4 MB, 55 busy sessions OOM-killed the container) and subtracts a 512 MB OS reserve from a cgroup limit, which already excludes the host OS. Fix: derive `max_connections` and `work_mem` from measured per-session cost and the memory limit instead of fixed tiers. Prove it with a suite that runs a full busy pool for each workload at 1, 1.5 and 3 GB and fails on any `oom_kill` or backend crash. Document how operators choose the memory limit, workload and connection count, and what each trade-off costs. **Needs a decision**: whether connections or memory per query wins when both cannot fit.
 
 ## Medium
 

@@ -21,6 +21,10 @@ Work:
 
 ## Medium
 
+### Restore PostgreSQL's fast stop signal in the Nix image
+
+`nix/image.nix` omits `StopSignal`; the published Nix image reports no value, while the retained Debian image reports `SIGINT`. Preserve that shutdown contract in the Nix configuration rather than requiring every consumer to override it. Verify clean stop with an open client and committed-data recovery before release. Karakuri's review timeout does not establish this omission as its cause.
+
 ### The `pg_upgrade` path needs an image holding both majors
 
 Option A in `docs/UPGRADING.md` needs the old and new PostgreSQL binaries, and every extension built for both, in one image; none is built. Needed before the next major upgrade.

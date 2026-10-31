@@ -49,6 +49,8 @@ Not on `release`: the agent cannot switch branches, so ask Art to run `! git che
 
 Run every item of `/update`'s "Pre-Flight: Detect Available Updates" and "Pre-Flight: Additional Checks" now, on `dev`, and record one line per item: what it found, or "current". Results from an earlier session or day do not count: nixpkgs, Docker Hub, GitHub releases and npm change daily, and an update held back by the minimum release age becomes due when the age passes. The `check-updates` gate alone misses companion images, Bun packages and runtime, Actions pins and the nixpkgs revision in `flake.lock`. Anything due ⇒ ABORT the release and run `/update` on `dev` first.
 
+You are on `release`, whose manifest is the last release's, so run the file-reading checks on dev's tree in a scratch copy: `git archive dev | tar -x -C "$d"` into a `mktemp -d`, symlink `node_modules` in, and `git init` there (`check-updates.ts` calls git and exits on "not a git repository").
+
 ---
 
 ## Phase 1: Analyse Net Delta

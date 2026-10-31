@@ -4,6 +4,12 @@ Known defects and missing work, most severe first. Each entry says why it matter
 
 ## High
 
+### Restore overflow-UID identity lookup for rootless socket peers
+
+The Nix image's `nix/image.nix` passwd file contains only root and postgres. Karakuri's native ARM64 review of released image `11c2c8d7bf50` reaches encrypted-row restart and fresh-cluster restore, then PgBouncer's Unix-socket authentication fails: PostgreSQL logs `local user with ID 65534 does not exist` before rejecting `karakuri_auth`. Host users outside the database container's rootless UID mapping arrive as 65534; the prior Debian image resolves that UID as `nobody`, which the consumer's restricted `pg_ident.conf` mapping uses.
+
+Provide the conventional unprivileged overflow-UID account in the image without giving it administrator or application grants. Check the actual rootless PgBouncer → PostgreSQL peer path, legitimate SCRAM login, wrong-password rejection and cross-database denial against the published replacement. Keep authentication policy in the consumer; adding an account supplies identity lookup, not database access. This blocks Karakuri's selected socket-based proxy integration.
+
 ### Build the final image with Nix, not Debian
 
 Goal: the image holds only what PostgreSQL and our extensions need at runtime, each at its latest patched version, with no language runtime we can avoid. These are the goals in Karakuri's `docs/architecture.md` ("Choose responsibilities independently"); they cover container images too.

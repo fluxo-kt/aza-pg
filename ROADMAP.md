@@ -21,12 +21,6 @@ Work:
 
 ## Medium
 
-### Compress AMD64 registry layers and match their declared format
-
-The published `v18.6-202610301512` AMD64 manifest (`4931145913e0`) declares gzip layers, but its largest blob (`11f479195a2c`) starts with raw tar bytes `2f6e69782f`, not gzip magic `1f8b`. The corresponding ARM64 blob starts with `1f8b`. Both architectures still pull. AMD64 layer payloads total 621,758,994 bytes, ARM64 237,739,751 bytes; these are different builds, not a measured compression ratio.
-
-Make the `scripts/nix/build-image.ts --push` path explicitly produce compressed layers on both native runners rather than relying on skopeo defaults. Check the pushed payload format against its media type and measure same-architecture transfer size before and after; preserve unpacked contents, signatures and SBOM binding.
-
 ### The `pg_upgrade` path needs an image holding both majors
 
 Option A in `docs/UPGRADING.md` needs the old and new PostgreSQL binaries, and every extension built for both, in one image; none is built. Needed before the next major upgrade.

@@ -8,10 +8,13 @@
  * image the suites test by default; --tag retags it after loading. --push (publish.yml) sends the stream to the
  * registry instead and prints the pushed digest: `docker load` keeps the tarball's Docker media types, and an index
  * of Docker manifests is a Docker manifest list, which cannot carry the annotations publish.yml adds, so skopeo (from
- * the locked nixpkgs) writes OCI ones. It needs native Nix, since the registry login lives on the host.
+ * the locked nixpkgs) writes OCI ones, gzip-compressed before the push (reason at the push). It needs native Nix,
+ * since the registry login lives on the host.
  * A rebuilt tag leaves the previous image dangling, so the build removes dangling aza-pg images, and collects the store volume (reason at GC_ROOTS).
  */
 
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { reclaimDanglingAzaImages } from "../docker/cleanup-artifacts";
 import { native, nixCommand, nixPlatform } from "./nix";
@@ -45,45 +48,80 @@ if (buildExit !== 0 || !streamScript.startsWith("/nix/store/")) {
 }
 
 if (push) {
-  const digestFile = path.join(Bun.env.RUNNER_TEMP ?? "/tmp", `aza-pg-push-${process.pid}.digest`);
-  // One shell pipeline, because skopeo opens /dev/stdin by path and Bun hands a child's stdin over as a socket,
-  // which cannot be opened. The trust policy vets signatures on the image read, our own stream here, and skopeo
-  // refuses to run without a policy.json, which a runner need not have.
-  const skopeo = [
-    "nix",
-    "run",
-    "--inputs-from",
-    ".",
-    "nixpkgs#skopeo",
-    "--",
-    "--insecure-policy",
-    "copy",
-  ];
+  const scratch = await mkdtemp(path.join(Bun.env.RUNNER_TEMP ?? tmpdir(), "aza-pg-push-"));
+  const digestFile = path.join(scratch, "digest");
+  // Two copies, both proven against a registry seeded with raw layer blobs:
+  // 1. stream -> local OCI layout, gzip level 9. The stream's layers are raw tar, and pushing them directly lets skopeo
+  //    reuse a raw blob the registry already holds under that digest and still declare it
+  //    gzip, so pulls fetch the image uncompressed under a false media type. Compressing first makes every digest a gzip
+  //    one. Level 9 costs push CPU only; gzip decompresses at the same speed at any level.
+  // 2. layout -> registry with gzip forced, which stops skopeo's blob cache swapping a gzip layer for its raw twin.
+  // One shell script, because skopeo opens /dev/stdin by path and Bun hands a child's stdin over as a socket, which
+  // cannot be opened. --insecure-policy: the trust policy vets signatures on the image read, our own build here, and
+  // skopeo refuses to run without a policy.json, which a runner need not have.
+  const script = [
+    'skopeo() { nix run --inputs-from . nixpkgs#skopeo -- --insecure-policy copy "$@"; }',
+    '"$0" | skopeo --dest-compress-format gzip --dest-compress-level 9 docker-archive:/dev/stdin "oci:$1:image" &&',
+    'skopeo --format oci --dest-compress-format gzip --dest-force-compress-format --digestfile "$2" "oci:$1:image" "docker://$3"',
+  ].join("\n");
   const copy = Bun.spawn(
     nixCommand([
       "bash",
       "-o",
       "pipefail",
       "-c",
-      '"$0" | "$@"',
+      script,
       streamScript,
-      ...skopeo,
-      "--format",
-      "oci",
-      "--digestfile",
+      `${scratch}/oci`,
       digestFile,
-      "docker-archive:/dev/stdin",
-      `docker://${push}`,
+      push,
     ]),
     { cwd: path.resolve(import.meta.dir, "../.."), stdout: "ignore", stderr: "inherit" }
   );
   const copyExit = await copy.exited;
-  if (copyExit !== 0) {
+  const digest = copyExit === 0 ? (await Bun.file(digestFile).text()).trim() : "";
+  await rm(scratch, { recursive: true, force: true });
+  if (!digest) {
     console.error(`pushing the image failed (exit ${copyExit})`);
     process.exit(1);
   }
-  console.log((await Bun.file(digestFile).text()).trim());
-  await Bun.file(digestFile).delete();
+  // Read back what the registry now serves: a layer declared compressed whose digest is its own uncompressed diff_id
+  // is raw tar under a false media type (a gzip blob never hashes to its contents' digest), the failure the two
+  // copies above prevent. Checked here, before publish.yml indexes and signs the image.
+  const pushed = `docker://${push.replace(/:[^/:]*$/, "")}@${digest}`;
+  const inspect = async (flag: string) => {
+    const p = Bun.spawn(
+      nixCommand([
+        "nix",
+        "run",
+        "--inputs-from",
+        ".",
+        "nixpkgs#skopeo",
+        "--",
+        "inspect",
+        flag,
+        pushed,
+      ]),
+      { cwd: path.resolve(import.meta.dir, "../.."), stdout: "pipe", stderr: "inherit" }
+    );
+    const [out, code] = await Promise.all([new Response(p.stdout).text(), p.exited]);
+    if (code !== 0) throw new Error(`skopeo inspect ${flag} ${pushed} failed (exit ${code})`);
+    return JSON.parse(out);
+  };
+  const [manifest, config] = await Promise.all([inspect("--raw"), inspect("--config")]);
+  const diffIds = new Set<string>(config.rootfs.diff_ids);
+  const raw = (manifest.layers as { digest: string; mediaType: string }[]).filter(
+    (l) => !l.mediaType.endsWith(".tar") && diffIds.has(l.digest)
+  );
+  if (raw.length > 0) {
+    console.error(
+      `${pushed}: ${raw.length} layer(s) are uncompressed tar declared as ${raw[0]?.mediaType} (digest equals the ` +
+        `layer's diff_id), e.g. ${raw[0]?.digest}. skopeo reused raw blobs already in the registry; the push must ` +
+        `compress before copying (oci layout step above) and force the format.`
+    );
+    process.exit(1);
+  }
+  console.log(digest);
   process.exit(0);
 }
 

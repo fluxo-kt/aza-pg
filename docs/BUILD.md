@@ -17,7 +17,7 @@ docker run --rm aza-pg:pg18 postgres --version
 
 ### Local Builds
 
-`bun run build` (`scripts/nix/build-image.ts`) builds the image for this machine's architecture and loads it into Docker as `aza-pg:pg<major>`; `--tag <ref>` retags it. `--push <ref>` (publish.yml, native Nix only) pushes it to the registry with OCI media types instead and prints the digest: the release index carries annotations, which a Docker manifest list cannot.
+`bun run build` (`scripts/nix/build-image.ts`) builds the image for this machine's architecture and loads it into Docker as `aza-pg:pg<major>`; `--tag <ref>` retags it. `--push <ref>` (publish.yml, native Nix only) pushes it to the registry with OCI media types and gzip-9 layers instead, then prints the digest: the release index carries annotations, which a Docker manifest list cannot. It refuses a push whose registry copy holds a raw layer under a compressed media type (reason in the script).
 
 **How it works:**
 
@@ -648,7 +648,6 @@ docker exec aza-pg-replica-postgres-replica psql -U postgres -c "SELECT pg_is_in
 ```bash
 # Build
 bun run build                         # Local build with cache
-bun run build -- --multi-arch --push  # Multi-platform + push
 
 # Validate
 bun run validate                      # Fast checks

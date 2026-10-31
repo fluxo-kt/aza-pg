@@ -19,16 +19,6 @@ Work:
 - Trim ncurses' terminfo database (11.6 MB, every terminal type) to the types a container's interactive `psql` meets (xterm*, screen*, tmux*, linux, vt100, dumb): the only data file in the closure without a consumer. Overriding nixpkgs' `ncurses` rebuilds everything above it, so give readline a trimmed copy instead. Every other store path names its consumer (`nix/image.nix`, or the package referencing it); `/update` repeats that review each round.
 - Swap a tool the image's scripts call (coreutils, grep, sed, gawk, findutils, diffutils) only for a widely used Rust tool that is a drop-in for how the scripts call it; the scripts stay. Rejected: rewriting the scripts as one Rust binary of ours. It is a large new codebase to own, and bash stays anyway for operators' `*.sh` files in `/docker-entrypoint-initdb.d`.
 
-### Auto-config overruns memory below 2 GB, and starves queries to stay inside it
-
-At 1 GB without swap and every connection busy (2 CPUs; sort, hash join and aggregate per session), the shipped tuning:
-
-- `oltp` (150 connections) is OOM-killed;
-- `web` (100) fits at 643 MB of private memory but serves under 1 transaction per second;
-- `mixed` (60) fits at about 400 MB.
-
-`work_mem` is 1 MB at every workload from 2 GB down: the formula charges 10 MB per connection (one run at 1 GB measured about 3 MB per idle session and 7 MB per busy one; at work_mem 4 MB, 55 busy sessions OOM-killed the container) and subtracts a 512 MB OS reserve from a cgroup limit, which already excludes the host OS. Fix: derive `max_connections` and `work_mem` from measured per-session cost and the memory limit instead of fixed tiers. Prove it with a suite that runs a full busy pool for each workload at 1, 1.5 and 3 GB and fails on any `oom_kill` or backend crash. Document how operators choose the memory limit, workload and connection count, and what each trade-off costs. **Needs a decision**: whether connections or memory per query wins when both cannot fit.
-
 ## Medium
 
 ### Restore PostgreSQL's fast stop signal in the Nix image
@@ -40,6 +30,10 @@ At 1 GB without swap and every connection busy (2 CPUs; sort, hash join and aggr
 Option A in `docs/UPGRADING.md` needs the old and new PostgreSQL binaries, and every extension built for both, in one image; none is built. Needed before the next major upgrade.
 
 ## Low
+
+### Auto-config leaves memory unused below 2 GB
+
+The memory fit charges a busy session about 11 MB at `work_mem` 1 MB; `test-memory-fit --all` measured about 8.4 MB, and peak anon + shmem stayed near 55% of a 1 GB limit (36 connections). 53 busy sessions at 1 GB were OOM-killed, so the safe count lies between. Calibrate `BUSY_SESSION_MB` and `MEMORY_HEADROOM_PERCENT` from repeated runs at 1 and 1.5 GB (variance, not one run), keeping zero OOM kills; dirty temp-file pages also need room.
 
 ### Match SBOM verification to the documented signer
 

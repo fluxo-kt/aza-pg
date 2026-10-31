@@ -65,6 +65,8 @@ async function run(args: string[]): Promise<{ code: number; stdout: string; stde
 }
 
 const cpus = (count: number) => ["--cpu-period=100000", `--cpu-quota=${count * 100000}`];
+// No swap, like the VPS hosts deployments run on: `--memory` alone grants as much swap again.
+const memory = (size: string) => [`--memory=${size}`, `--memory-swap=${size}`];
 
 /** Parses `name = 'value'` lines of the generated config file (no value here contains a quote). */
 function parseConf(text: string): Map<string, string> {
@@ -125,7 +127,7 @@ const ROWS: Row[] = [
   },
   {
     name: "2 GB / 2 CPU cgroup",
-    docker: ["--memory=2g", ...cpus(2)],
+    docker: [...memory("2g"), ...cpus(2)],
     detected: "RAM: 2048MB (cgroup-v2), CPU: 2 cores (cgroup-v2), Workload: mixed, Storage: ssd",
     // 120×70% = 84; <4 cores: workers 2+1 → floor 8, gather 1, maintenance 1
     settings: {
@@ -142,7 +144,7 @@ const ROWS: Row[] = [
   },
   {
     name: "512 MB cgroup is the accepted minimum",
-    docker: ["--memory=512m"],
+    docker: [...memory("512m")],
     detected: "RAM: 512MB (cgroup-v2)",
     // cache: 512−128−512 < 0 → floor 2×128 = 256; wal_buffers 128×3% = 3
     settings: {
@@ -156,7 +158,7 @@ const ROWS: Row[] = [
   },
   {
     name: "256 MB cgroup is refused before PostgreSQL starts",
-    docker: ["--memory=256m"],
+    docker: [...memory("256m")],
     exit: 1,
     stdoutLines: ["[POSTGRES] FATAL: Detected 256MB RAM - minimum 512MB REQUIRED"],
   },
@@ -175,7 +177,7 @@ const ROWS: Row[] = [
   },
   {
     name: "4 GB cgroup",
-    docker: ["--memory=4g"],
+    docker: [...memory("4g")],
     detected: "RAM: 4096MB (cgroup-v2)",
     // 120×85% = 102; pool 4096−1024−1020−512 = 1540 / 408 = 3; cache floor 2×1024
     settings: {
@@ -188,7 +190,7 @@ const ROWS: Row[] = [
   },
   {
     name: "8 GB cgroup, default workload and storage",
-    docker: ["--memory=8g"],
+    docker: [...memory("8g")],
     detected: "RAM: 8192MB (cgroup-v2)",
     // pool 8192−2048−1200−512 = 4432 / 480 = 9; wal_buffers 2048×3% = 61 → cap 16
     settings: {
@@ -207,7 +209,7 @@ const ROWS: Row[] = [
   },
   {
     name: "16 GB cgroup (20% shared_buffers tier)",
-    docker: ["--memory=16g"],
+    docker: [...memory("16g")],
     // 16384×20% = 3276; pool 16384−3276−1200−512 = 11396 / 480 = 23; cache (16384−3276−3276)×70% = 6882
     settings: {
       shared_buffers: "3276MB",
@@ -218,7 +220,7 @@ const ROWS: Row[] = [
   },
   {
     name: "1 GB / 1 CPU",
-    docker: ["--memory=1g", ...cpus(1)],
+    docker: [...memory("1g"), ...cpus(1)],
     detected: "RAM: 1024MB (cgroup-v2), CPU: 1 cores (cgroup-v2)",
     settings: {
       shared_buffers: "256MB",
@@ -232,13 +234,13 @@ const ROWS: Row[] = [
   },
   {
     name: "3 GB / 2 CPU",
-    docker: ["--memory=3g", ...cpus(2)],
+    docker: [...memory("3g"), ...cpus(2)],
     // pool 3072−768−840−512 = 952 / 336 = 2
     settings: { shared_buffers: "768MB", max_connections: "84", work_mem: "2MB" },
   },
   {
     name: "6 GB / 4 CPU (parallel workers threshold)",
-    docker: ["--memory=6g", ...cpus(4)],
+    docker: [...memory("6g"), ...cpus(4)],
     settings: {
       shared_buffers: "1536MB",
       max_connections: "102",
@@ -270,7 +272,7 @@ const ROWS: Row[] = [
   },
   {
     name: "8 GB web",
-    docker: ["--memory=8g"],
+    docker: [...memory("8g")],
     env: { POSTGRES_WORKLOAD_TYPE: "web" },
     // pool 8192−2048−2000−512 = 3632 / 800 = 4 (web cap 32)
     settings: {
@@ -283,13 +285,13 @@ const ROWS: Row[] = [
   },
   {
     name: "8 GB oltp",
-    docker: ["--memory=8g"],
+    docker: [...memory("8g")],
     env: { POSTGRES_WORKLOAD_TYPE: "oltp" },
     settings: { max_connections: "300", min_wal_size: "2048MB", max_wal_size: "8192MB" },
   },
   {
     name: "16 GB dw",
-    docker: ["--memory=16g"],
+    docker: [...memory("16g")],
     env: { POSTGRES_WORKLOAD_TYPE: "dw" },
     settings: {
       max_connections: "100",
@@ -300,7 +302,7 @@ const ROWS: Row[] = [
   },
   {
     name: "8 GB hdd",
-    docker: ["--memory=8g"],
+    docker: [...memory("8g")],
     env: { POSTGRES_STORAGE_TYPE: "hdd" },
     settings: {
       random_page_cost: "4.0",
@@ -310,7 +312,7 @@ const ROWS: Row[] = [
   },
   {
     name: "8 GB san",
-    docker: ["--memory=8g"],
+    docker: [...memory("8g")],
     env: { POSTGRES_STORAGE_TYPE: "san" },
     settings: {
       random_page_cost: "1.1",
@@ -320,7 +322,7 @@ const ROWS: Row[] = [
   },
   {
     name: "invalid POSTGRES_WORKLOAD_TYPE falls back to mixed and says so",
-    docker: ["--memory=4g"],
+    docker: [...memory("4g")],
     env: { POSTGRES_WORKLOAD_TYPE: "invalid" },
     exit: 0,
     detected: "RAM: 4096MB (cgroup-v2)",
@@ -331,7 +333,7 @@ const ROWS: Row[] = [
   },
   {
     name: "invalid POSTGRES_STORAGE_TYPE falls back to ssd and says so",
-    docker: ["--memory=4g"],
+    docker: [...memory("4g")],
     env: { POSTGRES_STORAGE_TYPE: "invalid" },
     exit: 0,
     stderrLines: [
@@ -357,14 +359,14 @@ const ROWS: Row[] = [
   },
   {
     name: "512 MB + hdd + web",
-    docker: ["--memory=512m"],
+    docker: [...memory("512m")],
     env: { POSTGRES_STORAGE_TYPE: "hdd", POSTGRES_WORKLOAD_TYPE: "web" },
     // web 200×50% = 100
     settings: { shared_buffers: "128MB", random_page_cost: "4.0", max_connections: "100" },
   },
   {
     name: "6 GB + oltp + san + 4 CPU",
-    docker: ["--memory=6g", ...cpus(4)],
+    docker: [...memory("6g"), ...cpus(4)],
     env: { POSTGRES_WORKLOAD_TYPE: "oltp", POSTGRES_STORAGE_TYPE: "san" },
     // oltp 300×85% = 255
     settings: {
@@ -377,7 +379,7 @@ const ROWS: Row[] = [
   // A value the operator sets with -c or ALTER SYSTEM overrides auto-tuning; the log names each override.
   {
     name: "operator -c max_connections=7 overrides tuning and is logged",
-    docker: ["--memory=2g"],
+    docker: [...memory("2g")],
     args: ["postgres", "-c", "max_connections=7"],
     effective: { setting: "max_connections", value: "7" },
     stdoutLines: ["[POSTGRES] [AUTO-CONFIG] max_connections: -c 7 overrides auto-tuned 84"],
@@ -385,7 +387,7 @@ const ROWS: Row[] = [
   },
   {
     name: "operator --config-file is included, not passed as a second config_file",
-    docker: ["--memory=2g"],
+    docker: [...memory("2g")],
     args: ["postgres", "--config-file=/x.conf"],
     include: "/x.conf",
   },
@@ -570,7 +572,7 @@ async function main(): Promise<void> {
         realBoot(
           "min",
           [
-            "--memory=512m",
+            ...memory("512m"),
             ...cpus(1),
             "-e",
             `POSTGRES_SHARED_PRELOAD_LIBRARIES=${defaultPreload},set_user`,
@@ -629,7 +631,7 @@ async function main(): Promise<void> {
       "-d",
       "--name",
       seed,
-      "--memory=512m",
+      ...memory("512m"),
       ...cpus(1),
       "-e",
       `POSTGRES_PASSWORD=autoconfig-${process.pid}`,

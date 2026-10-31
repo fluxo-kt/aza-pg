@@ -98,13 +98,9 @@ async function runCase(c: Case, entrypoint: string | null): Promise<string | nul
     await sql(
       "CREATE TABLE s AS SELECT g, md5(g::text) v FROM generate_series(1, 400000) g; ANALYZE s"
     );
-    const [max, reserved] = (
-      await sql(
-        "SELECT current_setting('max_connections')::int, current_setting('superuser_reserved_connections')::int + current_setting('reserved_connections')::int"
-      )
-    ).split("|");
+    // Every client here is the superuser, so reserved slots count too: the model sizes for all of max_connections.
     // One slot for the maintenance loop, one for the checks after the load.
-    const sessions = Number(max) - Number(reserved) - 2;
+    const sessions = Number(await sql("SHOW max_connections")) - 2;
     // The active percentage is the share of sessions the tuning expects inside a query at once: that many run
     // queries, the rest stay connected and idle, which is what that setting promises to fit.
     const busy = Math.ceil((sessions * (c.activePercent ?? 100)) / 100);

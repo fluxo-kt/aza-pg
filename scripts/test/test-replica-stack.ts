@@ -142,6 +142,13 @@ try {
           "no max_connections raise logged; the replica's defaults no longer exercise it"
         );
       }
+      // work_mem is sized for the summary's max_connections: a raise after the fit leaves it sized for fewer.
+      const fitted = `${logs.stdout}`.match(/→ .*\bmax_connections=(\d+)/)?.[1];
+      if (fitted !== onPrimary.get("max_connections")) {
+        throw new Error(
+          `auto-config fitted work_mem to max_connections=${fitted}, the primary runs ${onPrimary.get("max_connections")}`
+        );
+      }
     }
   );
 

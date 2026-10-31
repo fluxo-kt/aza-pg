@@ -341,6 +341,19 @@ OPERATOR_MAX_CONNECTIONS=$(operator_value max_connections)
 [[ "$OPERATOR_MAX_CONNECTIONS" =~ ^[0-9]+$ ]] || OPERATOR_MAX_CONNECTIONS=""
 OPERATOR_WORK_MEM_KB=$(memory_kb "$(operator_value work_mem)")
 
+as_postgres() { if [ "$(id -u)" = 0 ]; then gosu postgres "$@"; else "$@"; fi; }
+
+# A server recovering WAL (standby.signal: a replica; recovery.signal: a backup restore) refuses to start with any of
+# five limits below the value the primary ran with, which pg_control records (see RAISE_ARGS). max_connections also
+# sizes work_mem, so the memory fit takes the primary's as its floor instead of being raised past the fit afterwards.
+PRIMARY_CONTROLDATA=""
+if [ -f "${DATA_DIR}/standby.signal" ] || [ -f "${DATA_DIR}/recovery.signal" ]; then
+    PRIMARY_CONTROLDATA=$(as_postgres pg_controldata -D "$DATA_DIR")
+fi
+PRIMARY_MAX_CONNECTIONS=$(awk -F ': *' '$1 == "max_connections setting" { print $2 }' <<<"$PRIMARY_CONTROLDATA")
+# Unreadable: no floor here; the RAISE_ARGS block names the problem and stops.
+[[ "$PRIMARY_MAX_CONNECTIONS" =~ ^[0-9]+$ ]] || PRIMARY_MAX_CONNECTIONS=0
+
 # The share of max_connections assumed to run queries at the same moment. 100 (default) sizes work_mem so every
 # connection can be busy at once without an OOM kill; a lower value gives each query more memory, for apps whose pools
 # hold many idle connections, at the risk of OOM-killed backends when more than that share is busy together.
@@ -574,6 +587,8 @@ sessions_need_mb() {
 while :; do
     SESSION_POOL_MB=$(calculate_session_pool)
     MAX_CONNECTIONS=$(calculate_max_connections)
+    TUNED_MAX_CONNECTIONS=$MAX_CONNECTIONS
+    [ "$MAX_CONNECTIONS" -lt "$PRIMARY_MAX_CONNECTIONS" ] && MAX_CONNECTIONS=$PRIMARY_MAX_CONNECTIONS
     WORK_MEM_KB=$(calculate_work_mem)
     [ "$(sessions_need_mb)" -le "$SESSION_POOL_MB" ] && break
     if [ "$AUTOVACUUM_WORK_MEM_MB" -gt 8 ]; then
@@ -654,6 +669,8 @@ echo "[POSTGRES] [AUTO-CONFIG] RAM: ${TOTAL_RAM_MB}MB ($RAM_SOURCE), CPU: ${CPU_
 
 # The memory model's verdict, so an operator sees what the tuning guarantees and what breaks it.
 SESSIONS_NEED_MB=$(sessions_need_mb)
+[ "$MAX_CONNECTIONS" -gt "$TUNED_MAX_CONNECTIONS" ] &&
+    echo "[POSTGRES] [AUTO-CONFIG] max_connections: raised from ${TUNED_MAX_CONNECTIONS} to the primary's ${MAX_CONNECTIONS} (recovery cannot start below it); work_mem is fitted to it"
 echo "[POSTGRES] [AUTO-CONFIG] Memory: ${ACTIVE_CONNECTIONS_PERCENT}% of max_connections busy at once (POSTGRES_ACTIVE_CONNECTIONS_PERCENT) needs ${SESSIONS_NEED_MB}MB of the ${SESSION_POOL_MB}MB left for sessions"
 if [ "$SESSIONS_NEED_MB" -gt "$SESSION_POOL_MB" ]; then
     echo "[POSTGRES] [AUTO-CONFIG] WARNING: max_connections=${MAX_CONNECTIONS} with work_mem=${WORK_MEM_KB}kB can use more memory than this container has: backends may be OOM-killed when that many queries run together. Lower max_connections or work_mem, set POSTGRES_ACTIVE_CONNECTIONS_PERCENT to the share really busy at once, or give the container more memory" >&2
@@ -712,8 +729,6 @@ AUTO_SETTINGS=(
 if [ "$WAL_LEVEL" = "minimal" ]; then
     AUTO_SETTINGS+=("max_wal_senders=0")
 fi
-
-as_postgres() { if [ "$(id -u)" = 0 ]; then gosu postgres "$@"; else "$@"; fi; }
 
 # pgsodium root key, read by the image's pgsodium_getkey (its header explains where it lives). The operator's
 # PGSODIUM_KEY_FILE is checked here so a wrong path or content stops the container naming it, before the
@@ -869,12 +884,11 @@ done
 # lower can work; `postgres -C` with the same arguments gives the value the server would otherwise use.
 RAISE_ARGS=()
 if [ -f "${DATA_DIR}/standby.signal" ] || [ -f "${DATA_DIR}/recovery.signal" ]; then
-    controldata=$(as_postgres pg_controldata -D "$DATA_DIR")
     for pair in max_connections:max_connections max_worker_processes:max_worker_processes \
         max_wal_senders:max_wal_senders max_prepared_transactions:max_prepared_xacts \
         max_locks_per_transaction:max_locks_per_xact; do
         name="${pair%%:*}"
-        primary=$(awk -F ': *' -v l="${pair#*:} setting" '$1 == l { print $2 }' <<<"$controldata")
+        primary=$(awk -F ': *' -v l="${pair#*:} setting" '$1 == l { print $2 }' <<<"$PRIMARY_CONTROLDATA")
         current=$(as_postgres postgres -D "$DATA_DIR" -c "config_file=${AUTO_CONFIG_FILE}" "${OPERATOR_ARGS[@]}" -C "$name")
         if ! [[ "$primary" =~ ^[0-9]+$ && "$current" =~ ^[0-9]+$ ]]; then
             echo "[POSTGRES] [AUTO-CONFIG] ERROR: cannot compare ${name} with the primary's (pg_controldata: '${primary}', postgres -C: '${current}'); the line format of pg_controldata -D ${DATA_DIR} may have changed" >&2

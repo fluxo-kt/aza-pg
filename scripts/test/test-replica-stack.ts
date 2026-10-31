@@ -27,7 +27,7 @@ const PG_REPLICATION_PASSWORD = `repl_${suffix}`;
 const PROMOTE_TOOL = join(import.meta.dir, "../tools/promote-replica.ts");
 const SLOT = "replica_slot_1"; // both stacks' compose default; neither stage overrides it
 const ROWS = 100;
-// Both stacks run their shipped memory and CPU limits (primary 2048m/2 CPUs, replica 512m/0.5): auto-tuning gives the
+// Both stacks run their shipped memory and CPU limits (primary 1536m/2 CPUs, replica 512m/0.5): auto-tuning gives the
 // replica lower limits than the primary's, which the image must raise or the standby never starts.
 const LIMIT_SETTINGS = [
   "max_connections",

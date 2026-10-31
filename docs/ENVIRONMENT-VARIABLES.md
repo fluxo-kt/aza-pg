@@ -6,14 +6,15 @@ Variables aza-pg adds to the official `postgres` image, whose own variables (e.g
 
 Auto-tuning from container resource limits (cgroup v2) and system memory.
 
-| Variable                            | Default       | Description                                                                                                                                                |
-| ----------------------------------- | ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `POSTGRES_MEMORY`                   | Auto-detected | RAM in MB, a plain integer (bypasses auto-detection). Range: 512–1048576 MB                                                                                |
-| `POSTGRES_WORKLOAD_TYPE`            | `mixed`       | `web` (200 conn), `oltp` (300), `dw` (100, stats=500), `mixed` (120); connections are cut by 15–50% below 8 GB RAM; an unknown value falls back to `mixed` |
-| `POSTGRES_STORAGE_TYPE`             | `ssd`         | `ssd` (cost=1.1, io=200), `hdd` (cost=4.0, io=2), `san` (cost=1.1, io=300); an unknown value falls back to `ssd`                                           |
-| `POSTGRES_MAX_WORKER_PROCESSES`     | Auto          | `max_worker_processes`; default CPU+1 (≤4 cores) or CPU×1.5, always clamped to 8–64                                                                        |
-| `POSTGRES_SHARED_PRELOAD_LIBRARIES` | See below     | Comma-separated preload modules                                                                                                                            |
-| `DISABLE_DATA_CHECKSUMS`            | `false`       | Set `true` to disable (not recommended). Read only when the data directory is created                                                                      |
+| Variable                              | Default       | Description                                                                                                                                                                                                                               |
+| ------------------------------------- | ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POSTGRES_MEMORY`                     | Auto-detected | RAM in MB, a plain integer (bypasses auto-detection). Range: 512–1048576 MB                                                                                                                                                               |
+| `POSTGRES_WORKLOAD_TYPE`              | `mixed`       | `web` (200 conn), `oltp` (300), `dw` (100, stats=500, work_mem target 8 MB), `mixed` (120); cut by 15–50% below 8 GB RAM, then to what the memory limit fits ([README](../README.md#auto-config)); an unknown value falls back to `mixed` |
+| `POSTGRES_STORAGE_TYPE`               | `ssd`         | `ssd` (cost=1.1, io=200), `hdd` (cost=4.0, io=2), `san` (cost=1.1, io=300); an unknown value falls back to `ssd`                                                                                                                          |
+| `POSTGRES_ACTIVE_CONNECTIONS_PERCENT` | `100`         | Share of connections expected inside a query at once (1–100); lower gives each query more `work_mem` and risks backends being OOM-killed when more run at once                                                                            |
+| `POSTGRES_MAX_WORKER_PROCESSES`       | Auto          | `max_worker_processes`; default CPU+1 (≤4 cores) or CPU×1.5, always clamped to 8–64                                                                                                                                                       |
+| `POSTGRES_SHARED_PRELOAD_LIBRARIES`   | See below     | Comma-separated preload modules                                                                                                                                                                                                           |
+| `DISABLE_DATA_CHECKSUMS`              | `false`       | Set `true` to disable (not recommended). Read only when the data directory is created                                                                                                                                                     |
 
 **Default preload**: see [the generated image contents](../docker/postgres/IMAGE-CONTENTS.txt). Overrides replace the whole list; keep `timescaledb` before `pgaudit`.
 
@@ -66,7 +67,7 @@ Auto-tuning from container resource limits (cgroup v2) and system memory.
 
 | Variable                          | Primary | Replica/Single | Description             |
 | --------------------------------- | ------- | -------------- | ----------------------- |
-| `POSTGRES_MEMORY_LIMIT`           | `2048m` | `512m`         | Hard memory limit       |
+| `POSTGRES_MEMORY_LIMIT`           | `1536m` | `512m`         | Hard memory limit       |
 | `POSTGRES_MEMORY_RESERVATION`     | `1024m` | `256m`         | Soft memory reservation |
 | `POSTGRES_CPU_LIMIT`              | `2`     | `0.5`          | CPU cores               |
 | `PGBOUNCER_MEMORY_LIMIT`          | `200m`  | N/A            | PgBouncer memory        |

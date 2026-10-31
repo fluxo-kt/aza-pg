@@ -210,8 +210,10 @@ const ROWS: Row[] = [
     },
   },
   {
-    name: "16 GB cgroup (20% shared_buffers tier)",
-    docker: [...memory("16g")],
+    // POSTGRES_MEMORY, not a 16 GB cgroup: a limit above the host's RAM is clamped to it, and CI runners have 16 GB.
+    name: "POSTGRES_MEMORY=16384 (20% shared_buffers tier)",
+    docker: [],
+    env: { POSTGRES_MEMORY: "16384" },
     // 16384×20% = 3276; cache (16384−3276−3276)×70% = 6882
     settings: {
       shared_buffers: "3276MB",
@@ -292,9 +294,9 @@ const ROWS: Row[] = [
     settings: { max_connections: "300", min_wal_size: "2048MB", max_wal_size: "8192MB" },
   },
   {
-    name: "16 GB dw",
-    docker: [...memory("16g")],
-    env: { POSTGRES_WORKLOAD_TYPE: "dw" },
+    name: "POSTGRES_MEMORY=16384 dw",
+    docker: [],
+    env: { POSTGRES_MEMORY: "16384", POSTGRES_WORKLOAD_TYPE: "dw" },
     settings: {
       max_connections: "100",
       default_statistics_target: "500",

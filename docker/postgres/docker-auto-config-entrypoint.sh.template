@@ -172,6 +172,14 @@ detect_ram() {
         if [ "$limit" != "max" ] && [ -n "$limit" ]; then
             ram_mb=$((limit / 1024 / 1024))
             source="cgroup-v2"
+            # Docker accepts a limit above the host's RAM (--memory 8g on a 2 GB host); tuning to it would overrun the
+            # host, so the host's RAM, shared with its OS, applies instead.
+            local host_kb
+            host_kb=$(awk '/^MemTotal:/ {print $2}' /proc/meminfo 2>/dev/null || echo 0)
+            if [ "${host_kb:-0}" -gt 0 ] && [ "$ram_mb" -gt $(( host_kb / 1024 )) ]; then
+                ram_mb=$(( host_kb / 1024 ))
+                source="meminfo"
+            fi
             echo "$ram_mb:$source"
             return
         fi
@@ -343,7 +351,10 @@ memory_kb() {
 
 OPERATOR_MAX_CONNECTIONS=$(operator_value max_connections)
 [[ "$OPERATOR_MAX_CONNECTIONS" =~ ^[0-9]+$ ]] || OPERATOR_MAX_CONNECTIONS=""
-OPERATOR_WORK_MEM_KB=$(memory_kb "$(operator_value work_mem)")
+OPERATOR_WORK_MEM=$(operator_value work_mem)
+OPERATOR_WORK_MEM_KB=$(memory_kb "$OPERATOR_WORK_MEM")
+[ -n "$OPERATOR_WORK_MEM" ] && [ -z "$OPERATOR_WORK_MEM_KB" ] &&
+    echo "[POSTGRES] [AUTO-CONFIG] WARNING: work_mem '${OPERATOR_WORK_MEM}' is not a whole number with a unit (e.g. 1536kB), so the memory fit sizes max_connections without it; the memory verdict below may be wrong" >&2
 
 as_postgres() { if [ "$(id -u)" = 0 ]; then gosu postgres "$@"; else "$@"; fi; }
 
@@ -351,8 +362,8 @@ as_postgres() { if [ "$(id -u)" = 0 ]; then gosu postgres "$@"; else "$@"; fi; }
 # five limits below the value the primary ran with, which pg_control records (see RAISE_ARGS). max_connections also
 # sizes work_mem, so the memory fit takes the primary's as its floor instead of being raised past the fit afterwards.
 PRIMARY_CONTROLDATA=""
-if [ -f "${DATA_DIR}/standby.signal" ] || [ -f "${DATA_DIR}/recovery.signal" ]; then
-    PRIMARY_CONTROLDATA=$(as_postgres pg_controldata -D "$DATA_DIR")
+if [ "$STARTS_SERVER" = true ] && { [ -f "${DATA_DIR}/standby.signal" ] || [ -f "${DATA_DIR}/recovery.signal" ]; }; then
+    PRIMARY_CONTROLDATA=$(as_postgres pg_controldata -D "$DATA_DIR") || PRIMARY_CONTROLDATA=""
 fi
 PRIMARY_MAX_CONNECTIONS=$(awk -F ': *' '$1 == "max_connections setting" { print $2 }' <<<"$PRIMARY_CONTROLDATA")
 # Unreadable: no floor here; the RAISE_ARGS block names the problem and stops.
@@ -857,9 +868,9 @@ for setting in "${AUTO_SETTINGS[@]}"; do
     # The memory fit takes an operator's max_connections or work_mem as an input, so no tuned value exists to override.
     fitted=""
     [ "$name" = max_connections ] && fitted=$OPERATOR_MAX_CONNECTIONS
-    [ "$name" = work_mem ] && fitted=$OPERATOR_WORK_MEM_KB
+    [ "$name" = work_mem ] && [ -n "$OPERATOR_WORK_MEM_KB" ] && fitted=$OPERATOR_WORK_MEM
     if [ -n "$fitted" ]; then
-        echo "[POSTGRES] [AUTO-CONFIG] ${name}: operator value ${tuned} used as given; the memory fit sizes the rest around it"
+        echo "[POSTGRES] [AUTO-CONFIG] ${name}: operator value ${fitted} used as given; the memory fit sizes the rest around it"
         continue
     fi
     if [ -n "${OPERATOR_SET[$name]+set}" ]; then

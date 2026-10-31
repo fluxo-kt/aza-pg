@@ -561,14 +561,14 @@ export function testPgPartmanPartitioning(container: string): Promise<TestResult
     await sqlOk(container, [
       "CREATE EXTENSION IF NOT EXISTS pg_partman CASCADE",
       "DROP TABLE IF EXISTS test_partman CASCADE",
-      "DELETE FROM part_config WHERE parent_table = 'public.test_partman'",
+      "DELETE FROM partman.part_config WHERE parent_table = 'public.test_partman'",
       "CREATE TABLE test_partman (id int, created_at timestamp NOT NULL) PARTITION BY RANGE (created_at)",
     ]);
     await psql(container, "ALTER EVENT TRIGGER pgsodium_trg_mask_update DISABLE");
     try {
       await sqlOk(
         container,
-        "SELECT create_parent('public.test_partman', 'created_at', '1 day', 'range', p_start_partition := (now() - interval '7 days')::text)"
+        "SELECT partman.create_parent('public.test_partman', 'created_at', '1 day', 'range', p_start_partition := (now() - interval '7 days')::text)"
       );
       const partitions = await sqlOk(
         container,
@@ -951,7 +951,7 @@ BEGIN
   END LOOP;
 END $$`
   );
-  await psql(container, "DELETE FROM part_config WHERE parent_table LIKE 'public.test_%'");
+  await psql(container, "DELETE FROM partman.part_config WHERE parent_table LIKE 'public.test_%'");
   await psql(container, "SELECT pgmq.drop_queue('test_queue')");
   await psql(container, "SELECT cron.unschedule('test-cron-run')");
 }

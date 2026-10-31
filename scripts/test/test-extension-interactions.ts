@@ -79,6 +79,12 @@ try {
 } catch (err) {
   failure = `setup: ${err instanceof Error ? err.message : String(err)}`;
 } finally {
+  // A failure here can be a backend crash ("in recovery mode"); the server log is its only evidence, and the
+  // container is about to go.
+  if (failure) {
+    const logs = await $`docker logs --tail 80 ${container}`.quiet().nothrow();
+    console.error(logs.stdout.toString() + logs.stderr.toString());
+  }
   await $`docker rm -f -v ${container}`.quiet().nothrow();
 }
 if (failure) {

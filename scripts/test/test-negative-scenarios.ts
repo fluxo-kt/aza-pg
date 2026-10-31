@@ -24,9 +24,13 @@ import { resolveImageTag } from "./image-resolver";
 
 const IMAGE = resolveImageTag({ argv: [] });
 const created: string[] = [];
+const scratchDirs: string[] = [];
 
+// Cleanup lives here, not in each test's finally: bun abandons a timed-out test's body, so its finally never runs,
+// while afterAll still does.
 afterAll(async () => {
   for (const name of created) await $`docker rm -f -v ${name}`.nothrow().quiet();
+  for (const dir of scratchDirs) await rm(dir, { recursive: true, force: true });
 });
 
 /** Start the image with `env`, wait for the container to stop, return its exit code and full log. */
@@ -62,21 +66,18 @@ test.concurrent(
     // Every feature the entrypoint requires on either architecture except one each (avx2, asimddp), so whichever
     // architecture runs this, exactly one is missing: the check must find a single gap, not only an empty line.
     const dir = await mkdtemp(path.join(tmpdir(), "aza-cpuinfo-"));
+    scratchDirs.push(dir);
     const cpuinfo = path.join(dir, "cpuinfo");
     await Bun.write(
       cpuinfo,
       "processor\t: 0\nflags\t: fpu cx16 lahf_lm popcnt pni sse4_1 sse4_2 ssse3 avx bmi1 bmi2 f16c fma abm movbe crc32 atomics asimdrdm aes sha2\n"
     );
-    try {
-      const { code, logs } = await runToExit("cpu-baseline", {}, [
-        "-v",
-        `${cpuinfo}:/proc/cpuinfo:ro`,
-      ]);
-      expect(code).toBe(1);
-      expect(logs).toMatch(/lacks features the image is compiled for: (avx2|asimddp)\./);
-    } finally {
-      await rm(dir, { recursive: true, force: true });
-    }
+    const { code, logs } = await runToExit("cpu-baseline", {}, [
+      "-v",
+      `${cpuinfo}:/proc/cpuinfo:ro`,
+    ]);
+    expect(code).toBe(1);
+    expect(logs).toMatch(/lacks features the image is compiled for: (avx2|asimddp)\./);
   },
   30_000
 );

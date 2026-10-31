@@ -57,6 +57,7 @@ export const SUITES: Suite[] = [
   { path: "scripts/test/test-replica-stack.ts", group: "stacks" },
   { path: "scripts/test/test-single-stack.ts", group: "stacks" },
   { path: "scripts/test/test-auto-config.ts", group: "features" },
+  { path: "scripts/test/test-memory-fit.ts", group: "features" },
   { path: "scripts/test/test-backup-restore.ts", group: "features" },
   { path: "scripts/test/test-negative-scenarios.ts", group: "features" },
   { path: "scripts/test/test-pg-cron-postgres-db.ts", group: "features" },

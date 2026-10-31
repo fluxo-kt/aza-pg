@@ -24,7 +24,9 @@ const fn = (name: string) =>
   cut(new RegExp(`^${name}\\(\\) \\{\\n[\\s\\S]*?\\n\\}\\n`, "m"), `${name}()`);
 
 // Numeric constants the functions read (SHARED_BUFFERS_CAP_MB, OS_RESERVE_MB, ...).
-const constants = (source.match(/^readonly [A-Z_]+=("?)[0-9.]+\1$/gm) ?? []).join("\n");
+const constants = (source.match(/^readonly [A-Z_]+=("?)[0-9.]+\1(?=\s*(#.*)?$)/gm) ?? []).join(
+  "\n"
+);
 
 // The top-level block deriving worker and parallel-worker counts from CPU_CORES.
 const workerBlockStart = source.search(/^if \[ "\$CPU_CORES" -le 4 \]; then$/m);
@@ -43,6 +45,7 @@ const shipped = [
   fn("get_workload_type"),
   fn("calculate_shared_buffers"),
   fn("calculate_maintenance_work_mem"),
+  fn("busy_sessions"),
   fn("calculate_work_mem"),
   fn("calculate_wal_buffers"),
   fn("calculate_io_workers"),
@@ -98,23 +101,43 @@ describe("maintenance_work_mem: 1/16 of RAM (dw 1/8), floor 32 MB, cap 2048 MB",
   });
 });
 
-describe("work_mem caps at the sizes where they bind (inputs are the shipped tier values)", () => {
-  // [RAM, shared_buffers, max_connections, workload, expected]
+describe("work_mem: the session pool split over busy sessions, 1 MB floor, workload caps", () => {
+  // [RAM, session pool, max_connections, parallel workers, active %, workload, expected kB]
   test.each([
-    [196608, 29491, 120, "mixed", "256"], // (196608−29491−1200−512)/480 = 344 → 256 cap at ≥32 GB
-    [196608, 29491, 100, "dw", "256"],
-    [196608, 29491, 200, "web", "32"], // 205 → web/oltp cap 32
-    [196608, 29491, 300, "oltp", "32"],
-    [512, 128, 60, "mixed", "1"], // pool floor 256 / 240 = 1
-  ])("%d MB, sb %d, %d conns, %s → %s MB", (ram, sb, conns, workload, expected) => {
+    [196608, 200000, 120, 8, 100, "mixed", "262144"], // (200000−128×3)×1024/(128×4) = 399232 → 256 MB cap at ≥32 GB
+    [196608, 100000, 200, 8, 100, "web", "32768"], // 122308 → web/oltp cap 32 MB
+    [1024, 1000, 100, 2, 25, "mixed", "6580"], // (1000−102×3)×1024/((25+2)×4)
+    [1024, 1000, 100, 2, 100, "mixed", "1741"], // same pool, every session busy
+    [512, 100, 60, 2, 100, "mixed", "1024"], // pool below the base cost → 1 MB floor
+  ])(
+    "%d MB RAM, pool %d MB, %d conns + %d workers, %d%% active, %s → %s kB",
+    (ram, pool, conns, workers, active, workload, expected) => {
+      expect(
+        value("calculate_work_mem", {
+          TOTAL_RAM_MB: String(ram),
+          SESSION_POOL_MB: String(pool),
+          MAX_CONNECTIONS: String(conns),
+          MAX_PARALLEL_WORKERS: String(workers),
+          ACTIVE_CONNECTIONS_PERCENT: String(active),
+          OPERATOR_WORK_MEM_KB: "",
+          POSTGRES_WORKLOAD_TYPE: workload,
+        })
+      ).toBe(expected);
+    }
+  );
+
+  test("an operator work_mem is used as given", () => {
     expect(
       value("calculate_work_mem", {
-        TOTAL_RAM_MB: String(ram),
-        SHARED_BUFFERS_MB: String(sb),
-        MAX_CONNECTIONS: String(conns),
-        POSTGRES_WORKLOAD_TYPE: workload,
+        TOTAL_RAM_MB: "1024",
+        SESSION_POOL_MB: "1000",
+        MAX_CONNECTIONS: "100",
+        MAX_PARALLEL_WORKERS: "2",
+        ACTIVE_CONNECTIONS_PERCENT: "100",
+        OPERATOR_WORK_MEM_KB: "5000",
+        POSTGRES_WORKLOAD_TYPE: "mixed",
       })
-    ).toBe(expected);
+    ).toBe("5000");
   });
 });
 

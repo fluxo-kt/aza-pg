@@ -13,6 +13,7 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
 ### Changed
 
 - Image layers are zstd-compressed instead of gzip: about 26% less to download, and faster to unpack. Pulling needs Docker Engine 23+ or containerd 1.5+ (the README already requires Docker Engine 24+); older clients cannot pull the image.
+- The server, extensions, Groonga and the JIT's LLVM library ship without static symbol tables (`strip --strip-unneeded`), about 35 MB smaller unpacked. Nothing at runtime reads them; profiling or debugging a running container from the host (perf, gdb) no longer shows names of static functions in those binaries.
 
 ## [v18.6-202610311330] - 2026-10-31
 

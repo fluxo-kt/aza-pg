@@ -6,7 +6,7 @@
 # Without it the entry is built from `build.type`, linking `nix.inputs`. Sources come from builtins.fetchGit at the
 # pinned commit, which needs no stored hash: the commit is the content address. Rust crates come from the source's
 # own Cargo.lock for the same reason.
-{ pkgs, lib, postgresql, manifest, inputs, hardeningEnable, targetCpu }:
+{ pkgs, lib, postgresql, manifest, inputs, hardeningEnable, stripUnneeded, targetCpu }:
 let
   ps = postgresql.pkgs;
   # The PGXS builder exists only inside the extension scope, not as an attribute of it.
@@ -133,11 +133,12 @@ let
 
   # Only the executables an entry names ship (nix.bin, else its binaryPath): nothing calls the rest, and they pull in
   # interpreters (pg_partman's Python helpers). Every entry also passes here, so it takes the server's extra
-  # hardening and CPU baseline (flake.nix) too.
+  # hardening, symbol stripping and CPU baseline (flake.nix) too.
   pruneBin = e: drv:
     let keep = e.nix.bin or (lib.optional (e ? binaryPath) (baseNameOf e.binaryPath));
     in drv.overrideAttrs (old: {
       hardeningEnable = (old.hardeningEnable or [ ]) ++ hardeningEnable;
+      inherit (stripUnneeded) stripDebugFlags;
       # The SBOM's licence per package (ManifestEntry.license); meta is not part of the derivation, so no rebuild.
       meta = (old.meta or { }) // {
         license = old.meta.license or (lib.getLicenseFromSpdxId

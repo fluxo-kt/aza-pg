@@ -42,7 +42,7 @@
                   # share/groonga/html is the admin UI of Groonga's own HTTP server, which PGroonga never runs; it
                   # bundles jquery-ui 1.12.1, whose CVEs the image scan would report.
                   postInstall = (o.postInstall or "") + "\nrm -r $out/share/groonga/html\n";
-                });
+                } // stripUnneeded);
               })
             ];
           };
@@ -71,6 +71,12 @@
           # files rebuilt marked and passed to our links with -B, not a toolchain rebuild. Also left out: amd64 shadowstack, which glibc enforces only on request. The
           # server and extensions are rebuilt from source anyway, so pacret costs no rebuild of its own.
           hardeningEnable = [ "pacret" ];
+          # nixpkgs strips with -S (debug info only), which keeps .symtab/.strtab: names of static functions that only
+          # a debugger or profiler reads (the loader, dlsym, extensions resolving server functions and JIT-generated
+          # code all use .dynsym, which stays). They were 43 MB of the image (2026-10-31). Applied to everything we
+          # build ourselves (server, extensions, groonga, the libLLVM copy); nixpkgs' cached libraries keep theirs,
+          # since stripping those would mean rebuilding them. Cost: host-side perf/gdb lose static names there.
+          stripUnneeded = { stripDebugFlags = [ "--strip-unneeded" "-p" ]; };
           # The -O level stays each upstream's own release level (AGENTS.md). The server at -O3 measured no faster (arm64,
           # pgbench -S, TPC-B and a 5M-row GROUP BY, medians of 3 alternating rounds, 2026-10-31). targetCpu adds only the CPU baseline to
           # every C compile of the server and extensions. A recipe sets NIX_CFLAGS_COMPILE either top-level or under env,
@@ -97,19 +103,20 @@
             perlSupport = false;
             pythonSupport = false;
             tclSupport = false;
-          }).overrideAttrs (o: { hardeningEnable = (o.hardeningEnable or [ ]) ++ hardeningEnable; } // targetCpu o);
+          }).overrideAttrs (o: { hardeningEnable = (o.hardeningEnable or [ ]) ++ hardeningEnable; } // stripUnneeded // targetCpu o);
           # The manifest's pgVersion names the release (tags, labels, PG_VERSION); the server is nixpkgs'. A nixpkgs bump
           # that moves the minor must update the manifest in the same change, or the image would claim a version it lacks.
           extensions = assert postgresql.version == manifest.metadata.pgVersion
             || throw "nixpkgs ships PostgreSQL ${postgresql.version}, manifest-data.ts says ${manifest.metadata.pgVersion}: set pgVersion to nixpkgs' version";
-            import ./nix/extensions.nix { inherit pkgs postgresql manifest inputs hardeningEnable targetCpu; inherit (pkgs) lib; };
+            import ./nix/extensions.nix { inherit pkgs postgresql manifest inputs hardeningEnable stripUnneeded targetCpu; inherit (pkgs) lib; };
           # jit is a separate output (llvmjit.so plus bitcode) that withPackages leaves out; without it jit=on does nothing.
           # llvmjit.so's RPATH names llvm's whole lib output, ~360 MB of it static archives no process loads; this copy
           # points llvmjit.so (and libLLVM's own RPATH) at a store path holding libLLVM.so alone.
-          jit = pkgs.runCommand "postgresql-jit-${postgresql.version}" { nativeBuildInputs = [ pkgs.patchelf ]; meta = { inherit (postgresql.meta) license; }; } ''
+          jit = pkgs.runCommand "postgresql-jit-${postgresql.version}" { nativeBuildInputs = [ pkgs.patchelf pkgs.binutils ]; meta = { inherit (postgresql.meta) license; }; } ''
             cp -r --no-preserve=mode ${postgresql.jit} $out
             mkdir -p $out/llvm
-            cp -L ${llvmPackages.llvm.lib}/lib/libLLVM.so.* $out/llvm/
+            cp -L --no-preserve=mode ${llvmPackages.llvm.lib}/lib/libLLVM.so.* $out/llvm/
+            strip ${toString stripUnneeded.stripDebugFlags} $out/llvm/libLLVM.so.*
             for f in $out/lib/llvmjit.so $out/llvm/libLLVM.so.*; do
               patchelf --set-rpath "$(patchelf --print-rpath "$f" | sed "s|${llvmPackages.llvm.lib}/lib|$out/llvm|g")" "$f"
             done

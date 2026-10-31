@@ -27,8 +27,8 @@ const PG_REPLICATION_PASSWORD = `repl_${suffix}`;
 const PROMOTE_TOOL = join(import.meta.dir, "../tools/promote-replica.ts");
 const SLOT = "replica_slot_1"; // both stacks' compose default; neither stage overrides it
 const ROWS = 100;
-// Both stacks run their shipped memory and CPU limits (primary 2048m/2 CPUs, replica 512m/0.5): auto-tuning gives the
-// replica lower limits than the primary's, which the image must raise or the standby never starts.
+// The replica runs at 512m (an override, reason at the replica stage) and its shipped 0.5 CPU: auto-tuning gives it
+// lower limits than the primary's, which the image must raise or the standby never starts.
 const LIMIT_SETTINGS = [
   "max_connections",
   "max_locks_per_transaction",
@@ -114,6 +114,9 @@ try {
     PG_REPLICATION_PASSWORD,
     PRIMARY_HOST: primaryDb,
     POSTGRES_NETWORK_NAME: primary.env.POSTGRES_NETWORK_NAME ?? "",
+    // Smaller than the primary on purpose, the subject under test: the stack's default equals the primary's, which
+    // would leave the image's raise to the primary's limits unexercised.
+    POSTGRES_MEMORY_LIMIT: "512m",
   });
   stages.push(replica);
   const replicaDb = `${replica.project}-postgres-replica`;
@@ -140,6 +143,13 @@ try {
       if (!`${logs.stdout}${logs.stderr}`.includes("max_connections: raised from")) {
         throw new Error(
           "no max_connections raise logged; the replica's defaults no longer exercise it"
+        );
+      }
+      // work_mem is sized for the summary's max_connections: a raise after the fit leaves it sized for fewer.
+      const fitted = `${logs.stdout}`.match(/→ .*\bmax_connections=(\d+)/)?.[1];
+      if (fitted !== onPrimary.get("max_connections")) {
+        throw new Error(
+          `auto-config fitted work_mem to max_connections=${fitted}, the primary runs ${onPrimary.get("max_connections")}`
         );
       }
     }

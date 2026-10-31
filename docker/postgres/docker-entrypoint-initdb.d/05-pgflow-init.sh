@@ -39,7 +39,9 @@ echo "[05-pgflow] All prerequisites available. Installing pgflow schema..."
 # The schema file is copied from tests/fixtures/pgflow/ during build
 if [ -f /opt/pgflow/schema.sql ]; then
     # schema.sql creates its own extensions; supabase_vault and pg_cron only where they can exist.
-    psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" -d "$TARGET_DB" -f /opt/pgflow/schema.sql
+    # One transaction: the schema schedules the 15-second pgflow_requeue_stalled_tasks job thousands of lines before it
+    # defines pgflow.set_vt_batch, so in autocommit a slow init let pg_cron run the job mid-load and log an ERROR.
+    psql -v ON_ERROR_STOP=1 --single-transaction --username "$POSTGRES_USER" -d "$TARGET_DB" -f /opt/pgflow/schema.sql
     echo "[05-pgflow] pgflow schema installed successfully"
 
     # Apply security patches

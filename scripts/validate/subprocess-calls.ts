@@ -12,6 +12,13 @@
  *   3. `docker exec` / `docker container exec` fed by a heredoc, here-string, `<` redirect or pipe without `-i`.
  *      Without `-i` docker never forwards stdin, so `psql` reads nothing and exits 0: the SQL silently never runs.
  *      `docker compose exec` keeps stdin attached by default (it has no `-i` option), so it is not checked.
+ *   4. `--memory` / `-m` without `--memory-swap` in scripts/ (shell `docker run`/`create`, and any TypeScript array
+ *      holding `--memory`). Docker then grants as much swap again, so a "1 GB" server really gets 2 GB and hides the
+ *      overrun a swapless VPS (the common deployment) dies of. Set `--memory-swap` equal to `--memory` for none.
+ *   5. A detached `docker run -d` in scripts/{test,docker,nix}/ (where test servers start) without a memory limit (`TEST_SERVER`, `TEST_SERVER_MEMORY` or
+ *      `--memory`). The image's entrypoint then tunes PostgreSQL from the whole Docker VM, which no deployment
+ *      does, and parallel suites tuned that way exhaust it and get each other's backends OOM-killed. A run with
+ *      `--entrypoint` skips the auto-config entrypoint (companion images, one-shot tools), so it is exempt.
  * Comment lines are skipped: prose about a mistake is not a call. Shell text is matched in every scanned file type
  * (TypeScript template literals included); the `["docker", "rm", …]` array form is matched in TypeScript.
  *
@@ -41,6 +48,10 @@ const ENV_FIX =
   "this env object replaces the whole subprocess environment (PATH, HOME, DOCKER_CONFIG are lost); write `{ ...Bun.env, KEY: value }`";
 const EXEC_FIX =
   "`docker exec` without -i never forwards stdin, so the heredoc/pipe/redirect is dropped and the command silently does nothing; write `docker exec -i <container> …`";
+const SWAP_FIX =
+  "`--memory` without `--memory-swap` also grants that much swap, hiding an overrun a swapless VPS dies of; add `--memory-swap` equal to `--memory` (in scripts/: use TEST_SERVER_MEMORY from scripts/utils/docker.ts)";
+const LIMIT_FIX =
+  "a test server without a memory limit gets PostgreSQL tuned from the whole Docker VM, and parallel suites then OOM-kill each other's backends; add `${TEST_SERVER}` (tmpfs PGDATA) or `${TEST_SERVER_MEMORY}` (volume PGDATA) from scripts/utils/docker.ts";
 
 /** Lines that hold code: every line, or only fenced code blocks in Markdown. Index = 0-based line number. */
 function codeLines(file: string, text: string): (string | null)[] {
@@ -170,6 +181,20 @@ export function findProblems(file: string, text: string): string[] {
       )
         report(start, EXEC_FIX);
     }
+    for (const m of logical.matchAll(/\bdocker\s+(?:container\s+)?(run|create)\b/g)) {
+      const args = tokens(logical.slice(m.index + m[0].length, commandEnd(logical, m.index)));
+      const memory = args.some((t) => /^(--memory(=|$)|-m)/.test(t));
+      // Scripts only: there a limit is a measurement condition. Operator-facing text chooses its own swap policy.
+      const inScripts = file.startsWith("scripts/");
+      if (inScripts && memory && !args.some((t) => t.startsWith("--memory-swap")))
+        report(start, SWAP_FIX);
+      const detached = args.some((t) => t === "--detach" || hasShortFlag(t, "d"));
+      const limited = memory || args.some((t) => /\$\{TEST_SERVER(_MEMORY)?\}/.test(t));
+      const ownEntrypoint = args.some((t) => t.startsWith("--entrypoint"));
+      const startsServers = /^scripts\/(test|docker|nix)\//.test(file);
+      if (startsServers && m[1] === "run" && detached && !limited && !ownEntrypoint)
+        report(start, LIMIT_FIX);
+    }
   }
 
   if (!file.endsWith(".ts")) return problems;
@@ -181,6 +206,13 @@ export function findProblems(file: string, text: string): string[] {
     if (isCommentAt(m.index)) continue;
     const args = text.slice(m.index, closing(text, m.index));
     if (!/(["'`])(--volumes|-[a-zA-Z]*v[a-zA-Z]*)\1/.test(args)) report(lineOf(m.index), RM_FIX);
+  }
+
+  for (const m of text.matchAll(/(["'`])--memory(=[^"'`]*)?\1/g)) {
+    if (!file.startsWith("scripts/") || isCommentAt(m.index)) continue;
+    const open = text.lastIndexOf("[", m.index);
+    if (open < 0 || !text.slice(open, closing(text, open)).includes("--memory-swap"))
+      report(lineOf(m.index), SWAP_FIX);
   }
 
   const spreadsEnv = (body: string) =>

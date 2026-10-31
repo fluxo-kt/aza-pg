@@ -14,6 +14,7 @@ services:
       POSTGRES_MEMORY: ${POSTGRES_MEMORY:-5120} # MB; the entrypoint refuses unit suffixes
       POSTGRES_WORKLOAD_TYPE: ${POSTGRES_WORKLOAD_TYPE:-web}
       POSTGRES_STORAGE_TYPE: ${POSTGRES_STORAGE_TYPE:-ssd}
+      POSTGRES_ACTIVE_CONNECTIONS_PERCENT: ${POSTGRES_ACTIVE_CONNECTIONS_PERCENT:-100} # share of connections busy at once; README "Auto-Config"
       # Enable shared_preload_libraries (already configured in aza-pg)
       # Overrides replace the image's list; keep timescaledb before pgaudit.
     volumes:

@@ -245,8 +245,9 @@ export function testNoBuildOnlyStorePaths(container: string): Promise<TestResult
     expect(ls.ok, `listing /nix/store failed: ${ls.output}`);
     const buildOnly =
       // Package names take the exact version form (gcc-16.2.0), so runtime outputs such as gcc-…-lib (libstdc++)
-      // and llvm-…-lib (the JIT) stay allowed; clang's -lib is the compiler's own.
-      /^[a-z0-9]{32}-(.*-(dev|doc|man|info|static)|(gcc|clang|llvm|lld|binutils|llvm-binutils|isl|mpfr|libmpc|linux-headers|bison|flex|gnum4|cmake|perl|python3|tcl|ruby)-[0-9][0-9.]*|clang-[0-9.]+-lib|compiler-rt-.*|.*-wrapper-[0-9.]+)$/;
+      // stay allowed; clang's -lib is the compiler's own, and llvm's -lib (libLLVM.so plus ~360 MB of static
+      // archives) is build-only because llvmjit.so links LLVM statically (flake.nix).
+      /^[a-z0-9]{32}-(.*-(dev|doc|man|info|static)|(gcc|clang|llvm|lld|binutils|llvm-binutils|isl|mpfr|libmpc|linux-headers|bison|flex|gnum4|cmake|perl|python3|tcl|ruby)-[0-9][0-9.]*|(clang|llvm)-[0-9.]+-lib|compiler-rt-.*|.*-wrapper-[0-9.]+)$/;
     const found = ls.output.split("\n").filter((name) => buildOnly.test(name));
     expect(
       found.length === 0,
@@ -626,6 +627,89 @@ export function testPgCronScheduling(container: string): Promise<TestResult> {
     } finally {
       await psql(container, "SELECT cron.unschedule('test-cron-run')");
     }
+  });
+}
+
+/**
+ * JIT is a shipped feature (flake.nix keeps it on for measured speedups), and a broken one fails silently: when
+ * llvmjit.so cannot load (e.g. an LLVM symbol its static link left undefined), the server runs the query
+ * interpreted and only EXPLAIN shows no JIT. So the plan must report compiled functions with inlining and
+ * optimisation forced on, and the result must equal the interpreted one. Anything that touches how llvmjit.so is
+ * linked or stripped is judged here.
+ */
+export function testJitCompiles(container: string): Promise<TestResult> {
+  return check("jit - compiles, inlines and matches interpreted results", async () => {
+    const query =
+      "SELECT sum(g * 3 + 1), count(*) FILTER (WHERE g % 7 = 0) FROM generate_series(1, 200000) g";
+    const forced = [
+      "SET jit = on",
+      "SET jit_above_cost = 0",
+      "SET jit_inline_above_cost = 0",
+      "SET jit_optimize_above_cost = 0",
+    ];
+    // The SETs print "SET" lines first; the JSON plan spans the remaining lines.
+    const out = await sqlOk(container, [...forced, `EXPLAIN (ANALYZE, FORMAT JSON) ${query}`]);
+    const plan = JSON.parse(out.slice(out.indexOf("["))) as {
+      JIT?: { Functions: number; Options: { Inlining: boolean; Optimization: boolean } };
+    }[];
+    const jit = plan[0]?.JIT;
+    expect(jit !== undefined && jit.Functions > 0, `no JIT in the plan:\n${JSON.stringify(plan)}`);
+    expect(
+      jit?.Options.Inlining === true && jit.Options.Optimization === true,
+      `JIT without inlining or optimisation: ${JSON.stringify(jit)}`
+    );
+    const compiled = lastLine(await sqlOk(container, [...forced, query]));
+    const interpreted = lastLine(await sqlOk(container, ["SET jit = off", query]));
+    expect(compiled === interpreted, `JIT gave ${compiled}, interpreted gave ${interpreted}`);
+  });
+}
+
+/**
+ * Out of memory, the kernel kills the process with the highest score. If that is the postmaster the container
+ * stops and the database with it; a backend's death is recovered in seconds. The image's PG_OOM_ADJUST_* env makes
+ * every child score 1000 above the postmaster (reason at nix/image.nix), and nothing fails when it is lost: only the
+ * next OOM shows it, as an outage. So every child's oom_score_adj must sit at least 1000 above the postmaster's.
+ */
+export function testOomKillsBackendsFirst(container: string): Promise<TestResult> {
+  return check("OOM priority - every backend dies before the postmaster", async () => {
+    // postmaster.pid's first line is the postmaster's PID; its children are every server process.
+    const script =
+      'pm=$(head -1 "$PGDATA/postmaster.pid"); echo "$pm $(cat /proc/$pm/oom_score_adj)"; ' +
+      'for p in /proc/[0-9]*; do read -r pid _ _ ppid _ < "$p/stat" 2>/dev/null || continue; ' +
+      'if [ "$ppid" = "$pm" ]; then echo "$pid $(cat "$p/oom_score_adj")"; fi; done';
+    const { ok, output } = await execCommand(["sh", "-c", script], container);
+    expect(ok, `reading OOM scores failed: ${output}`);
+    const [postmaster, ...children] = output.split("\n").map((l) => l.trim().split(" "));
+    const pmAdj = Number(postmaster?.[1]);
+    expect(children.length > 0, `no server processes under the postmaster:\n${output}`);
+    const low = children.filter(([, adj]) => Number(adj) - pmAdj < 1000);
+    expect(
+      low.length === 0,
+      `postmaster oom_score_adj ${pmAdj}; children less than 1000 above it (pid adj): ${low.map((c) => c.join(" ")).join(", ")}`
+    );
+    return `${children.length} children at +${Number(children[0]?.[1]) - pmAdj}`;
+  });
+}
+
+/**
+ * A process orphaned in the container is re-parented to PID 1. With the postmaster as PID 1, such an orphan dying by
+ * a signal reads as a crashed backend and resets every session; tini as PID 1 (nix/image.nix) reaps it instead.
+ * Checked as that state, not by killing an orphan: proving a reset did not happen would need a timed wait, and the
+ * state is what any Entrypoint or exec-chain change breaks.
+ */
+export function testTiniIsPid1(container: string): Promise<TestResult> {
+  return check("PID 1 - tini, not the postmaster, adopts orphans", async () => {
+    const { ok, output } = await execCommand(
+      ["sh", "-c", 'echo "$(cat /proc/1/comm) $(head -1 "$PGDATA/postmaster.pid")"'],
+      container
+    );
+    expect(ok, `reading PID 1 failed: ${output}`);
+    const [pid1, postmaster] = output.trim().split(" ");
+    expect(
+      pid1 === "tini" && postmaster !== "1",
+      `PID 1 is ${pid1}, postmaster PID ${postmaster}: an orphan dying by a signal would reset every session`
+    );
+    return `postmaster PID ${postmaster} under tini`;
   });
 }
 

@@ -17,7 +17,7 @@
 
 import { $ } from "bun";
 import { TIMEOUTS } from "../config/test-timeouts";
-import { generateUniqueContainerName, waitForPostgres } from "../utils/docker";
+import { TEST_SERVER_MEMORY, generateUniqueContainerName, waitForPostgres } from "../utils/docker";
 import { resolveImageTag } from "./image-resolver";
 import { sqlOk } from "../utils/psql";
 
@@ -68,7 +68,7 @@ try {
   if (!pgdata) throw new Error(`no PGDATA in ${image}`);
   console.log(`Backup/restore with ${image}`);
 
-  await $`docker run -d --name ${source} ${SERVER} -v ${sourceVolume}:/var/lib/postgresql -v ${repoVolume}:/var/lib/pgbackrest ${image} postgres -c archive_mode=on -c ${"archive_command=pgbackrest archive-push %p"}`.quiet();
+  await $`docker run -d --name ${source} ${TEST_SERVER_MEMORY} ${SERVER} -v ${sourceVolume}:/var/lib/postgresql -v ${repoVolume}:/var/lib/pgbackrest ${image} postgres -c archive_mode=on -c ${"archive_command=pgbackrest archive-push %p"}`.quiet();
   await waitForPostgres({ container: source, timeout: TIMEOUTS.startup });
 
   // `check` switches WAL and waits for it to reach the repository: the archive_command must really archive.
@@ -109,7 +109,7 @@ try {
       `pgbackrest restore exited ${restore.exitCode}: ${restore.stdout.toString() + restore.stderr.toString()}`
     );
   }
-  await $`docker run -d --name ${restored} ${SERVER} -v ${restoreVolume}:/var/lib/postgresql -v ${repoVolume}:/var/lib/pgbackrest ${image}`.quiet();
+  await $`docker run -d --name ${restored} ${TEST_SERVER_MEMORY} ${SERVER} -v ${restoreVolume}:/var/lib/postgresql -v ${repoVolume}:/var/lib/pgbackrest ${image}`.quiet();
   await waitForPostgres({ container: restored, timeout: TIMEOUTS.startup });
   // The restored cluster starts in archive recovery and accepts read-only queries as soon as it reaches the
   // backup's end, while later archived WAL — holding the post-backup rows — is still being fetched. Recovery is

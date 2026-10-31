@@ -15,7 +15,7 @@
 
 import { $ } from "bun";
 import { TIMEOUTS } from "../config/test-timeouts";
-import { generateUniqueContainerName, waitForPostgres } from "../utils/docker";
+import { TEST_SERVER_MEMORY, generateUniqueContainerName, waitForPostgres } from "../utils/docker";
 import { resolveImageTag } from "./image-resolver";
 import { stageStack } from "./staged-stack";
 import { sqlOk } from "../utils/psql";
@@ -61,7 +61,7 @@ try {
   if (!volume.startsWith(stage.project)) throw new Error(`unscoped data volume "${volume}"`);
 
   await step("data initialised by `docker run` is served by the compose stack", async () => {
-    await $`docker run -d --name ${bare} -e POSTGRES_PASSWORD=${POSTGRES_PASSWORD} -v ${volume}:/var/lib/postgresql ${image}`.quiet();
+    await $`docker run -d --name ${bare} ${TEST_SERVER_MEMORY} -e POSTGRES_PASSWORD=${POSTGRES_PASSWORD} -v ${volume}:/var/lib/postgresql ${image}`.quiet();
     await waitForPostgres({ container: bare, timeout: TIMEOUTS.startup });
     await sqlOk(bare, "CREATE TABLE handoff AS SELECT g AS id FROM generate_series(1, 100) g");
     await $`docker stop ${bare}`.quiet();

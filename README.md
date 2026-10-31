@@ -112,13 +112,23 @@ Configs in `stacks/{primary,replica,single}`.
 
 Detects RAM (`POSTGRES_MEMORY` → cgroup v2 limit → /proc/meminfo) and CPU at startup and writes the tuned values to `/var/run/postgresql/aza-auto-config.conf` (`docker exec <container> cat /var/run/postgresql/aza-auto-config.conf` shows them). The rules, owned by the `calculate_*` functions in `docker/postgres/docker-auto-config-entrypoint.sh`:
 
-- `max_connections`: by `POSTGRES_WORKLOAD_TYPE` — `mixed` (default) 120, `web` 200, `oltp` 300, `dw` 100 — scaled to 50%/70%/85% below 2/4/8 GB of RAM.
+- `max_connections` and `work_mem` share one memory budget: 90% of the container's limit (without a limit, or with one above host RAM, host RAM less the larger of 20% or 512 MB), minus `shared_buffers`, maintenance and autovacuum memory and the server's own overhead. Every session costs about 3 MB; a busy one adds about 4 MB (executor state and its parallel plan's shared memory) plus up to 4 × `work_mem`, because one query can run several sorts and hashes at once. The workload's connection count (`mixed`, the default, 120; `web` 200; `oltp` 300; `dw` 100; cut to 50%/70%/85% below 2/4/8 GB) is lowered until `work_mem` reaches 1 MB (`dw`: 8 MB), never below 10; `work_mem` then gets everything left.
 - `shared_buffers`: 25% of RAM up to 8 GB, 20% up to 32 GB, 15% above; at most 32 GB.
-- `work_mem`: RAM left after `shared_buffers`, 10 MB per connection and 512 MB, divided by 4 × `max_connections`; at least 1 MB. Capped at 32 MB for `web` and `oltp`; for `mixed` and `dw` at 32 MB below 2 GB of RAM, 64 MB from 2 GB, 128 MB from 8 GB and 256 MB from 32 GB.
+- `work_mem`: at least 1 MB. Capped at 32 MB for `web` and `oltp`; for `mixed` and `dw` at 32 MB below 2 GB of RAM, 64 MB from 2 GB, 128 MB from 8 GB and 256 MB from 32 GB.
 - `maintenance_work_mem`: RAM/16 (`dw`: RAM/8), between 32 MB and 2 GB.
 - `effective_cache_size`: 70% of RAM left after `shared_buffers` and the larger of 20% of RAM or 512 MB; at least 2 × `shared_buffers`.
 
-For example, the default `mixed` workload gets `max_connections` 84 and `work_mem` 1 MB at 2 GB, 120 and 9 MB at 8 GB, 120 and 112 MB at 64 GB.
+For example, with 2 CPUs the default `mixed` workload gets `max_connections` 36 at a 1 GB limit and 82 at 2 GB, both with `work_mem` about 1 MB, and 84 with 2.4 MB at 3 GB. An operator's `max_connections` or `work_mem` (`-c` or `ALTER SYSTEM`) is used as given and the other is fitted around it; the startup log warns when the two cannot fit the budget.
+
+**Choosing a configuration.** Give the container a hard memory limit without swap (`--memory X --memory-swap X`, Compose `mem_limit`): the tuning follows it. On a 2 GB VPS that is 1–1.5 GB, leaving the rest to the OS and companion containers.
+
+| Situation                               | Setting                                  | Gain                                                                          | Cost                                                                                                                                                 |
+| --------------------------------------- | ---------------------------------------- | ----------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Many clients, short queries             | `POSTGRES_WORKLOAD_TYPE=web` or `oltp`   | More connections                                                              | `work_mem` stays near 1 MB, so large sorts and hashes spill to disk                                                                                  |
+| Reports and analytics                   | `POSTGRES_WORKLOAD_TYPE=dw`              | `work_mem` aims for 8 MB (reached from about 3 GB), larger maintenance memory | Fewer connections                                                                                                                                    |
+| Most connections sit idle (pools, ORMs) | `POSTGRES_ACTIVE_CONNECTIONS_PERCENT=25` | `work_mem` about 2.4× larger at 1 GB                                          | If more than that share run large queries at once, the kernel can kill a backend; PostgreSQL then drops every session and recovers (no data is lost) |
+| More clients than connections fit       | PgBouncer (the `primary` stack)          | Thousands of clients over few connections                                     | One more service                                                                                                                                     |
+| Swap on the host                        | none (the tuning ignores swap)           | A margin before any backend is killed                                         | Queries slow sharply while swapping                                                                                                                  |
 
 Preloaded: auto_explain (module), pg_cron, pg_net, pg_stat_monitor, pg_stat_statements, pgaudit, pgsodium, safeupdate, supabase_vault, timescaledb (add optional via `POSTGRES_SHARED_PRELOAD_LIBRARIES`).
 

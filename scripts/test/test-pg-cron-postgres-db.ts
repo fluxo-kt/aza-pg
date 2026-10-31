@@ -22,7 +22,7 @@ import { tmpdir } from "node:os";
 import { rm } from "node:fs/promises";
 import { join } from "node:path";
 import { TIMEOUTS } from "../config/test-timeouts";
-import { EPHEMERAL_PGDATA, generateUniqueContainerName, waitForPostgres } from "../utils/docker";
+import { TEST_SERVER, generateUniqueContainerName, waitForPostgres } from "../utils/docker";
 import { resolveImageTag } from "./image-resolver";
 import { sqlOk } from "../utils/psql";
 
@@ -128,7 +128,7 @@ let failed = false;
 try {
   await Promise.all(
     cases.map((c) =>
-      $`docker run -d --name ${c.container} ${EPHEMERAL_PGDATA} -e POSTGRES_PASSWORD=postgres ${c.env} ${image}`.quiet()
+      $`docker run -d --name ${c.container} ${TEST_SERVER} -e POSTGRES_PASSWORD=postgres ${c.env} ${image}`.quiet()
     )
   );
   // Each case boots and verifies on its own, so one container failing init still lets the others report.

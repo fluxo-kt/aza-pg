@@ -725,8 +725,11 @@ function generateMarkdown(
   lines.push("```bash");
   // POSTGRES_BIND_IP=0.0.0.0: the image listens inside the container only by default, so without it the
   // published port refuses every connection. 127.0.0.1 on -p keeps the port off the host's public interfaces.
+  // A memory limit is what auto-config sizes connections and work_mem from; without one it tunes to the host's RAM.
+  // --memory-swap equal to --memory: --memory alone grants as much swap again.
   lines.push("docker run -d \\");
   lines.push("  --name postgres \\");
+  lines.push("  --memory 1536m --memory-swap 1536m \\");
   lines.push("  -e POSTGRES_PASSWORD=change-me \\");
   lines.push("  -e POSTGRES_BIND_IP=0.0.0.0 \\");
   lines.push("  -p 127.0.0.1:5432:5432 \\");

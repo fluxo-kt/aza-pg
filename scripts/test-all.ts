@@ -9,7 +9,7 @@
  * Every suite gets the image as POSTGRES_IMAGE, runs in its own process group, and is reported when it finishes.
  * Then every container, volume and network carrying its scope is removed (TEST_SCOPE_ENV in utils/docker.ts): a suite
  * killed at its timeout never runs its own teardown, and one that passed but left anything behind fails. Suites
- * run in parallel up to the CPU count: each one isolates its containers, volumes, networks and ports, so order and
+ * run in parallel up to half the Docker daemon's CPUs (reason at `workers`): each one isolates its containers, volumes, networks and ports, so order and
  * neighbours must not matter (--shuffle proves it). Any failed suite, or a run over the lane's 5 min ceiling, makes
  * the run exit 1; a failed suite's output ends with its containers' last log lines, read before the sweep. Before the
  * suites, whatever earlier killed runs left is removed (sweepOrphanedTestResources).
@@ -57,6 +57,7 @@ export const SUITES: Suite[] = [
   { path: "scripts/test/test-replica-stack.ts", group: "stacks" },
   { path: "scripts/test/test-single-stack.ts", group: "stacks" },
   { path: "scripts/test/test-auto-config.ts", group: "features" },
+  { path: "scripts/test/test-memory-fit.ts", group: "features" },
   { path: "scripts/test/test-backup-restore.ts", group: "features" },
   { path: "scripts/test/test-negative-scenarios.ts", group: "features" },
   { path: "scripts/test/test-pg-cron-postgres-db.ts", group: "features" },
@@ -310,7 +311,12 @@ async function main(): Promise<void> {
     queue = shuffle(queue, seed);
     console.log(`Shuffle seed: ${seed} (replay with --shuffle=${seed})`);
   }
-  const workers = Math.min(availableParallelism(), queue.length);
+  // Suites' containers run on the Docker daemon's CPUs (a VM's on Docker Desktop), not this host's, and each suite
+  // keeps about two of them busy (a server and its clients). One worker per host CPU oversubscribed them: suites ran
+  // 10-20x slower than alone (single-stack 16 s alone, killed at the suite timeout inside the run).
+  const info = Bun.spawnSync(["docker", "info", "--format", "{{.NCPU}}"], { stderr: "ignore" });
+  const dockerCpus = Number(info.stdout.toString().trim()) || availableParallelism();
+  const workers = Math.min(Math.max(1, Math.floor(dockerCpus / 2)), queue.length);
   console.log(
     `Image ${image}; groups ${groups.join(", ")}; ${queue.length} suites, ${workers} at a time`
   );

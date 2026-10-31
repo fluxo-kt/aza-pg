@@ -10,6 +10,30 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
 
 ## [Unreleased]
 
+## [v18.6-202610312251] - 2026-10-31
+
+### Breaking
+
+- Auto-config now sizes `max_connections` and `work_mem` together from the memory it detects (the container limit, else host RAM, or `POSTGRES_MEMORY`), so its defaults no longer overrun small containers. Nothing needs setting.
+  - Why: at 1 GB without swap with every connection busy, the old `oltp` tuning (150 connections) was OOM-killed; every workload now holds at 1, 1.5 and 3 GB. The old formula charged 10 MB per connection and subtracted a 512 MB OS reserve, which left `work_mem` at 1 MB up to 2 GB. The new one charges what sessions were measured to use (about 3 MB each; a busy one 4 MB more plus up to 4 × `work_mem`) against 90% of the limit. A container limit above the host's RAM counts as the host's RAM.
+  - Gain, `work_mem` at 2 CPUs: `dw` 1 → 3.8 MB at 1 GB, 1 → 8.4 MB at 2 GB, 3 → 8.2 MB at 3 GB; 3 GB `mixed` 2 → 2.4 MB. The new `POSTGRES_ACTIVE_CONNECTIONS_PERCENT=25` sizes for a quarter of the connections busy at once and raises it further (1 GB `dw` 7.9 MB, 3 GB `mixed` 11.8 MB).
+  - Cost, connections at 2 CPUs, never below 10: 1 GB `mixed` 60 → 36, `web` 100 → 36, `oltp` 150 → 36, `dw` 50 → 10; 2 GB `mixed` 84 → 82, `web` 140 → 82, `oltp` 210 → 82, `dw` 70 → 13; 3 GB `dw` 70 → 22 (`mixed` stays 84).
+  - Operator action: if clients need more connections than the startup log shows, raise the memory limit, put PgBouncer in front, or set `max_connections` with `-c`. An operator's `max_connections` or `work_mem` is used as given and the other is fitted around it; a standby still raises `max_connections` to its primary's. README "Auto-Config" explains how to choose.
+
+### Fixed
+
+- A process dying inside the container no longer resets every database session. PostgreSQL ran as PID 1, so it adopted every orphaned process (a `docker exec` command whose shell exited first, a healthcheck killed on timeout); when one of those died by a signal, PostgreSQL took it for a crashed server process, dropped all connections and ran crash recovery. The image now starts `tini` (0.19.0) as PID 1, which adopts and reaps orphans; signals reach PostgreSQL as before. Operator action if you set `entrypoint:` in Compose: start it with `/usr/local/bin/tini`, `--` (the replica stack does).
+- Running out of memory no longer stops the database: the kernel could pick the postmaster (it counts the shared memory it touched), which exits the container until Docker restarts it. Every server process now carries an OOM score 1000 above the postmaster's (`PG_OOM_ADJUST_FILE`, `PG_OOM_ADJUST_VALUE` in the image env), so the kernel kills a backend instead and PostgreSQL recovers in seconds; the connections of that moment still drop. Measured at 1 GB without swap and 55 busy sessions: before, the container exited with code 137; after, it kept serving.
+- A first start can no longer log `ERROR: function pgflow.set_vt_batch … does not exist`: the pgflow schema now loads in one transaction, so pg_cron cannot run its 15-second requeue job before the schema has defined that function. The error was harmless log noise on a slow first start.
+
+### Changed
+
+- `primary` stack: PostgreSQL's default memory limit is 1536m instead of 2048m, so a 2 GB VPS keeps room for the OS, PgBouncer and the exporters (auto-config fills the limit). On a larger host set `POSTGRES_MEMORY_LIMIT` to use the memory. The `replica` stack's default rises from 512m to the same 1536m: a standby must run its primary's `max_connections`, which 512m cannot hold.
+- Image layers are zstd-compressed instead of gzip: about 26% less to download, and faster to unpack. Pulling needs Docker Engine 23+ or containerd 1.5+ (the README already requires Docker Engine 24+); older clients cannot pull the image.
+- The JIT carries only the LLVM code generator for the image's own architecture (x86-64 or arm64): LLVM is linked statically into `llvmjit.so` instead of shipping the full `libLLVM.so` with every target (GPU, RISC-V, WebAssembly…). About 100 MB smaller unpacked; JIT behaviour is unchanged. With the two entries below, the arm64 image shrinks from 617 to 413 MB unpacked.
+- The JIT's inlining bitcode ships without debug info: about 70 MB smaller unpacked. Generated code is unchanged; the cost is that gdb can no longer show source lines for PostgreSQL functions inlined into JIT-compiled code.
+- The server (with its JIT), extensions and Groonga ship without static symbol tables (`strip --strip-unneeded`), about 35 MB smaller unpacked. Nothing at runtime reads them; profiling or debugging a running container from the host (perf, gdb) no longer shows names of static functions in those binaries.
+
 ## [v18.6-202610311330] - 2026-10-31
 
 ### Breaking

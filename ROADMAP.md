@@ -21,11 +21,31 @@ Work:
 
 ## Medium
 
+### Two containers on one data volume both start a server
+
+PostgreSQL's `postmaster.pid` check compares PIDs, which cannot see a server in another container (separate PID and IPC namespaces), so a second `docker run`/`compose run` on a live volume starts a second postmaster on the same data and corrupts it; the entrypoint's stale-lock removal relies on the same blindness. Fix: the entrypoint takes a non-blocking `flock` on a file in the data directory and keeps the descriptor open through `exec postgres`, so the kernel holds it host-wide for the server's lifetime and frees it on any death; a held lock stops the second container naming the other one. Needs a `flock` binary in the image (util-linux or a small static helper); prove with two containers on one volume, and that local-driver volumes honour it.
+
+### Restore PostgreSQL's fast stop signal in the Nix image
+
+`nix/image.nix` omits `StopSignal`; the published Nix image reports no value, while the retained Debian image reports `SIGINT`. Preserve that shutdown contract in the Nix configuration rather than requiring every consumer to override it. Verify clean stop with an open client and committed-data recovery before release. Karakuri's review timeout does not establish this omission as its cause.
+
 ### The `pg_upgrade` path needs an image holding both majors
 
 Option A in `docs/UPGRADING.md` needs the old and new PostgreSQL binaries, and every extension built for both, in one image; none is built. Needed before the next major upgrade.
 
 ## Low
+
+### Auto-config leaves memory unused below 2 GB
+
+The memory fit charges a busy session about 11 MB at `work_mem` 1 MB; `test-memory-fit --all` measured about 8.4 MB, and peak anon + shmem stayed near 55% of a 1 GB limit (36 connections). 53 busy sessions at 1 GB were OOM-killed, so the safe count lies between. Calibrate `BUSY_SESSION_MB` and `MEMORY_HEADROOM_PERCENT` from repeated runs at 1 and 1.5 GB (variance, not one run), keeping zero OOM kills; dirty temp-file pages also need room.
+
+### Match SBOM verification to the documented signer
+
+`scripts/release/verify-sbom.ts` promises this repository's workflow but passes only `--owner`, accepting the organization's identity rather than the specific repository and workflow. Scope verification to the source repository and signer workflow, including attestations promoted from the testing image. GitHub CLI provides `--repo` and `--signer-workflow`; use those native checks rather than another verifier.
+
+### Keep tool counts out of extension labels
+
+The published OCI index description says "36 extensions", while `docs/.generated/docs-data.json` separates 32 extensions/modules from 4 tools. Derive extension descriptions from those existing kind counts so registry metadata agrees with the release notes; keep the total catalog count distinct.
 
 ### Unmeasured speed: `-O3` per component, Rust CPU baseline, slow suites
 
@@ -38,3 +58,7 @@ Speed waits for correctness. The server at `-O3` measured no faster (reason at `
 ### arm64 BTI is off; restore it before running on Armv8.5+ hosts
 
 BTI does nothing on current hosts (Hetzner CAX: Ampere Altra, Armv8.2, which treats `bti` as a no-op), so it waits until a host enforces it (AWS Graviton 3+, Azure Cobalt, Google Axion). The linker marks a binary only if every object in it is marked, and only the C startup files block that. gcc's `crtbegin*.o`/`crtend*.o` have no landing pads at all: forcing the mark (`-z force-bti`) would crash the server at start, since `.init_array` calls them indirectly, so they must be recompiled (compiler-rt's `crtbegin.c`/`crtend.c` with `-mbranch-protection=standard` compile in seconds). glibc's `crt1.o`/`Scrt1.o` already have their landing pads and only lack the mark: `ld -r -z force-bti` adds it. Pass `-mbranch-protection=standard` in `NIX_CFLAGS_COMPILE` and `-B<those files>` in `NIX_CFLAGS_COMPILE_BEFORE` (cc-wrapper's own `-B` leads `NIX_CFLAGS_COMPILE`, and the first `-B` holding a file wins); never `-z force-bti` on final links, which would hide an unmarked static library. Done that way, contrib modules and most tools come out marked, but `postgres`, `psql`, `initdb`, the `pg_basebackup` family and most third-party C modules do not: some further input is unmarked. Find it by relinking one of them with `-z force-bti -z bti-report=warning`, which names every unmarked input. The server builds with nixpkgs' LLVM stdenv (clang, LLD, `-flto`), extensions with gcc and `ld.bfd`. Ship it with an image check reading each ELF file's `PT_GNU_PROPERTY` note, since losing the mark breaks no build. Rust extensions stay unmarked (precompiled std), as do nixpkgs' shared libraries; the kernel enforces BTI per object, so they keep working. Prove it where BTI is enforced: an arm64 CI runner whose `/proc/cpuinfo` lists `bti` (checked first), or locally under user-mode `qemu-aarch64 -cpu max` (a force-marked binary without landing pads dies there with SIGILL and runs natively; Docker Desktop's VM hides the host's BTI even on Apple M4). `initdb` execs `postgres` outside qemu, so run the server as `postgres --single` under it.
+
+### Layer order makes hosts re-unpack unchanged layers
+
+Docker reuses a downloaded layer by digest wherever it sits, but it unpacks each layer on top of the ones below it, so a changed layer makes every layer above it unpack again (download size is unaffected). `streamLayeredImage` orders layers by how many store paths reference them, which leaves often-changing extensions under the large stable ones (the JIT layer, ICU, Groonga). On a release that bumps one extension and not nixpkgs, putting extensions and `aza-pg-files` on top cuts the re-unpacked bytes from most of the image to the changed layers (measured on v18.6-202610311330: 423 MB to about 29 MB). A nixpkgs bump changes every layer whatever the order. Waits on nixpkgs: the only control is `layeringPipeline`, which its own code marks highly experimental and subject to change; adopt it once nixpkgs declares it stable.

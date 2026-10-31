@@ -11,7 +11,7 @@
  */
 
 import {
-  EPHEMERAL_PGDATA,
+  TEST_SERVER,
   dockerCleanup,
   generateUniqueContainerName,
   waitForPostgres,
@@ -33,7 +33,7 @@ async function measure(image: string): Promise<string> {
         "-d",
         "--name",
         container,
-        ...EPHEMERAL_PGDATA,
+        ...TEST_SERVER,
         "-e",
         "POSTGRES_PASSWORD=x",
         image,

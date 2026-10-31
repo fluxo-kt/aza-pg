@@ -17,7 +17,7 @@ docker run --rm aza-pg:pg18 postgres --version
 
 ### Local Builds
 
-`bun run build` (`scripts/nix/build-image.ts`) builds the image for this machine's architecture and loads it into Docker as `aza-pg:pg<major>`; `--tag <ref>` retags it. `--push <ref>` (publish.yml, native Nix only) pushes it to the registry with OCI media types and gzip-9 layers instead, then prints the digest: the release index carries annotations, which a Docker manifest list cannot. It refuses a push whose registry copy holds a raw layer under a compressed media type (reason in the script).
+`bun run build` (`scripts/nix/build-image.ts`) builds the image for this machine's architecture and loads it into Docker as `aza-pg:pg<major>`; `--tag <ref>` retags it. `--push <ref>` (publish.yml, native Nix only) pushes it to the registry with OCI media types and zstd layers instead (Docker Engine 23+ pulls them), then prints the digest: the release index carries annotations, which a Docker manifest list cannot. It refuses a push whose registry copy holds a layer that is not zstd or is raw tar under a compressed media type (reason in the script).
 
 **How it works:**
 
@@ -272,7 +272,7 @@ Image config labels (what `docker inspect` shows) come from `nix/image.nix`. The
 
 `flake.nix` defines the image; `nix/extensions.nix` and `nix/image.nix` hold the details:
 
-- **server** - nixpkgs' PostgreSQL with JIT (LLVM, only `libLLVM.so` kept) and without features no container uses; the reason for each option sits beside it
+- **server** - nixpkgs' PostgreSQL with JIT (LLVM linked statically into `llvmjit.so`, so only the host's code generator ships) and without features no container uses; the reason for each option sits beside it
 - **extensions** - every enabled manifest entry built from its pinned commit, with a nixpkgs recipe where the entry names one (`nix.package`), else from `build.type`
 - **image** - `dockerTools.streamLayeredImage` over the server, the extensions, the entrypoint scripts and configs, and the few tools the scripts call. Nothing else reaches it: no package manager, compiler or Bun
 

@@ -89,3 +89,51 @@ describe("docker exec fed by stdin needs -i", () => {
     ["pipe into a later command", "s.sh", "docker exec pg psql -c 'SELECT 1' | grep 1"],
   ])("%s passes", (_, file, text) => expect(flagged(file, text)).toBe(false));
 });
+
+describe("a memory limit comes with swap off, and test servers always have one", () => {
+  test.each([
+    ["--memory without --memory-swap", "scripts/x.sh", "docker run -d --memory 1g img"],
+    ["-m without --memory-swap", "scripts/x.sh", "docker run --rm -m 512m img true"],
+    ["array --memory= without swap", "scripts/test/a.ts", 'const d = ["--memory=2g", ...cpus(2)];'],
+    [
+      "test server without a limit",
+      "scripts/test/a.ts",
+      "await $`docker run -d --name ${c} ${img}`;",
+    ],
+    [
+      "detached long form",
+      "scripts/docker/a.ts",
+      "await $`docker run --detach --name ${c} ${img}`;",
+    ],
+  ])("%s is flagged", (_, file, text) => expect(flagged(file, text)).toBe(true));
+
+  test.each([
+    ["swap off", "scripts/x.sh", "docker run -d --memory 1g --memory-swap 1g img"],
+    [
+      "array with both",
+      "scripts/test/a.ts",
+      "const m = (s) => [`--memory=${s}`, `--memory-swap=${s}`];",
+    ],
+    [
+      "TEST_SERVER",
+      "scripts/test/a.ts",
+      "await $`docker run -d --name ${c} ${TEST_SERVER} ${img}`;",
+    ],
+    [
+      "TEST_SERVER_MEMORY",
+      "scripts/test/a.ts",
+      "await $`docker run -d ${TEST_SERVER_MEMORY} ${img}`;",
+    ],
+    [
+      "own entrypoint: no auto-config",
+      "scripts/test/a.ts",
+      "await $`docker run -d --entrypoint bun ${BUN} x`;",
+    ],
+    ["one-shot run", "scripts/test/a.ts", "await $`docker run --rm ${img} psql --version`;"],
+    [
+      "operator docs choose their swap policy",
+      "README.md",
+      "```bash\ndocker run -d -m 1g aza-pg\n```",
+    ],
+  ])("%s passes", (_, file, text) => expect(flagged(file, text)).toBe(false));
+});

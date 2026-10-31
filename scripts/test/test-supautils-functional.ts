@@ -13,7 +13,7 @@
  */
 import { $ } from "bun";
 import { TIMEOUTS } from "../config/test-timeouts";
-import { EPHEMERAL_PGDATA, generateUniqueContainerName, waitForPostgres } from "../utils/docker";
+import { TEST_SERVER, generateUniqueContainerName, waitForPostgres } from "../utils/docker";
 import { resolveImageTag } from "./image-resolver";
 import { getSharedPreloadLibraries } from "./lib/test-mode";
 import { psql, sqlOk } from "../utils/psql";
@@ -52,8 +52,8 @@ async function check(name: string, fn: () => Promise<void>): Promise<void> {
 try {
   const preload = `${getSharedPreloadLibraries("production")},supautils`;
   await Promise.all([
-    $`docker run -d --name ${withSupautils} ${EPHEMERAL_PGDATA} -e POSTGRES_PASSWORD=postgres -e POSTGRES_SHARED_PRELOAD_LIBRARIES=${preload} ${image}`.quiet(),
-    $`docker run -d --name ${withoutSupautils} ${EPHEMERAL_PGDATA} -e POSTGRES_PASSWORD=postgres ${image}`.quiet(),
+    $`docker run -d --name ${withSupautils} ${TEST_SERVER} -e POSTGRES_PASSWORD=postgres -e POSTGRES_SHARED_PRELOAD_LIBRARIES=${preload} ${image}`.quiet(),
+    $`docker run -d --name ${withoutSupautils} ${TEST_SERVER} -e POSTGRES_PASSWORD=postgres ${image}`.quiet(),
   ]);
   await Promise.all([
     waitForPostgres({ container: withSupautils, timeout: TIMEOUTS.startup }),

@@ -41,8 +41,31 @@ readonly WORK_MEM_CAP_MB=32
 
 # Additional caps for new parameters
 readonly WORK_MEM_DW_CAP_MB=256
+# Host RAM (no cgroup limit, no POSTGRES_MEMORY) also holds the OS and other services: the larger of this or 20% stays
+# free. A cgroup limit or POSTGRES_MEMORY is PostgreSQL's own share, so only MEMORY_HEADROOM_PERCENT is kept back.
 readonly OS_RESERVE_MB=512
-readonly CONNECTION_OVERHEAD_PER_CONN_MB=10
+
+# Memory model: max_connections and work_mem are sized so the busy share of all sessions fits the memory budget with
+# no swap (the common deployment, a 2 GB VPS giving PostgreSQL 1-1.5 GB, has none, and an overrun OOM-kills backends).
+# Measured at 1 GB, 2 CPUs, default preloads, sessions each running a sort, a parallel hash join and an aggregate:
+# 20 MB server private memory with no sessions and about 3 MB more per idle session. A busy session adds about 1 MB
+# private memory plus 3.4 x work_mem (25 sessions at work_mem 1 and 4 MB: 7.5 and 17.8 MB each), and about 3 MB of
+# System V shared memory for its parallel plan's segment, the same at both work_mem values. Re-measure when preloads,
+# hash_mem_multiplier or PostgreSQL's major version change: read memory.stat anon and memory.events oom_kill in the
+# container's cgroup under a full busy pool (scripts/test/test-memory-fit.ts).
+readonly MEMORY_HEADROOM_PERCENT=10 # kernel memory charged to the cgroup (page tables, sockets) and minimal page cache
+readonly SERVER_PRIVATE_MB=32       # postmaster, checkpointer, WAL writer and the extensions' background workers
+readonly SHARED_OVERHEAD_MB=48      # shared memory besides shared_buffers: locks, pg_stat_statements, pg_stat_monitor, WAL buffers
+readonly SESSION_BASE_MB=3          # one connected session doing nothing
+readonly BUSY_SESSION_MB=4          # a running query beyond work_mem: executor state and its parallel plan's segment
+# work_mem a busy session may hold at once: a sort, a hash (hash_mem_multiplier 2 doubles it) and an aggregate.
+# PostgreSQL has no per-session cap: a query with more sort or hash steps running together can exceed this.
+readonly WORK_MEM_UNITS_PER_SESSION=4
+readonly AUTOVACUUM_MAX_WORKERS=3     # PostgreSQL's default, set explicitly because the budget counts it
+readonly AUTOVACUUM_WORK_MEM_CAP_MB=256 # dead tuple IDs per vacuum pass before it must scan the indexes again
+# Fewest connections the fit may leave: 3 superuser-reserved slots (PostgreSQL's default) plus 7 ordinary ones. Below
+# what fits, a higher floor would ship a configuration the container cannot hold.
+readonly MIN_CONNECTIONS=10
 
 # Fixed parameters
 readonly CHECKPOINT_COMPLETION_TARGET="0.9"
@@ -50,6 +73,15 @@ readonly DEFAULT_STATISTICS_TARGET_DW=500
 readonly DEFAULT_STATISTICS_TARGET_STANDARD=100
 
 # Workload type lookup tables (associative arrays)
+# work_mem each workload keeps before the memory model gives up connections for it (reason at
+# calculate_max_connections).
+declare -A WORKLOAD_WORK_MEM_TARGET_KB=(
+    [web]=1024
+    [oltp]=1024
+    [mixed]=1024
+    [dw]=8192
+)
+
 declare -A WORKLOAD_MAX_CONN=(
     [web]=200
     [oltp]=300
@@ -140,6 +172,14 @@ detect_ram() {
         if [ "$limit" != "max" ] && [ -n "$limit" ]; then
             ram_mb=$((limit / 1024 / 1024))
             source="cgroup-v2"
+            # Docker accepts a limit above the host's RAM (--memory 8g on a 2 GB host); tuning to it would overrun the
+            # host, so the host's RAM, shared with its OS, applies instead.
+            local host_kb
+            host_kb=$(awk '/^MemTotal:/ {print $2}' /proc/meminfo 2>/dev/null || echo 0)
+            if [ "${host_kb:-0}" -gt 0 ] && [ "$ram_mb" -gt $(( host_kb / 1024 )) ]; then
+                ram_mb=$(( host_kb / 1024 ))
+                source="meminfo"
+            fi
             echo "$ram_mb:$source"
             return
         fi
@@ -248,7 +288,98 @@ if [ "$TOTAL_RAM_MB" -lt 512 ]; then
     exit 1
 fi
 
-calculate_max_connections() {
+# Operator values beat auto-tuning, in PostgreSQL's own order (lowest first): the config file and its includes <
+# postgresql.auto.conf (ALTER SYSTEM, also applied on reload) < command-line -c. So the tuned values go into a
+# generated config file that first includes the operator's config file and then sets them: they beat postgresql.conf
+# — where initdb writes max_connections, shared_buffers, max_wal_size, min_wal_size and listen_addresses='*' into every
+# data directory, so letting it win would switch auto-tuning off — while ALTER SYSTEM and the operator's own -c win.
+# data_directory and hba_file defaults derive from -D/PGDATA, not from config_file, so they stay where they were.
+shift # "postgres"
+DATA_DIR="${PGDATA:-}"
+OPERATOR_CONFIG=""
+declare -A OPERATOR_SET=() # setting name → value the operator passed on the command line
+OPERATOR_ARGS=()
+STARTS_SERVER=true # false for postgres options that print and exit (upstream's _pg_want_help list, plus -C)
+while [ "$#" -gt 0 ]; do
+    arg="$1"
+    shift
+    case "$arg" in
+        -c) pair="${1:-}"; [ "$#" -gt 0 ] && shift ;;
+        -c*) pair="${arg#-c}" ;;
+        --*=*) pair="${arg#--}" ;;
+        -C* | -'?' | --help | --describe-config | -V | --version) STARTS_SERVER=false; OPERATOR_ARGS+=("$arg"); continue ;;
+        -D) DATA_DIR="${1:-}"; OPERATOR_ARGS+=("$arg" "${1:-}"); [ "$#" -gt 0 ] && shift; continue ;;
+        *) OPERATOR_ARGS+=("$arg"); continue ;;
+    esac
+    # PostgreSQL accepts --config-file and -c config_file alike, and matches names case-insensitively.
+    name="${pair%%=*}"
+    name="${name//-/_}"
+    name="${name,,}"
+    if [ "$name" = "config_file" ]; then
+        OPERATOR_CONFIG="${pair#*=}"
+        continue
+    fi
+    OPERATOR_SET[$name]="${pair#*=}"
+    OPERATOR_ARGS+=(-c "$pair")
+done
+OPERATOR_CONFIG="${OPERATOR_CONFIG:-${DATA_DIR}/postgresql.conf}"
+ALTER_SYSTEM_FILE="${DATA_DIR}/postgresql.auto.conf"
+
+# The value the operator gave a setting with -c or ALTER SYSTEM (both beat auto-tuning), else nothing.
+# postgresql.auto.conf is written by PostgreSQL itself, one "name = 'value'" line per setting.
+operator_value() {
+    if [ -n "${OPERATOR_SET[$1]+set}" ]; then
+        printf '%s' "${OPERATOR_SET[$1]}"
+    else
+        awk -F ' = ' -v n="$1" '$1 == n { v = $2 } END { gsub(/\x27/, "", v); print v }' "$ALTER_SYSTEM_FILE" 2>/dev/null || true
+    fi
+}
+
+# A memory setting in kB (PostgreSQL's units; a bare number is kB), or nothing when it is not a plain integer with a
+# unit, which the memory model then leaves to PostgreSQL to accept or refuse.
+memory_kb() {
+    local v="${1// /}" n
+    n="${v%[kKmMgGtT][bB]}"
+    [[ "$n" =~ ^[0-9]+$ ]] || return 0
+    case "${v: -2}" in
+        [mM][bB]) echo $(( n * 1024 )) ;;
+        [gG][bB]) echo $(( n * 1048576 )) ;;
+        [tT][bB]) echo $(( n * 1073741824 )) ;;
+        *) echo "$n" ;;
+    esac
+}
+
+OPERATOR_MAX_CONNECTIONS=$(operator_value max_connections)
+[[ "$OPERATOR_MAX_CONNECTIONS" =~ ^[0-9]+$ ]] || OPERATOR_MAX_CONNECTIONS=""
+OPERATOR_WORK_MEM=$(operator_value work_mem)
+OPERATOR_WORK_MEM_KB=$(memory_kb "$OPERATOR_WORK_MEM")
+[ -n "$OPERATOR_WORK_MEM" ] && [ -z "$OPERATOR_WORK_MEM_KB" ] &&
+    echo "[POSTGRES] [AUTO-CONFIG] WARNING: work_mem '${OPERATOR_WORK_MEM}' is not a whole number with a unit (e.g. 1536kB), so the memory fit sizes max_connections without it; the memory verdict below may be wrong" >&2
+
+as_postgres() { if [ "$(id -u)" = 0 ]; then gosu postgres "$@"; else "$@"; fi; }
+
+# A server recovering WAL (standby.signal: a replica; recovery.signal: a backup restore) refuses to start with any of
+# five limits below the value the primary ran with, which pg_control records (see RAISE_ARGS). max_connections also
+# sizes work_mem, so the memory fit takes the primary's as its floor instead of being raised past the fit afterwards.
+PRIMARY_CONTROLDATA=""
+if [ "$STARTS_SERVER" = true ] && { [ -f "${DATA_DIR}/standby.signal" ] || [ -f "${DATA_DIR}/recovery.signal" ]; }; then
+    PRIMARY_CONTROLDATA=$(as_postgres pg_controldata -D "$DATA_DIR") || PRIMARY_CONTROLDATA=""
+fi
+PRIMARY_MAX_CONNECTIONS=$(awk -F ': *' '$1 == "max_connections setting" { print $2 }' <<<"$PRIMARY_CONTROLDATA")
+# Unreadable: no floor here; the RAISE_ARGS block names the problem and stops.
+[[ "$PRIMARY_MAX_CONNECTIONS" =~ ^[0-9]+$ ]] || PRIMARY_MAX_CONNECTIONS=0
+
+# The share of max_connections assumed to run queries at the same moment. 100 (default) sizes work_mem so every
+# connection can be busy at once without an OOM kill; a lower value gives each query more memory, for apps whose pools
+# hold many idle connections, at the risk of OOM-killed backends when more than that share is busy together.
+ACTIVE_CONNECTIONS_PERCENT="${POSTGRES_ACTIVE_CONNECTIONS_PERCENT:-100}"
+if ! [[ "$ACTIVE_CONNECTIONS_PERCENT" =~ ^[1-9][0-9]?$|^100$ ]]; then
+    echo "[POSTGRES] ERROR: POSTGRES_ACTIVE_CONNECTIONS_PERCENT must be a whole number from 1 to 100 (percent of max_connections busy at once), got '${ACTIVE_CONNECTIONS_PERCENT}'" >&2
+    exit 1
+fi
+
+# max_connections the workload asks for before the memory model caps it.
+workload_connections() {
     local workload=$(get_workload_type)
     local base_conn=${WORKLOAD_MAX_CONN[$workload]}
 
@@ -266,8 +397,6 @@ calculate_max_connections() {
 
     echo "$base_conn"
 }
-
-MAX_CONNECTIONS=$(calculate_max_connections)
 
 calculate_shared_buffers() {
     local ratio
@@ -327,26 +456,54 @@ calculate_maintenance_work_mem() {
     echo "$value"
 }
 
+# Memory left for sessions (MB): the budget minus what the server holds however many sessions run.
+calculate_session_pool() {
+    local budget other
+    if [ "$RAM_SOURCE" = "cgroup-v2" ] || [ "$RAM_SOURCE" = "manual" ]; then
+        budget=$(( TOTAL_RAM_MB * (100 - MEMORY_HEADROOM_PERCENT) / 100 ))
+    else
+        other=$(( TOTAL_RAM_MB * 20 / 100 ))
+        [ "$other" -lt "$OS_RESERVE_MB" ] && other=$OS_RESERVE_MB
+        budget=$(( TOTAL_RAM_MB - other ))
+    fi
+    echo $(( budget - SHARED_BUFFERS_MB - SHARED_OVERHEAD_MB - SERVER_PRIVATE_MB - MAINTENANCE_WORK_MEM_MB \
+        - AUTOVACUUM_MAX_WORKERS * AUTOVACUUM_WORK_MEM_MB ))
+}
+
+# Sessions that may run a query at once: the active share of max_connections, rounded up, plus parallel workers
+# (each one is a process with its own work_mem).
+busy_sessions() {
+    echo $(( ($1 * ACTIVE_CONNECTIONS_PERCENT + 99) / 100 + MAX_PARALLEL_WORKERS ))
+}
+
+# The workload's connection count, lowered only as far as its work_mem target needs. web, oltp and mixed target
+# 1 MB: a missing connection slot is an error for the application while a small work_mem only spills sorts to disk,
+# so slots are kept and work_mem gives way. dw runs few large queries, so its 8 MB target keeps memory per query
+# and gives up connections first.
+calculate_max_connections() {
+    [ -n "$OPERATOR_MAX_CONNECTIONS" ] && { echo "$OPERATOR_MAX_CONNECTIONS"; return; }
+    local wanted fits target_kb busy_kb base_kb=$(( SESSION_BASE_MB * 1024 ))
+    wanted=$(workload_connections)
+    target_kb=${WORKLOAD_WORK_MEM_TARGET_KB[$(get_workload_type)]}
+    # n × base + (n × share + workers) × units × target + workers × base <= pool, solved for n (in kB).
+    busy_kb=$(( BUSY_SESSION_MB * 1024 + WORK_MEM_UNITS_PER_SESSION * target_kb ))
+    fits=$(( (SESSION_POOL_MB * 1024 - MAX_PARALLEL_WORKERS * (base_kb + busy_kb)) * 100 \
+        / (base_kb * 100 + busy_kb * ACTIVE_CONNECTIONS_PERCENT) ))
+    [ "$fits" -lt "$wanted" ] && wanted=$fits
+    [ "$wanted" -lt "$MIN_CONNECTIONS" ] && wanted=$MIN_CONNECTIONS
+    echo "$wanted"
+}
+
+# In kB: whole MB would truncate 1.95 MB to 1 and leave half the session memory unused.
 calculate_work_mem() {
+    [ -n "$OPERATOR_WORK_MEM_KB" ] && { echo "$OPERATOR_WORK_MEM_KB"; return; }
     local workload=$(get_workload_type)
+    local busy=$(busy_sessions "$MAX_CONNECTIONS")
+    local free=$(( SESSION_POOL_MB - (MAX_CONNECTIONS + MAX_PARALLEL_WORKERS) * SESSION_BASE_MB - busy * BUSY_SESSION_MB ))
+    local value=$(( free * 1024 / (busy * WORK_MEM_UNITS_PER_SESSION) ))
 
-    # Account for connection overhead (10MB per connection)
-    local conn_overhead=$(( MAX_CONNECTIONS * CONNECTION_OVERHEAD_PER_CONN_MB ))
-
-    # Available memory pool
-    local pool=$(( TOTAL_RAM_MB - SHARED_BUFFERS_MB - conn_overhead - OS_RESERVE_MB ))
-
-    # Safety floor
-    [ "$pool" -lt 256 ] && pool=256
-
-    # Divide by connections × operations × safety margin
-    local divisor=$(( MAX_CONNECTIONS * 4 ))
-    [ "$divisor" -lt 1 ] && divisor=1
-
-    local value=$(( pool / divisor ))
-
-    # Minimum 1MB
-    [ "$value" -lt 1 ] && value=1
+    # Minimum 1MB: below it hashes and sorts of a few thousand rows spill to disk
+    [ "$value" -lt 1024 ] && value=1024
 
     # RAM-tiered caps based on workload
     local cap=$WORK_MEM_CAP_MB
@@ -361,7 +518,7 @@ calculate_work_mem() {
         fi
     fi
 
-    [ "$value" -gt "$cap" ] && value=$cap
+    [ "$value" -gt $(( cap * 1024 )) ] && value=$(( cap * 1024 ))
 
     echo "$value"
 }
@@ -397,7 +554,11 @@ calculate_io_workers() {
 SHARED_BUFFERS_MB=$(calculate_shared_buffers)
 EFFECTIVE_CACHE_MB=$(calculate_effective_cache)
 MAINTENANCE_WORK_MEM_MB=$(calculate_maintenance_work_mem)
-WORK_MEM_MB=$(calculate_work_mem)
+# Half of maintenance_work_mem: three autovacuum workers each holding the full amount (PostgreSQL's default of -1)
+# would reserve most of a small container for vacuum, which since PostgreSQL 17 allocates its dead-tuple store as it
+# grows instead of up front, so the reservation is worst case, never the typical cost.
+AUTOVACUUM_WORK_MEM_MB=$(( MAINTENANCE_WORK_MEM_MB / 2 ))
+[ "$AUTOVACUUM_WORK_MEM_MB" -gt "$AUTOVACUUM_WORK_MEM_CAP_MB" ] && AUTOVACUUM_WORK_MEM_MB=$AUTOVACUUM_WORK_MEM_CAP_MB
 
 # Leave CPU headroom for other services
 # For smaller systems (<=4 cores): CPU + 1
@@ -430,6 +591,31 @@ else
     MAX_PARALLEL_WORKERS_PER_GATHER=1
     MAX_PARALLEL_MAINTENANCE_WORKERS=1
 fi
+
+# Memory the sessions need when the active share of them is busy (MB).
+sessions_need_mb() {
+    echo $(( (MAX_CONNECTIONS + MAX_PARALLEL_WORKERS) * SESSION_BASE_MB \
+        + $(busy_sessions "$MAX_CONNECTIONS") * (BUSY_SESSION_MB * 1024 + WORK_MEM_UNITS_PER_SESSION * WORK_MEM_KB) / 1024 ))
+}
+
+# Sized last: both depend on the memory every other setting above has claimed. When even the connection floor at
+# 1 MB does not fit (512 MB, or dw's larger maintenance_work_mem on a small container), vacuum and maintenance
+# memory are halved toward their floors before the tuning gives up and warns: they only slow vacuum and index builds.
+while :; do
+    SESSION_POOL_MB=$(calculate_session_pool)
+    MAX_CONNECTIONS=$(calculate_max_connections)
+    TUNED_MAX_CONNECTIONS=$MAX_CONNECTIONS
+    [ "$MAX_CONNECTIONS" -lt "$PRIMARY_MAX_CONNECTIONS" ] && MAX_CONNECTIONS=$PRIMARY_MAX_CONNECTIONS
+    WORK_MEM_KB=$(calculate_work_mem)
+    [ "$(sessions_need_mb)" -le "$SESSION_POOL_MB" ] && break
+    if [ "$AUTOVACUUM_WORK_MEM_MB" -gt 8 ]; then
+        AUTOVACUUM_WORK_MEM_MB=$(( AUTOVACUUM_WORK_MEM_MB / 2 ))
+    elif [ "$MAINTENANCE_WORK_MEM_MB" -gt 32 ]; then
+        MAINTENANCE_WORK_MEM_MB=$(( MAINTENANCE_WORK_MEM_MB / 2 ))
+    else
+        break
+    fi
+done
 
 # Calculate new parameters
 WORKLOAD_TYPE=$(get_workload_type)
@@ -496,7 +682,16 @@ else
     echo "[POSTGRES] [AUTO-CONFIG] Secure mode (localhost only) → listen_addresses=${LISTEN_ADDR}; only this container can connect. Set POSTGRES_BIND_IP=0.0.0.0 to accept connections through a published port or from other containers"
 fi
 
-echo "[POSTGRES] [AUTO-CONFIG] RAM: ${TOTAL_RAM_MB}MB ($RAM_SOURCE), CPU: ${CPU_CORES} cores ($CPU_SOURCE), Workload: ${WORKLOAD_TYPE}, Storage: ${STORAGE_TYPE} → shared_buffers=${SHARED_BUFFERS_MB}MB, effective_cache_size=${EFFECTIVE_CACHE_MB}MB, maintenance_work_mem=${MAINTENANCE_WORK_MEM_MB}MB, work_mem=${WORK_MEM_MB}MB, max_connections=${MAX_CONNECTIONS}, wal_buffers=${WAL_BUFFERS_MB}MB, checkpoint_completion_target=${CHECKPOINT_COMPLETION_TARGET}, min_wal_size=${MIN_WAL_SIZE_MB}MB, max_wal_size=${MAX_WAL_SIZE_MB}MB, random_page_cost=${RANDOM_PAGE_COST}, default_statistics_target=${DEFAULT_STATISTICS_TARGET}, io_workers=${IO_WORKERS}, wal_level=${WAL_LEVEL}"
+echo "[POSTGRES] [AUTO-CONFIG] RAM: ${TOTAL_RAM_MB}MB ($RAM_SOURCE), CPU: ${CPU_CORES} cores ($CPU_SOURCE), Workload: ${WORKLOAD_TYPE}, Storage: ${STORAGE_TYPE} → shared_buffers=${SHARED_BUFFERS_MB}MB, effective_cache_size=${EFFECTIVE_CACHE_MB}MB, maintenance_work_mem=${MAINTENANCE_WORK_MEM_MB}MB, work_mem=${WORK_MEM_KB}kB, max_connections=${MAX_CONNECTIONS}, wal_buffers=${WAL_BUFFERS_MB}MB, checkpoint_completion_target=${CHECKPOINT_COMPLETION_TARGET}, min_wal_size=${MIN_WAL_SIZE_MB}MB, max_wal_size=${MAX_WAL_SIZE_MB}MB, random_page_cost=${RANDOM_PAGE_COST}, default_statistics_target=${DEFAULT_STATISTICS_TARGET}, io_workers=${IO_WORKERS}, wal_level=${WAL_LEVEL}"
+
+# The memory model's verdict, so an operator sees what the tuning guarantees and what breaks it.
+SESSIONS_NEED_MB=$(sessions_need_mb)
+[ "$MAX_CONNECTIONS" -gt "$TUNED_MAX_CONNECTIONS" ] &&
+    echo "[POSTGRES] [AUTO-CONFIG] max_connections: raised from ${TUNED_MAX_CONNECTIONS} to the primary's ${MAX_CONNECTIONS} (recovery cannot start below it); work_mem is fitted to it"
+echo "[POSTGRES] [AUTO-CONFIG] Memory: ${ACTIVE_CONNECTIONS_PERCENT}% of max_connections busy at once (POSTGRES_ACTIVE_CONNECTIONS_PERCENT) needs ${SESSIONS_NEED_MB}MB of the ${SESSION_POOL_MB}MB left for sessions"
+if [ "$SESSIONS_NEED_MB" -gt "$SESSION_POOL_MB" ]; then
+    echo "[POSTGRES] [AUTO-CONFIG] WARNING: max_connections=${MAX_CONNECTIONS} with work_mem=${WORK_MEM_KB}kB can use more memory than this container has: backends may be OOM-killed when that many queries run together. Lower max_connections or work_mem, set POSTGRES_ACTIVE_CONNECTIONS_PERCENT to the share really busy at once, or give the container more memory" >&2
+fi
 
 # pg_cron lives in the database initdb creates, which the official entrypoint resolves only after this script has
 # run, with file_env: POSTGRES_DB (or the content of POSTGRES_DB_FILE), else the superuser's name, POSTGRES_USER (or
@@ -513,8 +708,10 @@ AUTO_SETTINGS=(
     "shared_buffers=${SHARED_BUFFERS_MB}MB"
     "effective_cache_size=${EFFECTIVE_CACHE_MB}MB"
     "maintenance_work_mem=${MAINTENANCE_WORK_MEM_MB}MB"
-    "work_mem=${WORK_MEM_MB}MB"
+    "work_mem=${WORK_MEM_KB}kB"
     "max_connections=${MAX_CONNECTIONS}"
+    "autovacuum_max_workers=${AUTOVACUUM_MAX_WORKERS}"
+    "autovacuum_work_mem=${AUTOVACUUM_WORK_MEM_MB}MB"
     "max_worker_processes=${MAX_WORKER_PROCESSES}"
     "wal_level=${WAL_LEVEL}"
     "output_plugin_libraries=${OUTPUT_PLUGIN_LIBRARIES}"
@@ -549,44 +746,6 @@ AUTO_SETTINGS=(
 if [ "$WAL_LEVEL" = "minimal" ]; then
     AUTO_SETTINGS+=("max_wal_senders=0")
 fi
-
-# Operator values beat auto-tuning, in PostgreSQL's own order (lowest first): the config file and its includes <
-# postgresql.auto.conf (ALTER SYSTEM, also applied on reload) < command-line -c. So the tuned values go into a
-# generated config file that first includes the operator's config file and then sets them: they beat postgresql.conf
-# — where initdb writes max_connections, shared_buffers, max_wal_size, min_wal_size and listen_addresses='*' into every
-# data directory, so letting it win would switch auto-tuning off — while ALTER SYSTEM and the operator's own -c win.
-# data_directory and hba_file defaults derive from -D/PGDATA, not from config_file, so they stay where they were.
-shift # "postgres"
-DATA_DIR="${PGDATA:-}"
-OPERATOR_CONFIG=""
-declare -A OPERATOR_SET=() # setting name → value the operator passed on the command line
-OPERATOR_ARGS=()
-STARTS_SERVER=true # false for postgres options that print and exit (upstream's _pg_want_help list, plus -C)
-while [ "$#" -gt 0 ]; do
-    arg="$1"
-    shift
-    case "$arg" in
-        -c) pair="${1:-}"; [ "$#" -gt 0 ] && shift ;;
-        -c*) pair="${arg#-c}" ;;
-        --*=*) pair="${arg#--}" ;;
-        -C* | -'?' | --help | --describe-config | -V | --version) STARTS_SERVER=false; OPERATOR_ARGS+=("$arg"); continue ;;
-        -D) DATA_DIR="${1:-}"; OPERATOR_ARGS+=("$arg" "${1:-}"); [ "$#" -gt 0 ] && shift; continue ;;
-        *) OPERATOR_ARGS+=("$arg"); continue ;;
-    esac
-    # PostgreSQL accepts --config-file and -c config_file alike, and matches names case-insensitively.
-    name="${pair%%=*}"
-    name="${name//-/_}"
-    name="${name,,}"
-    if [ "$name" = "config_file" ]; then
-        OPERATOR_CONFIG="${pair#*=}"
-        continue
-    fi
-    OPERATOR_SET[$name]="${pair#*=}"
-    OPERATOR_ARGS+=(-c "$pair")
-done
-OPERATOR_CONFIG="${OPERATOR_CONFIG:-${DATA_DIR}/postgresql.conf}"
-
-as_postgres() { if [ "$(id -u)" = 0 ]; then gosu postgres "$@"; else "$@"; fi; }
 
 # pgsodium root key, read by the image's pgsodium_getkey (its header explains where it lives). The operator's
 # PGSODIUM_KEY_FILE is checked here so a wrong path or content stops the container naming it, before the
@@ -703,10 +862,17 @@ chmod 0644 "$AUTO_CONFIG_FILE"
 # changes nothing; neither is reported. initdb writes the image's postgresql.conf.sample (listen_addresses = '*' — the
 # official image sets it there) plus lines holding the built-in default (max_connections = 100, …), so that sample is
 # the baseline.
-ALTER_SYSTEM_FILE="${DATA_DIR}/postgresql.auto.conf"
 for setting in "${AUTO_SETTINGS[@]}"; do
     name="${setting%%=*}"
     tuned="${setting#*=}"
+    # The memory fit takes an operator's max_connections or work_mem as an input, so no tuned value exists to override.
+    fitted=""
+    [ "$name" = max_connections ] && fitted=$OPERATOR_MAX_CONNECTIONS
+    [ "$name" = work_mem ] && [ -n "$OPERATOR_WORK_MEM_KB" ] && fitted=$OPERATOR_WORK_MEM
+    if [ -n "$fitted" ]; then
+        echo "[POSTGRES] [AUTO-CONFIG] ${name}: operator value ${fitted} used as given; the memory fit sizes the rest around it"
+        continue
+    fi
     if [ -n "${OPERATOR_SET[$name]+set}" ]; then
         echo "[POSTGRES] [AUTO-CONFIG] ${name}: -c ${OPERATOR_SET[$name]} overrides auto-tuned ${tuned}"
         continue
@@ -735,12 +901,11 @@ done
 # lower can work; `postgres -C` with the same arguments gives the value the server would otherwise use.
 RAISE_ARGS=()
 if [ -f "${DATA_DIR}/standby.signal" ] || [ -f "${DATA_DIR}/recovery.signal" ]; then
-    controldata=$(as_postgres pg_controldata -D "$DATA_DIR")
     for pair in max_connections:max_connections max_worker_processes:max_worker_processes \
         max_wal_senders:max_wal_senders max_prepared_transactions:max_prepared_xacts \
         max_locks_per_transaction:max_locks_per_xact; do
         name="${pair%%:*}"
-        primary=$(awk -F ': *' -v l="${pair#*:} setting" '$1 == l { print $2 }' <<<"$controldata")
+        primary=$(awk -F ': *' -v l="${pair#*:} setting" '$1 == l { print $2 }' <<<"$PRIMARY_CONTROLDATA")
         current=$(as_postgres postgres -D "$DATA_DIR" -c "config_file=${AUTO_CONFIG_FILE}" "${OPERATOR_ARGS[@]}" -C "$name")
         if ! [[ "$primary" =~ ^[0-9]+$ && "$current" =~ ^[0-9]+$ ]]; then
             echo "[POSTGRES] [AUTO-CONFIG] ERROR: cannot compare ${name} with the primary's (pg_controldata: '${primary}', postgres -C: '${current}'); the line format of pg_controldata -D ${DATA_DIR} may have changed" >&2
@@ -839,6 +1004,21 @@ migrate_database() {
     migrate_sql "$1" -v VERBOSITY=sqlstate -c "ALTER EXTENSION timescaledb UPDATE"
     migrate_sql "$1" -c "$REBUILD_FOR_GLIBC"
 }
+# A postmaster.pid left by an unclean stop (OOM kill, docker kill, stop timeout) names a PID that a fresh container
+# reuses: tini is PID 1, which older images' postmaster recorded, and later PIDs come back in the same order.
+# PostgreSQL ignores a stale lock only when that PID is its own or its parent's, so the temporary server below (a
+# pg_ctl child) refused to start on every such data directory. Nothing in this container runs postgres yet, and a
+# server in another container is invisible to the lock's PID check anyway, so a lock not naming a live postgres here
+# is stale.
+if [ "$STARTS_SERVER" = true ] && [ -f "${DATA_DIR}/postmaster.pid" ]; then
+    lock_pid="" lock_comm=""
+    read -r lock_pid <"${DATA_DIR}/postmaster.pid" || true
+    read -r lock_comm 2>/dev/null <"/proc/${lock_pid:-0}/comm" || true
+    if [ "$lock_comm" != postgres ]; then
+        rm -f "${DATA_DIR}/postmaster.pid"
+        echo "[POSTGRES] [AUTO-CONFIG] removed the stale postmaster.pid an unclean stop left (PID ${lock_pid:-unknown} is not a running server)" >&2
+    fi
+fi
 if [ "$STARTS_SERVER" = true ] && [ -f "${DATA_DIR}/PG_VERSION" ] && [ ! -f "${DATA_DIR}/standby.signal" ] &&
     [ ! -f "${DATA_DIR}/recovery.signal" ] && [ "$(as_postgres cat "$IMAGE_MIGRATED_FILE" 2>/dev/null)" != "$image_key" ]; then
     update_dir=$(as_postgres mktemp -d)

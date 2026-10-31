@@ -385,13 +385,23 @@ function scopedName(prefix: string): string {
 }
 
 /**
- * `docker run` arguments putting PGDATA on tmpfs instead of the anonymous volume the image's `VOLUME` would create.
- * A test container that never restarts needs no volume: tmpfs vanishes with the container, so nothing can leak or be
- * mistaken for an operator's data, and initdb's fsyncs cost nothing (several times faster to start on Docker Desktop; no measurable change on CI runners).
- * Not for a container that is restarted or whose data outlives it (tmpfs is emptied on every start, so the server
- * re-runs initdb), nor under a `--memory` limit the test depends on (tmpfs pages count against it).
+ * `docker run` memory limit every test server of the image takes: the primary stack's default `mem_limit`. Without a
+ * limit auto-config tunes from the whole Docker VM (shared_buffers 25% of it, 2 GB maintenance_work_mem), which no
+ * shipped stack does; a dozen parallel suites each tuned that way exhaust the VM, and the kernel then kills a backend
+ * in whichever suite it picks ("the database system is in recovery mode"). Under a limit a test that overruns is
+ * killed in its own container.
  */
-export const EPHEMERAL_PGDATA = ["--tmpfs", "/var/lib/postgresql"] as const;
+export const TEST_SERVER_MEMORY = ["--memory", "2g"] as const;
+
+/**
+ * `docker run` arguments for a test server that never restarts: TEST_SERVER_MEMORY, and PGDATA on tmpfs instead of
+ * the anonymous volume the image's `VOLUME` would create. tmpfs vanishes with the container, so nothing can leak or
+ * be mistaken for an operator's data, and initdb's fsyncs cost nothing (several times faster to start on Docker
+ * Desktop; no measurable change on CI runners). tmpfs pages count against the limit (about 60 MB after initdb).
+ * Not for a container that is restarted or whose data outlives it (tmpfs is emptied on every start, so the server
+ * re-runs initdb): use TEST_SERVER_MEMORY with a volume.
+ */
+export const TEST_SERVER = [...TEST_SERVER_MEMORY, "--tmpfs", "/var/lib/postgresql"] as const;
 
 /** Unique container name for test isolation; also the root for volume names derived from it. */
 export function generateUniqueContainerName(prefix: string = "aza-pg-test"): string {

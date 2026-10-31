@@ -13,7 +13,7 @@
  * `app.aza_pg_custom` (ALTER SYSTEM-set by docker-entrypoint-initdb.d/00-aza-pg-settings.sh). That marker proves the
  * aza-pg image made the volume, not that a test did: an operator who ran the image with `docker run` and later
  * `docker rm` without -v leaves an identical volume holding a real database. Tests create no such volumes (they put
- * PGDATA on tmpfs — EPHEMERAL_PGDATA in utils/docker.ts — or use named volumes they remove), so a reported volume is
+ * PGDATA on tmpfs — TEST_SERVER in utils/docker.ts — or use named volumes they remove), so a reported volume is
  * either an old leak or someone's data, and only a person can tell which.
  *
  * NEVER prunes by type (no `docker image/volume/system prune`): a blunt prune would also delete

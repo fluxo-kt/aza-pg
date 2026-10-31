@@ -16,7 +16,7 @@
 import { $ } from "bun";
 import { MANIFEST_ENTRIES } from "../extensions/manifest-data";
 import { TIMEOUTS } from "../config/test-timeouts";
-import { EPHEMERAL_PGDATA, generateUniqueContainerName, waitForPostgres } from "../utils/docker";
+import { TEST_SERVER, generateUniqueContainerName, waitForPostgres } from "../utils/docker";
 import { resolveImageTag } from "./image-resolver";
 import { sqlOk } from "../utils/psql";
 
@@ -36,7 +36,7 @@ function majorMinor(version: string): string | null {
 const psql = (sql: string) => sqlOk(container, sql);
 
 async function main(): Promise<string[]> {
-  await $`docker run -d --name ${container} ${EPHEMERAL_PGDATA} -e POSTGRES_PASSWORD=postgres ${image}`.quiet();
+  await $`docker run -d --name ${container} ${TEST_SERVER} -e POSTGRES_PASSWORD=postgres ${image}`.quiet();
   await waitForPostgres({ container, timeout: TIMEOUTS.startup });
 
   const failures: string[] = [];

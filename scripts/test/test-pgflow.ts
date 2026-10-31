@@ -12,7 +12,7 @@
  */
 
 import { resolveImageTag } from "./image-resolver";
-import { EPHEMERAL_PGDATA, generateUniqueProjectName, waitForPostgres } from "../utils/docker";
+import { TEST_SERVER, generateUniqueProjectName, waitForPostgres } from "../utils/docker";
 
 const IMAGE = resolveImageTag();
 const CONTAINER = generateUniqueProjectName("aza-pg-pgflow");
@@ -176,7 +176,7 @@ async function main(): Promise<void> {
       "-d",
       "--name",
       CONTAINER,
-      ...EPHEMERAL_PGDATA,
+      ...TEST_SERVER,
       "-e",
       "POSTGRES_PASSWORD=test",
       IMAGE,

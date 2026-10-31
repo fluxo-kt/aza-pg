@@ -14,7 +14,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { $ } from "bun";
 import { TIMEOUTS } from "../config/test-timeouts";
-import { EPHEMERAL_PGDATA, generateUniqueContainerName, waitForPostgres } from "../utils/docker";
+import { TEST_SERVER, generateUniqueContainerName, waitForPostgres } from "../utils/docker";
 import { resolveImageTag } from "./image-resolver";
 import { psql } from "../utils/psql";
 
@@ -27,7 +27,7 @@ const NETWORK_CONTAINER = generateUniqueContainerName("aza-pg-security-network")
 async function startContainer(name: string, env: string[]): Promise<void> {
   const flags = env.flatMap((e) => ["-e", e]);
   const run =
-    await $`docker run -d --name ${name} ${EPHEMERAL_PGDATA} -e POSTGRES_PASSWORD=${PASSWORD} ${flags} ${IMAGE}`
+    await $`docker run -d --name ${name} ${TEST_SERVER} -e POSTGRES_PASSWORD=${PASSWORD} ${flags} ${IMAGE}`
       .quiet()
       .nothrow();
   if (run.exitCode !== 0) throw new Error(`docker run ${name} failed: ${run.stderr.toString()}`);

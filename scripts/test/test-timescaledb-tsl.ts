@@ -14,7 +14,7 @@
  */
 import { $ } from "bun";
 import { TIMEOUTS } from "../config/test-timeouts";
-import { EPHEMERAL_PGDATA, generateUniqueContainerName, waitForPostgres } from "../utils/docker";
+import { TEST_SERVER, generateUniqueContainerName, waitForPostgres } from "../utils/docker";
 import { resolveImageTag } from "./image-resolver";
 import { sqlOk } from "../utils/psql";
 
@@ -23,7 +23,7 @@ const container = generateUniqueContainerName("aza-pg-tsdb-tsl");
 const sql = (query: string) => sqlOk(container, query);
 
 async function run(): Promise<void> {
-  await $`docker run -d --name ${container} ${EPHEMERAL_PGDATA} -e POSTGRES_PASSWORD=postgres ${resolveImageTag()}`.quiet();
+  await $`docker run -d --name ${container} ${TEST_SERVER} -e POSTGRES_PASSWORD=postgres ${resolveImageTag()}`.quiet();
   await waitForPostgres({ container, timeout: TIMEOUTS.startup });
 
   await sql("CREATE EXTENSION IF NOT EXISTS timescaledb");

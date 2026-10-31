@@ -18,7 +18,7 @@ import { $ } from "bun";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { generateUniqueContainerName, waitForPostgres } from "../utils/docker";
+import { TEST_SERVER_MEMORY, generateUniqueContainerName, waitForPostgres } from "../utils/docker";
 import { resolveImageTag } from "./image-resolver";
 import { getSharedPreloadLibraries } from "./lib/test-mode";
 import { sqlOk } from "../utils/psql";
@@ -31,7 +31,7 @@ const containers: string[] = [];
 async function start(label: string, args: string[] = []): Promise<string> {
   const name = generateUniqueContainerName(`aza-pg-${label}`);
   containers.push(name);
-  await $`docker run -d --name ${name} -e POSTGRES_PASSWORD=postgres ${args} ${image}`.quiet();
+  await $`docker run -d --name ${name} ${TEST_SERVER_MEMORY} -e POSTGRES_PASSWORD=postgres ${args} ${image}`.quiet();
   return name;
 }
 

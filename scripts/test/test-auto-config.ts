@@ -523,7 +523,7 @@ async function realBoot(
       name,
       "-e",
       `POSTGRES_PASSWORD=autoconfig-${process.pid}`,
-      // No EPHEMERAL_PGDATA: tmpfs pages count against --memory, so the boot would run with less memory than tuned for.
+      // No TEST_SERVER: tmpfs pages count against --memory, so the boot would run with less memory than tuned for.
       ...dockerArgs,
       IMAGE,
     ]);

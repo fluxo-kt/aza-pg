@@ -17,7 +17,7 @@ import { TIMEOUTS } from "../config/test-timeouts";
 import {
   checkDockerDaemon,
   dockerCleanup,
-  EPHEMERAL_PGDATA,
+  TEST_SERVER,
   generateUniqueContainerName,
   waitForPostgres,
 } from "../utils/docker";
@@ -115,7 +115,7 @@ async function main(): Promise<number> {
           "-d",
           "--name",
           container,
-          ...EPHEMERAL_PGDATA,
+          ...TEST_SERVER,
           "-e",
           "POSTGRES_PASSWORD=test-image-pass",
           image,

@@ -17,7 +17,7 @@
 
 import { $ } from "bun";
 import { TIMEOUTS } from "../config/test-timeouts";
-import { generateUniqueContainerName, waitForPostgres } from "../utils/docker";
+import { TEST_SERVER_MEMORY, generateUniqueContainerName, waitForPostgres } from "../utils/docker";
 import { resolveImageTag } from "./image-resolver";
 import { sqlOk } from "../utils/psql";
 
@@ -50,7 +50,7 @@ const PGBACKREST_ENV = [
   "-e",
   "PGBACKREST_ARCHIVE_TIMEOUT=15",
 ];
-const SERVER = ["-e", "POSTGRES_PASSWORD=backup-test", ...PGBACKREST_ENV];
+const SERVER = [...TEST_SERVER_MEMORY, "-e", "POSTGRES_PASSWORD=backup-test", ...PGBACKREST_ENV];
 
 async function pgbackrest(container: string, ...args: string[]): Promise<string> {
   const r = await $`docker exec -u postgres ${container} pgbackrest ${args}`.nothrow().quiet();

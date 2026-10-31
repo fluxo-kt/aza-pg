@@ -16,7 +16,7 @@ import { preloadLibraryName } from "../config-generator/manifest-loader";
 import { $ } from "bun";
 import { TIMEOUTS } from "../config/test-timeouts";
 import { MANIFEST_ENTRIES } from "../extensions/manifest-data";
-import { EPHEMERAL_PGDATA, generateUniqueContainerName, waitForPostgres } from "../utils/docker";
+import { TEST_SERVER, generateUniqueContainerName, waitForPostgres } from "../utils/docker";
 import { resolveImageTag } from "./image-resolver";
 import { detectTestMode, getSharedPreloadLibraries } from "./lib/test-mode";
 import type { TestMode } from "./lib/test-mode";
@@ -48,7 +48,7 @@ try {
   // default differs from it. Regression mode adds the optional preloads, which are what it tests.
   const preloadEnv =
     mode === "production" ? [] : ["-e", `POSTGRES_SHARED_PRELOAD_LIBRARIES=${preload}`];
-  await $`docker run -d --name ${container} ${EPHEMERAL_PGDATA} -e POSTGRES_PASSWORD=postgres ${preloadEnv} ${resolveImageTag()}`.quiet();
+  await $`docker run -d --name ${container} ${TEST_SERVER} -e POSTGRES_PASSWORD=postgres ${preloadEnv} ${resolveImageTag()}`.quiet();
   await waitForPostgres({ container, timeout: TIMEOUTS.startup });
 
   await psql(`CREATE TABLE ${marker} (id int)`);
@@ -79,12 +79,6 @@ try {
 } catch (err) {
   failure = `setup: ${err instanceof Error ? err.message : String(err)}`;
 } finally {
-  // A failure here can be a backend crash ("in recovery mode"); the server log is its only evidence, and the
-  // container is about to go.
-  if (failure) {
-    const logs = await $`docker logs --tail 80 ${container}`.quiet().nothrow();
-    console.error(logs.stdout.toString() + logs.stderr.toString());
-  }
   await $`docker rm -f -v ${container}`.quiet().nothrow();
 }
 if (failure) {

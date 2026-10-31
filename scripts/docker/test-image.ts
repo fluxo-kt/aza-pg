@@ -51,6 +51,7 @@ const PHASES: Array<[string, Check[]]> = [
       lib.testDefaultCollation,
       lib.testLocales,
       lib.testJitCompiles,
+      lib.testOomKillsBackendsFirst,
     ],
   ],
   ["Extension creation", [lib.testEnabledExtensions, lib.testDisabledExtensionsUnavailable]],

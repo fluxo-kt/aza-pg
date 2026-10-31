@@ -10,6 +10,10 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
 
 ## [Unreleased]
 
+### Fixed
+
+- Running out of memory no longer stops the database: the kernel could pick the postmaster (it counts the shared memory it touched), which exits the container until Docker restarts it. Every server process now carries an OOM score 1000 above the postmaster's (`PG_OOM_ADJUST_FILE`, `PG_OOM_ADJUST_VALUE` in the image env), so the kernel kills a backend instead and PostgreSQL recovers in seconds; the connections of that moment still drop. Measured at 1 GB without swap and 55 busy sessions: before, the container exited with code 137; after, it kept serving.
+
 ### Changed
 
 - Image layers are zstd-compressed instead of gzip: about 26% less to download, and faster to unpack. Pulling needs Docker Engine 23+ or containerd 1.5+ (the README already requires Docker Engine 24+); older clients cannot pull the image.

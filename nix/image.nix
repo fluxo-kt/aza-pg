@@ -164,6 +164,14 @@ pkgs.dockerTools.streamLayeredImage {
       # Nix's glibc reads locales from here, not from /usr/lib/locale.
       "LOCALE_ARCHIVE=${locales}/lib/locale/locale-archive"
       "SSL_CERT_FILE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt"
+      # Out of memory, the kernel must kill a backend, never the postmaster: a backend's death is recovered in
+      # seconds (PostgreSQL resets its children), the postmaster's stops the container and the database with it.
+      # The postmaster counts the shared memory it touched, so it can be the largest process and the kernel's pick.
+      # PostgreSQL's documented fix lowers the postmaster to -1000, which needs CAP_SYS_RESOURCE that Docker does
+      # not grant; raising each child to 1000 (allowed unprivileged, written by PostgreSQL after every fork) keeps
+      # the same gap.
+      "PG_OOM_ADJUST_FILE=/proc/self/oom_score_adj"
+      "PG_OOM_ADJUST_VALUE=1000"
     ];
     Volumes."/var/lib/postgresql" = { };
     Healthcheck = {

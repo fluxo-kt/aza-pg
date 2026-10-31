@@ -664,6 +664,33 @@ export function testJitCompiles(container: string): Promise<TestResult> {
   });
 }
 
+/**
+ * Out of memory, the kernel kills the process with the highest score. If that is the postmaster the container
+ * stops and the database with it; a backend's death is recovered in seconds. The image's PG_OOM_ADJUST_* env makes
+ * every child score 1000 above the postmaster (reason at nix/image.nix), and nothing fails when it is lost: only the
+ * next OOM shows it, as an outage. So every child's oom_score_adj must sit at least 1000 above the postmaster's.
+ */
+export function testOomKillsBackendsFirst(container: string): Promise<TestResult> {
+  return check("OOM priority - every backend dies before the postmaster", async () => {
+    // postmaster.pid's first line is the postmaster's PID; its children are every server process.
+    const script =
+      'pm=$(head -1 "$PGDATA/postmaster.pid"); echo "$pm $(cat /proc/$pm/oom_score_adj)"; ' +
+      'for p in /proc/[0-9]*; do read -r pid _ _ ppid _ < "$p/stat" 2>/dev/null || continue; ' +
+      'if [ "$ppid" = "$pm" ]; then echo "$pid $(cat "$p/oom_score_adj")"; fi; done';
+    const { ok, output } = await execCommand(["sh", "-c", script], container);
+    expect(ok, `reading OOM scores failed: ${output}`);
+    const [postmaster, ...children] = output.split("\n").map((l) => l.trim().split(" "));
+    const pmAdj = Number(postmaster?.[1]);
+    expect(children.length > 0, `no server processes under the postmaster:\n${output}`);
+    const low = children.filter(([, adj]) => Number(adj) - pmAdj < 1000);
+    expect(
+      low.length === 0,
+      `postmaster oom_score_adj ${pmAdj}; children less than 1000 above it (pid adj): ${low.map((c) => c.join(" ")).join(", ")}`
+    );
+    return `${children.length} children at +${Number(children[0]?.[1]) - pmAdj}`;
+  });
+}
+
 /** The planner must choose the hypothetical index, which exists only inside hypopg. */
 export function testHypopgHypotheticalIndexes(container: string): Promise<TestResult> {
   return check("hypopg - planner uses a hypothetical index", async () => {

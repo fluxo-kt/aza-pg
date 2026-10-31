@@ -245,8 +245,9 @@ export function testNoBuildOnlyStorePaths(container: string): Promise<TestResult
     expect(ls.ok, `listing /nix/store failed: ${ls.output}`);
     const buildOnly =
       // Package names take the exact version form (gcc-16.2.0), so runtime outputs such as gcc-…-lib (libstdc++)
-      // and llvm-…-lib (the JIT) stay allowed; clang's -lib is the compiler's own.
-      /^[a-z0-9]{32}-(.*-(dev|doc|man|info|static)|(gcc|clang|llvm|lld|binutils|llvm-binutils|isl|mpfr|libmpc|linux-headers|bison|flex|gnum4|cmake|perl|python3|tcl|ruby)-[0-9][0-9.]*|clang-[0-9.]+-lib|compiler-rt-.*|.*-wrapper-[0-9.]+)$/;
+      // stay allowed; clang's -lib is the compiler's own, and llvm's -lib (libLLVM.so plus ~360 MB of static
+      // archives) is build-only because llvmjit.so links LLVM statically (flake.nix).
+      /^[a-z0-9]{32}-(.*-(dev|doc|man|info|static)|(gcc|clang|llvm|lld|binutils|llvm-binutils|isl|mpfr|libmpc|linux-headers|bison|flex|gnum4|cmake|perl|python3|tcl|ruby)-[0-9][0-9.]*|(clang|llvm)-[0-9.]+-lib|compiler-rt-.*|.*-wrapper-[0-9.]+)$/;
     const found = ls.output.split("\n").filter((name) => buildOnly.test(name));
     expect(
       found.length === 0,
@@ -631,9 +632,10 @@ export function testPgCronScheduling(container: string): Promise<TestResult> {
 
 /**
  * JIT is a shipped feature (flake.nix keeps it on for measured speedups), and a broken one fails silently: when
- * llvmjit.so or libLLVM cannot load, the server runs the query interpreted and only EXPLAIN shows no JIT. So the
- * plan must report compiled functions with inlining and optimisation forced on, and the result must equal the
- * interpreted one. Anything that touches the JIT layer (its RPATH copy, stripping) is judged here.
+ * llvmjit.so cannot load (e.g. an LLVM symbol its static link left undefined), the server runs the query
+ * interpreted and only EXPLAIN shows no JIT. So the plan must report compiled functions with inlining and
+ * optimisation forced on, and the result must equal the interpreted one. Anything that touches how llvmjit.so is
+ * linked or stripped is judged here.
  */
 export function testJitCompiles(container: string): Promise<TestResult> {
   return check("jit - compiles, inlines and matches interpreted results", async () => {

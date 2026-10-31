@@ -272,7 +272,7 @@ Image config labels (what `docker inspect` shows) come from `nix/image.nix`. The
 
 `flake.nix` defines the image; `nix/extensions.nix` and `nix/image.nix` hold the details:
 
-- **server** - nixpkgs' PostgreSQL with JIT (LLVM, only `libLLVM.so` kept) and without features no container uses; the reason for each option sits beside it
+- **server** - nixpkgs' PostgreSQL with JIT (LLVM linked statically into `llvmjit.so`, so only the host's code generator ships) and without features no container uses; the reason for each option sits beside it
 - **extensions** - every enabled manifest entry built from its pinned commit, with a nixpkgs recipe where the entry names one (`nix.package`), else from `build.type`
 - **image** - `dockerTools.streamLayeredImage` over the server, the extensions, the entrypoint scripts and configs, and the few tools the scripts call. Nothing else reaches it: no package manager, compiler or Bun
 

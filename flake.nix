@@ -74,7 +74,7 @@
           # nixpkgs strips with -S (debug info only), which keeps .symtab/.strtab: names of static functions that only
           # a debugger or profiler reads (the loader, dlsym, extensions resolving server functions and JIT-generated
           # code all use .dynsym, which stays). They were 43 MB of the image (2026-10-31). Applied to everything we
-          # build ourselves (server, extensions, groonga, the libLLVM copy); nixpkgs' cached libraries keep theirs,
+          # build ourselves (server with its JIT, extensions, groonga); nixpkgs' cached libraries keep theirs,
           # since stripping those would mean rebuilding them. Cost: host-side perf/gdb lose static names there.
           stripUnneeded = { stripDebugFlags = [ "--strip-unneeded" "-p" ]; };
           # The -O level stays each upstream's own release level (AGENTS.md). The server at -O3 measured no faster (arm64,
@@ -103,28 +103,26 @@
             perlSupport = false;
             pythonSupport = false;
             tclSupport = false;
-          }).overrideAttrs (o: { hardeningEnable = (o.hardeningEnable or [ ]) ++ hardeningEnable; } // stripUnneeded // targetCpu o);
+          }).overrideAttrs (o: {
+            hardeningEnable = (o.hardeningEnable or [ ]) ++ hardeningEnable;
+            # llvmjit.so links LLVM's static archives (in nixpkgs' cache, so no LLVM rebuild) instead of libLLVM.so. The
+            # linker takes only archive members something references, so of LLVM's code generators only the host's ships;
+            # llvmjit emits code only for the CPU it runs on. All archives are passed, not configure's component list:
+            # in static mode that list lacks the native target, and the missing symbols would surface only at dlopen.
+            # A command-line variable overrides Makefile.global's LLVM_LIBS in every make call.
+            preBuild = (o.preBuild or "") + ''
+              makeFlagsArray+=("LLVM_LIBS=$(${llvmPackages.llvm.dev}/bin/llvm-config --link-static --libs --system-libs)")
+            '';
+          } // stripUnneeded // targetCpu o);
           # The manifest's pgVersion names the release (tags, labels, PG_VERSION); the server is nixpkgs'. A nixpkgs bump
           # that moves the minor must update the manifest in the same change, or the image would claim a version it lacks.
           extensions = assert postgresql.version == manifest.metadata.pgVersion
             || throw "nixpkgs ships PostgreSQL ${postgresql.version}, manifest-data.ts says ${manifest.metadata.pgVersion}: set pgVersion to nixpkgs' version";
             import ./nix/extensions.nix { inherit pkgs postgresql manifest inputs hardeningEnable stripUnneeded targetCpu; inherit (pkgs) lib; };
           # jit is a separate output (llvmjit.so plus bitcode) that withPackages leaves out; without it jit=on does nothing.
-          # llvmjit.so's RPATH names llvm's whole lib output, ~360 MB of it static archives no process loads; this copy
-          # points llvmjit.so (and libLLVM's own RPATH) at a store path holding libLLVM.so alone.
-          jit = pkgs.runCommand "postgresql-jit-${postgresql.version}" { nativeBuildInputs = [ pkgs.patchelf pkgs.binutils ]; meta = { inherit (postgresql.meta) license; }; } ''
-            cp -r --no-preserve=mode ${postgresql.jit} $out
-            mkdir -p $out/llvm
-            cp -L --no-preserve=mode ${llvmPackages.llvm.lib}/lib/libLLVM.so.* $out/llvm/
-            strip ${toString stripUnneeded.stripDebugFlags} $out/llvm/libLLVM.so.*
-            for f in $out/lib/llvmjit.so $out/llvm/libLLVM.so.*; do
-              patchelf --set-rpath "$(patchelf --print-rpath "$f" | sed "s|${llvmPackages.llvm.lib}/lib|$out/llvm|g")" "$f"
-            done
-            if grep -rlF ${builtins.baseNameOf llvmPackages.llvm.lib} $out; then echo "llvm lib output still referenced"; exit 1; fi
-          '';
           # withPackages also links postgresql.man for desktop installs; a container has no man reader. The env is
           # symlinks, so dropping the link drops the store reference (buildEnv keeps `paths` out of overrideAttrs' reach).
-          server = (postgresql.withPackages (_: [ jit ] ++ builtins.attrValues extensions)).overrideAttrs (o: {
+          server = (postgresql.withPackages (_: [ postgresql.jit ] ++ builtins.attrValues extensions)).overrideAttrs (o: {
             # withPackages' env carries no meta.license, so the SBOM listed postgresql as NOASSERTION.
             meta = (o.meta or { }) // { inherit (postgresql.meta) license; };
             postBuild = (o.postBuild or "") + "\nrm $out/share/man\n";

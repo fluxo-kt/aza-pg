@@ -40,6 +40,9 @@ interface Case {
   activePercent?: number;
 }
 
+const label = (c: Case) =>
+  `${c.limitMb} MB ${c.workload}${c.activePercent ? ` ${c.activePercent}% active` : ""}`;
+
 const CASES: Case[] = [
   ...[1024, 1536, 3072].flatMap((limitMb) =>
     (["mixed", "web", "oltp", "dw"] as const).map((workload) => ({ limitMb, workload }))
@@ -47,6 +50,9 @@ const CASES: Case[] = [
   // The opt-in trade-off: more work_mem per query, sized for a quarter of the connections busy.
   { limitMb: 1024, workload: "mixed", activePercent: 25 },
 ];
+// --case=<label substring> runs only matching cases while iterating, e.g. --case="1024 MB mixed".
+const ONLY = Bun.argv.find((a) => a.startsWith("--case="))?.slice("--case=".length);
+const SELECTED = ONLY ? CASES.filter((c) => label(c).includes(ONLY)) : CASES;
 
 // Every statement uses more than any tuned work_mem: 400k md5 rows are ~30 MB.
 const BUSY_SQL = [
@@ -54,9 +60,6 @@ const BUSY_SQL = [
   "SELECT count(*) FROM s a JOIN s b USING (v) WHERE a.g % 7 = 0;",
   "SELECT count(*) FROM (SELECT v, count(*) FROM s GROUP BY v) t;",
 ].join("\n");
-
-const label = (c: Case) =>
-  `${c.limitMb} MB ${c.workload}${c.activePercent ? ` ${c.activePercent}% active` : ""}`;
 
 /** Runs one case; returns null when it held, else what broke. */
 async function runCase(c: Case, entrypoint: string | null): Promise<string | null> {
@@ -84,15 +87,26 @@ async function runCase(c: Case, entrypoint: string | null): Promise<string | nul
     ).split("|");
     // One slot for the maintenance loop, one for the checks after the load.
     const sessions = Number(max) - Number(reserved) - 2;
+    // The active percentage is the share of sessions the tuning expects inside a query at once: that many run
+    // queries, the rest stay connected and idle, which is what that setting promises to fit.
+    const busy = Math.ceil((sessions * (c.activePercent ?? 100)) / 100);
     await $`docker exec -i ${name} sh -c ${"cat > /tmp/busy.sql"} < ${new Response(BUSY_SQL)}`.quiet();
+    const idle =
+      sessions > busy
+        ? exec(
+            `echo 'SELECT pg_sleep(${LOAD_SECONDS});' > /tmp/idle.sql && ` +
+              `pgbench -U postgres -n -c ${sessions - busy} -j 1 -t 1 -f /tmp/idle.sql postgres`
+          )
+        : null;
     const maintenance = exec(
       `end=$(( $(date +%s) + ${LOAD_SECONDS} )); while [ "$(date +%s)" -lt "$end" ]; do ` +
         "psql -U postgres -qc 'CREATE INDEX s_v ON s (v)' -c 'DROP INDEX s_v' -c 'VACUUM s'; done"
     );
     const load = await exec(
-      `pgbench -U postgres -n -c ${sessions} -j 2 -T ${LOAD_SECONDS} -f /tmp/busy.sql postgres 2>&1`
+      `pgbench -U postgres -n -c ${busy} -j 2 -T ${LOAD_SECONDS} -f /tmp/busy.sql postgres 2>&1`
     );
     await maintenance;
+    await idle;
     const oomKills = (await exec("awk '/^oom_kill / {print $2}' /sys/fs/cgroup/memory.events"))
       .text()
       .trim();
@@ -113,12 +127,27 @@ async function runCase(c: Case, entrypoint: string | null): Promise<string | nul
         ? `pgbench exited ${load.exitCode}: ${output.trim()}`
         : "",
     ].filter(Boolean);
+    // An aborted client names no cause; the server log says whether it was memory, a limit or a crash.
+    const serverErrors = (logs.stdout.toString() + logs.stderr.toString())
+      .split("\n")
+      .filter((l) => /FATAL|PANIC|out of memory|terminated by signal/.test(l));
+    if (problems.length && serverErrors.length)
+      problems.push(`server: ${serverErrors.slice(0, 3).join(" | ")}`);
     console.log(
-      `${problems.length ? "❌" : "✅"} ${label(c)}: ${sessions} busy sessions, ${tuning}`
+      `${problems.length ? "❌" : "✅"} ${label(c)}: ${busy} busy + ${sessions - busy} idle sessions, ${tuning}`
     );
     return problems.length ? `${label(c)} (${tuning}): ${problems.join("; ")}` : null;
   } catch (err) {
-    return `${label(c)}: ${err instanceof Error ? err.message : String(err)}`;
+    // A Bun shell error's message is only "Failed with exit code N"; the cause is in its stderr and the server log.
+    const stderr = err instanceof $.ShellError ? err.stderr.toString().trim() : String(err);
+    const logs = await $`docker logs --tail 15 ${name}`.quiet().nothrow();
+    // A container killed whole (OOM on the postmaster) leaves only its exit state to read.
+    const state =
+      await $`docker inspect -f ${"{{.State.Status}}/exit={{.State.ExitCode}}/oom={{.State.OOMKilled}}"} ${name}`
+        .quiet()
+        .nothrow();
+    const tail = (logs.stdout.toString() + logs.stderr.toString()).trim();
+    return `${label(c)}: ${stderr} [container ${state.stdout.toString().trim()}]\n    server log:\n${tail.replace(/^/gm, "      ")}`;
   } finally {
     await $`docker rm -f -v ${name}`.quiet().nothrow();
     await $`docker volume rm ${volume}`.quiet().nothrow();
@@ -138,11 +167,11 @@ if (ENTRYPOINT) {
 const failures: string[] = [];
 try {
   // Greedy batches under the memory budget, largest limits first so they do not end up alone.
-  const pending = [...CASES].sort((a, b) => b.limitMb - a.limitMb);
+  const pending = [...SELECTED].sort((a, b) => b.limitMb - a.limitMb);
   while (pending.length > 0) {
     const batch: Case[] = [];
     let used = 0;
-    for (const c of [...pending]) {
+    for (const c of pending.slice()) {
       if (batch.length === 0 || used + c.limitMb <= PARALLEL_MEMORY_MB) {
         batch.push(c);
         used += c.limitMb;
@@ -162,4 +191,4 @@ if (failures.length > 0) {
   );
   process.exit(1);
 }
-console.log(`\nAll ${CASES.length} cases held their memory under full load (${IMAGE})`);
+console.log(`\nAll ${SELECTED.length} cases held their memory under full load (${IMAGE})`);

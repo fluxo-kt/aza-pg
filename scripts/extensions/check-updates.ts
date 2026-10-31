@@ -516,6 +516,7 @@ const IMAGE_SOURCES: Record<
   string,
   { repository: string; tagPrefix?: string; tags?: "docker-hub" }
 > = {
+  "nixos/nix": { repository: "https://github.com/NixOS/nix", tags: "docker-hub" },
   "edoburu/pgbouncer": {
     repository: "https://github.com/edoburu/docker-pgbouncer",
     tags: "docker-hub",

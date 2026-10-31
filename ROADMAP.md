@@ -58,7 +58,3 @@ BTI does nothing on current hosts (Hetzner CAX: Ampere Altra, Armv8.2, which tre
 ### The SBOM lacks licences for packages we build ourselves
 
 sbomnix reads each package's licence from nixpkgs' `meta`, and our own derivations (the server override, extensions built by `nix/extensions.nix`) do not carry it, so they are `NOASSERTION`, `postgresql` among them. Set `meta.license` on each, from the manifest entry so no side table appears.
-
-### Local Nix runs in `nixos/nix:latest`
-
-`scripts/nix/nix.ts` pulls a floating tag on hosts without Linux Nix, so a local build can use another Nix than CI's `install-nix-action`, against the rule that local checks run under CI's conditions. Pin it by digest and have `/update` bump it with the other images.

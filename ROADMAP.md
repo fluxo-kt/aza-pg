@@ -27,6 +27,14 @@ Option A in `docs/UPGRADING.md` needs the old and new PostgreSQL binaries, and e
 
 ## Low
 
+### Match SBOM verification to the documented signer
+
+`scripts/release/verify-sbom.ts` promises this repository's workflow but passes only `--owner`, accepting the organization's identity rather than the specific repository and workflow. Scope verification to the source repository and signer workflow, including attestations promoted from the testing image. GitHub CLI provides `--repo` and `--signer-workflow`; use those native checks rather than another verifier.
+
+### Keep tool counts out of extension labels
+
+The published OCI index description says "36 extensions", while `docs/.generated/docs-data.json` separates 32 extensions/modules from 4 tools. Derive extension descriptions from those existing kind counts so registry metadata agrees with the release notes; keep the total catalog count distinct.
+
 ### Unmeasured speed: `-O3` per component, Rust CPU baseline, slow suites
 
 Speed waits for correctness. The server at `-O3` measured no faster (reason at `flake.nix`'s -O comment); extension `-O3` candidates still need a measurement. Rust profiles need nothing: pg_jsonschema, timescaledb_toolkit and vectorscale release with fat LTO and `codegen-units=1`, wrappers (network-bound) with 16 units. Rust code still targets the generic CPU; adding the baseline must keep each crate's own `.cargo/config` rustflags (vectorscale's `+avx2,+fma`), which an env `RUSTFLAGS` replaces, and needs a speed measurement to justify the rebuild. Several Docker suites run past 30 s (backup-restore, pgbouncer-healthcheck and pgflow-upgrade longest), mostly container and stack start-up.

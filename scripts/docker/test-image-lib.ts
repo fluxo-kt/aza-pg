@@ -14,6 +14,7 @@ import { dirname, join } from "node:path";
 import { MANIFEST_ENTRIES, MANIFEST_METADATA } from "../extensions/manifest-data";
 import type { ManifestEntry } from "../extensions/manifest-data";
 import { getErrorMessage } from "../utils/errors";
+import { psql, sqlOk } from "../utils/psql";
 import type { TestResult } from "../utils/logger";
 
 export const REPO_ROOT = join(import.meta.dir, "../..");
@@ -34,55 +35,6 @@ const preloadName = (entry: ManifestEntry): string => preloadLibraryName(entry);
 // ============================================================================
 // EXECUTION
 // ============================================================================
-
-export interface PsqlResult {
-  ok: boolean;
-  out: string;
-  err: string;
-}
-
-/**
- * Run statements in ONE psql session (one `-c` each, so a SET applies to the statements after it)
- * and keep stderr even on success: NOTICE/DEBUG lines are evidence some checks assert on.
- */
-export async function psql(container: string, statements: string | string[]): Promise<PsqlResult> {
-  const list = Array.isArray(statements) ? statements : [statements];
-  const proc = Bun.spawn(
-    [
-      "docker",
-      "exec",
-      container,
-      "psql",
-      "-X",
-      "-U",
-      "postgres",
-      "-d",
-      "postgres",
-      "-v",
-      "ON_ERROR_STOP=1",
-      "-tA",
-      ...list.flatMap((sql) => ["-c", sql]),
-    ],
-    { stdout: "pipe", stderr: "pipe" }
-  );
-  const [out, err, code] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ]);
-  return { ok: code === 0, out: out.trim(), err: err.trim() };
-}
-
-/** Run statements and return stdout; throw with psql's error text when any statement fails. */
-async function sqlOk(container: string, statements: string | string[]): Promise<string> {
-  const result = await psql(container, statements);
-  if (!result.ok) {
-    // NOTICE lines (e.g. from DROP ... IF EXISTS) precede the error; report the error itself.
-    const errors = result.err.split("\n").filter((line) => /ERROR|FATAL|error:/.test(line));
-    throw new Error(`SQL failed: ${errors.join("\n") || result.err || result.out}`);
-  }
-  return result.out;
-}
 
 /** Last non-empty stdout line: a session's earlier statements print their own rows first. */
 function lastLine(output: string): string {

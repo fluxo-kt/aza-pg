@@ -20,6 +20,7 @@ import {
 } from "../utils/docker";
 import { MANIFEST_METADATA } from "../extensions/manifest-data";
 import { resolveImageTag } from "./image-resolver";
+import { sqlOk } from "../utils/psql";
 
 const image = resolveImageTag();
 const network = generateUniqueProjectName("aza-pg-net");
@@ -44,13 +45,7 @@ const server = Bun.serve({
 });
 console.log("listening", server.port);`;
 
-async function sql(query: string): Promise<string> {
-  const r = await $`docker exec ${db} psql -X -v ON_ERROR_STOP=1 -U postgres -tA -c ${query}`
-    .quiet()
-    .nothrow();
-  if (r.exitCode !== 0) throw new Error(`${query}\n${r.stderr.toString().trim()}`);
-  return r.stdout.toString().trim();
-}
+const sql = (query: string) => sqlOk(db, query);
 
 /** Wait for the worker to store the response for request `id`; returns `status|content`. */
 async function collect(id: string): Promise<string> {

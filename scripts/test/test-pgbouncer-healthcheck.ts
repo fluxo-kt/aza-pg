@@ -15,11 +15,11 @@
  * Usage: bun scripts/test/test-pgbouncer-healthcheck.ts [image]
  */
 
-import { $ } from "bun";
 import { TIMEOUTS } from "../config/test-timeouts";
 import { waitForPostgres } from "../utils/docker";
 import { resolveImageTag } from "./image-resolver";
 import { stageStack } from "./staged-stack";
+import { sqlOk } from "../utils/psql";
 
 const image = resolveImageTag();
 const suffix = crypto.randomUUID().slice(0, 8);
@@ -43,24 +43,6 @@ async function step(name: string, body: () => Promise<void>): Promise<void> {
     failures.push(name);
     console.error(`❌ ${name}: ${err instanceof Error ? err.message : String(err)}`);
   }
-}
-
-/** psql inside `container`; env entries become `docker exec -e`. Throws with psql's stderr on any failure. */
-async function psql(
-  container: string,
-  conn: string[],
-  sql: string,
-  env: Record<string, string> = {}
-): Promise<string> {
-  const envArgs = Object.entries(env).flatMap(([k, v]) => ["-e", `${k}=${v}`]);
-  const r =
-    await $`docker exec ${envArgs} ${container} psql -X -v ON_ERROR_STOP=1 ${conn} -tAc ${sql}`
-      .nothrow()
-      .quiet();
-  if (r.exitCode !== 0) {
-    throw new Error(`psql exited ${r.exitCode}: ${r.stderr.toString().trim()}`);
-  }
-  return r.stdout.toString().trim();
 }
 
 /** Poll an exporter's /metrics until `metric 1` appears; readiness is observed, the sleep only paces polling. */
@@ -101,20 +83,22 @@ try {
   }
   await waitForPostgres({ container: postgres, user: SUPERUSER, timeout: TIMEOUTS.startup });
 
-  const viaPgbouncer = ["-h", "pgbouncer", "-p", "6432", "-d", "postgres"];
+  const viaPgbouncer = { host: "pgbouncer", port: 6432, user: SUPERUSER };
 
   await step("app user logs in through PgBouncer auth_query", async () => {
     // The superuser is not in userlist.txt, so PgBouncer must fetch its SCRAM secret with auth_query.
-    const who = await psql(postgres, [...viaPgbouncer, "-U", SUPERUSER], "SELECT current_user", {
-      PGPASSWORD: POSTGRES_PASSWORD,
+    const who = await sqlOk(postgres, "SELECT current_user", {
+      ...viaPgbouncer,
+      env: { PGPASSWORD: POSTGRES_PASSWORD },
     });
     // [databases] pins the server login to pgbouncer_auth, so this is the pooled server session.
     if (who !== "pgbouncer_auth") throw new Error(`server session user was "${who}"`);
   });
 
   await step("wrong password is refused by PgBouncer", async () => {
-    const r = await psql(postgres, [...viaPgbouncer, "-U", SUPERUSER], "SELECT 1", {
-      PGPASSWORD: `${POSTGRES_PASSWORD}x`,
+    const r = await sqlOk(postgres, "SELECT 1", {
+      ...viaPgbouncer,
+      env: { PGPASSWORD: `${POSTGRES_PASSWORD}x` },
     }).then(
       () => "accepted",
       (e: Error) => e.message
@@ -127,25 +111,28 @@ try {
 
   await step("auth_user with ':' and '\\' in its password logs in from .pgpass", async () => {
     // No PGPASSWORD: libpq must read the entrypoint's escaped /tmp/.pgpass line back to the original password.
-    await psql(
-      pgbouncer,
-      ["-h", "localhost", "-p", "6432", "-U", "pgbouncer_auth", "-d", "postgres"],
-      "SELECT 1",
-      {
-        PGPASSFILE: "/tmp/.pgpass",
-      }
-    );
+    await sqlOk(pgbouncer, "SELECT 1", {
+      host: "localhost",
+      port: 6432,
+      user: "pgbouncer_auth",
+      env: { PGPASSFILE: "/tmp/.pgpass" },
+    });
   });
 
   await step(
     `running PgBouncer has max_client_conn=${MAX_CLIENT_CONN} and a postgres pool`,
     async () => {
-      const admin = ["-h", "localhost", "-p", "6432", "-U", "pgbouncer_auth", "-d", "pgbouncer"];
-      const env = { PGPASSWORD: AUTH_PASS };
-      const config = await psql(pgbouncer, admin, "SHOW CONFIG", env);
+      const admin = {
+        host: "localhost",
+        port: 6432,
+        user: "pgbouncer_auth",
+        database: "pgbouncer",
+        env: { PGPASSWORD: AUTH_PASS },
+      };
+      const config = await sqlOk(pgbouncer, "SHOW CONFIG", admin);
       const row = config.split("\n").find((l) => l.startsWith("max_client_conn|"));
       if (row?.split("|")[1] !== MAX_CLIENT_CONN) throw new Error(`SHOW CONFIG row: ${row}`);
-      const pools = await psql(pgbouncer, admin, "SHOW POOLS", env);
+      const pools = await sqlOk(pgbouncer, "SHOW POOLS", admin);
       if (!pools.split("\n").some((l) => l.startsWith("postgres|pgbouncer_auth|"))) {
         throw new Error(`no postgres/pgbouncer_auth pool in SHOW POOLS:\n${pools}`);
       }
@@ -153,22 +140,22 @@ try {
   );
 
   await step("pg_cron runs a job (it connects through the stack's pg_hba.conf)", async () => {
-    const local = ["-U", SUPERUSER, "-d", "postgres"];
-    await psql(postgres, local, "CREATE TABLE cron_tick (at timestamptz DEFAULT now())");
-    await psql(
+    const local = { user: SUPERUSER };
+    await sqlOk(postgres, "CREATE TABLE cron_tick (at timestamptz DEFAULT now())", local);
+    await sqlOk(
       postgres,
-      local,
-      "SELECT cron.schedule('stack_tick', '1 seconds', 'INSERT INTO cron_tick DEFAULT VALUES')"
+      "SELECT cron.schedule('stack_tick', '1 seconds', 'INSERT INTO cron_tick DEFAULT VALUES')",
+      local
     );
     const deadline = Date.now() + TIMEOUTS.health * 1000;
     while (Date.now() < deadline) {
-      if (Number(await psql(postgres, local, "SELECT count(*) FROM cron_tick")) > 0) return;
+      if (Number(await sqlOk(postgres, "SELECT count(*) FROM cron_tick", local)) > 0) return;
       await Bun.sleep(250);
     }
-    const runs = await psql(
+    const runs = await sqlOk(
       postgres,
-      local,
-      "SELECT coalesce(string_agg(DISTINCT status || ': ' || coalesce(return_message, ''), '; '), 'no runs') FROM cron.job_run_details"
+      "SELECT coalesce(string_agg(DISTINCT status || ': ' || coalesce(return_message, ''), '; '), 'no runs') FROM cron.job_run_details",
+      local
     );
     throw new Error(`the job never wrote a row (${runs})`);
   });

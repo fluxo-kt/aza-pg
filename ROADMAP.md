@@ -39,10 +39,6 @@ Option A in `docs/UPGRADING.md` needs the old and new PostgreSQL binaries, and e
 
 ## Low
 
-### Docker suites carry their own psql wrapper
-
-Several Docker suites declare their own psql helper although `scripts/docker/test-image-lib.ts` exports `psql` and `sqlOk`, so a fix to one (quoting, session handling, error reporting) misses the others.
-
 ### Unmeasured speed: `-O3` per component, Rust CPU baseline, slow suites
 
 Speed waits for correctness. Candidates for `-O3` (rule in AGENTS.md) need a pgbench or own-workload measurement. Rust profiles need nothing: pg_jsonschema, timescaledb_toolkit and vectorscale release with fat LTO and `codegen-units=1`, wrappers (network-bound) with 16 units. Rust code still targets the generic CPU; adding the baseline must keep each crate's own `.cargo/config` rustflags (vectorscale's `+avx2,+fma`), which an env `RUSTFLAGS` replaces, and needs a speed measurement to justify the rebuild. Several Docker suites run past 30 s (backup-restore, pgbouncer-healthcheck and pgflow-upgrade longest), mostly container and stack start-up.

@@ -18,6 +18,7 @@ import { MANIFEST_ENTRIES } from "../extensions/manifest-data";
 import { TIMEOUTS } from "../config/test-timeouts";
 import { EPHEMERAL_PGDATA, generateUniqueContainerName, waitForPostgres } from "../utils/docker";
 import { resolveImageTag } from "./image-resolver";
+import { sqlOk } from "../utils/psql";
 
 const image = resolveImageTag();
 const container = generateUniqueContainerName("aza-pg-ext-versions");
@@ -32,14 +33,7 @@ function majorMinor(version: string): string | null {
   return version.match(/(\d+\.\d+)/)?.[1] ?? null;
 }
 
-async function psql(sql: string): Promise<string> {
-  const r =
-    await $`docker exec ${container} psql -X -v ON_ERROR_STOP=1 -U postgres -tA ${"-F|"} -c ${sql}`
-      .quiet()
-      .nothrow();
-  if (r.exitCode !== 0) throw new Error(`${sql}\n${r.stderr.toString().trim()}`);
-  return r.stdout.toString().trim();
-}
+const psql = (sql: string) => sqlOk(container, sql);
 
 async function main(): Promise<string[]> {
   await $`docker run -d --name ${container} ${EPHEMERAL_PGDATA} -e POSTGRES_PASSWORD=postgres ${image}`.quiet();

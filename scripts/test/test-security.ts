@@ -16,6 +16,7 @@ import { $ } from "bun";
 import { TIMEOUTS } from "../config/test-timeouts";
 import { EPHEMERAL_PGDATA, generateUniqueContainerName, waitForPostgres } from "../utils/docker";
 import { resolveImageTag } from "./image-resolver";
+import { psql } from "../utils/psql";
 
 // argv is NOT passed: under `bun test` it holds the test runner's own arguments, not an image.
 const IMAGE = resolveImageTag({ argv: [] });
@@ -31,21 +32,6 @@ async function startContainer(name: string, env: string[]): Promise<void> {
       .nothrow();
   if (run.exitCode !== 0) throw new Error(`docker run ${name} failed: ${run.stderr.toString()}`);
   await waitForPostgres({ container: name, timeout: TIMEOUTS.startup });
-}
-
-async function sql(
-  container: string,
-  query: string,
-  user = "postgres"
-): Promise<{ ok: boolean; out: string; err: string }> {
-  const result = await $`docker exec ${container} psql -X -U ${user} -d postgres -tAc ${query}`
-    .quiet()
-    .nothrow();
-  return {
-    ok: result.exitCode === 0,
-    out: result.stdout.toString().trim(),
-    err: result.stderr.toString().trim(),
-  };
 }
 
 beforeAll(
@@ -66,13 +52,13 @@ describe("Authentication", () => {
   // initdb stores the superuser's password with its own default, so only a password set on the running server shows
   // what the image's configuration does; the network login below cannot see an md5 setting.
   test("a password set on the running server is stored as a SCRAM-SHA-256 verifier", async () => {
-    const created = await sql(DEFAULT_CONTAINER, "CREATE ROLE scram_probe LOGIN PASSWORD 'probe'");
+    const created = await psql(DEFAULT_CONTAINER, "CREATE ROLE scram_probe LOGIN PASSWORD 'probe'");
     expect(created.err).toBe("");
-    const stored = await sql(
+    const stored = await psql(
       DEFAULT_CONTAINER,
       "SELECT left(rolpassword, 14) FROM pg_authid WHERE rolname = 'scram_probe'"
     );
-    await sql(DEFAULT_CONTAINER, "DROP ROLE scram_probe");
+    await psql(DEFAULT_CONTAINER, "DROP ROLE scram_probe");
     expect(stored.out).toBe("SCRAM-SHA-256$");
   });
 
@@ -114,12 +100,12 @@ describe("Authentication", () => {
 
 describe("Network binding", () => {
   test("with no POSTGRES_BIND_IP the server listens on loopback only", async () => {
-    const result = await sql(DEFAULT_CONTAINER, "SHOW listen_addresses");
+    const result = await psql(DEFAULT_CONTAINER, "SHOW listen_addresses");
     expect(result.out).toBe("127.0.0.1");
   });
 
   test("POSTGRES_BIND_IP=0.0.0.0 listens on all interfaces", async () => {
-    const result = await sql(NETWORK_CONTAINER, "SHOW listen_addresses");
+    const result = await psql(NETWORK_CONTAINER, "SHOW listen_addresses");
     expect(result.out).toBe("0.0.0.0");
   });
 });
@@ -127,19 +113,19 @@ describe("Network binding", () => {
 describe("Privileges", () => {
   test("a non-superuser cannot create objects in the public schema", async () => {
     const role = "test_public_create_role";
-    await sql(DEFAULT_CONTAINER, `DROP ROLE IF EXISTS ${role}`);
-    expect((await sql(DEFAULT_CONTAINER, `CREATE ROLE ${role} LOGIN`)).ok).toBe(true);
+    await psql(DEFAULT_CONTAINER, `DROP ROLE IF EXISTS ${role}`);
+    expect((await psql(DEFAULT_CONTAINER, `CREATE ROLE ${role} LOGIN`)).ok).toBe(true);
     try {
-      const attempt = await sql(
+      const attempt = await psql(
         DEFAULT_CONTAINER,
         "CREATE TABLE public.test_public_create (id int)",
-        role
+        { user: role }
       );
       expect(attempt.ok).toBe(false);
       expect(attempt.err).toContain("permission denied for schema public");
     } finally {
-      await sql(DEFAULT_CONTAINER, "DROP TABLE IF EXISTS public.test_public_create");
-      await sql(DEFAULT_CONTAINER, `DROP ROLE IF EXISTS ${role}`);
+      await psql(DEFAULT_CONTAINER, "DROP TABLE IF EXISTS public.test_public_create");
+      await psql(DEFAULT_CONTAINER, `DROP ROLE IF EXISTS ${role}`);
     }
   });
 });

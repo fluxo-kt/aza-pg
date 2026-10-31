@@ -1000,9 +1000,11 @@ migrate_database() {
 # server in another container is invisible to the lock's PID check anyway, so a lock not naming a live postgres here
 # is stale.
 if [ "$STARTS_SERVER" = true ] && [ -f "${DATA_DIR}/postmaster.pid" ]; then
-    lock_pid=$(as_postgres head -n 1 "${DATA_DIR}/postmaster.pid" 2>/dev/null || true)
-    if [ "$(cat "/proc/${lock_pid:-0}/comm" 2>/dev/null)" != postgres ]; then
-        as_postgres rm -f "${DATA_DIR}/postmaster.pid"
+    lock_pid="" lock_comm=""
+    read -r lock_pid <"${DATA_DIR}/postmaster.pid" || true
+    read -r lock_comm 2>/dev/null <"/proc/${lock_pid:-0}/comm" || true
+    if [ "$lock_comm" != postgres ]; then
+        rm -f "${DATA_DIR}/postmaster.pid"
         echo "[POSTGRES] [AUTO-CONFIG] removed the stale postmaster.pid an unclean stop left (PID ${lock_pid:-unknown} is not a running server)" >&2
     fi
 fi

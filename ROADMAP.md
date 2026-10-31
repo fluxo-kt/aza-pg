@@ -21,6 +21,10 @@ Work:
 
 ## Medium
 
+### Two containers on one data volume both start a server
+
+PostgreSQL's `postmaster.pid` check compares PIDs, which cannot see a server in another container (separate PID and IPC namespaces), so a second `docker run`/`compose run` on a live volume starts a second postmaster on the same data and corrupts it; the entrypoint's stale-lock removal relies on the same blindness. Fix: the entrypoint takes a non-blocking `flock` on a file in the data directory and keeps the descriptor open through `exec postgres`, so the kernel holds it host-wide for the server's lifetime and frees it on any death; a held lock stops the second container naming the other one. Needs a `flock` binary in the image (util-linux or a small static helper); prove with two containers on one volume, and that local-driver volumes honour it.
+
 ### Restore PostgreSQL's fast stop signal in the Nix image
 
 `nix/image.nix` omits `StopSignal`; the published Nix image reports no value, while the retained Debian image reports `SIGINT`. Preserve that shutdown contract in the Nix configuration rather than requiring every consumer to override it. Verify clean stop with an open client and committed-data recovery before release. Karakuri's review timeout does not establish this omission as its cause.

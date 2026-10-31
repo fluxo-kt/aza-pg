@@ -61,12 +61,12 @@ const BUSY_SQL = [
   "SELECT count(*) FROM (SELECT v, count(*) FROM s GROUP BY v) t;",
 ].join("\n");
 
-/** Server log lines naming why sessions died; connection refusals during recovery are only their echo. */
+/** Server log lines naming why sessions failed (pgbench reports any SQL error as a backend that may have died). */
 async function crashCauses(container: string): Promise<string[]> {
   const logs = await $`docker logs ${container}`.quiet().nothrow();
   return (logs.stdout.toString() + logs.stderr.toString())
     .split("\n")
-    .filter((l) => /PANIC|out of memory|was terminated by signal/.test(l));
+    .filter((l) => /ERROR|PANIC|out of memory|was terminated by signal/.test(l));
 }
 
 /** Runs one case; returns null when it held, else what broke. */
@@ -120,18 +120,18 @@ async function runCase(c: Case, entrypoint: string | null): Promise<string | nul
       `end=$(( $(date +%s) + ${LOAD_SECONDS} )); while [ "$(date +%s)" -lt "$end" ]; do ` +
         "psql -U postgres -qc 'CREATE INDEX s_v ON s (v)' -c 'DROP INDEX s_v' -c 'VACUUM s'; done"
     );
-    // Peak private memory: how close a passing case came to the limit, the margin the memory model must keep.
-    // anon, not memory.peak, which counts reclaimable page cache.
+    // Peak unreclaimable memory: how close a passing case came to the limit, the margin the memory model must keep.
+    // anon + shmem (shared_buffers, parallel-query segments): what reclaim cannot free; memory.peak adds page cache.
     const sampler = exec(
       `end=$(( $(date +%s) + ${LOAD_SECONDS} )); p=0; while [ "$(date +%s)" -lt "$end" ]; do ` +
-        'a=$(awk \'/^anon / {print $2}\' /sys/fs/cgroup/memory.stat); [ "$a" -gt "$p" ] && p=$a; sleep 0.2; done; echo $p'
+        'a=$(awk \'/^(anon|shmem) / {t += $2} END {print t}\' /sys/fs/cgroup/memory.stat); [ "$a" -gt "$p" ] && p=$a; sleep 0.2; done; echo $p'
     );
     const load = await exec(
       `pgbench -U postgres -n -c ${busy} -j 2 -T ${LOAD_SECONDS} -f /tmp/busy.sql postgres 2>&1`
     );
     await maintenance;
     await idle;
-    const peak = `peak anon ${Math.round(Number((await sampler).text().trim()) / 1048576)} of ${c.limitMb} MB`;
+    const peak = `peak anon+shmem ${Math.round(Number((await sampler).text().trim()) / 1048576)} of ${c.limitMb} MB`;
     const oomKills = (await exec("awk '/^oom_kill / {print $2}' /sys/fs/cgroup/memory.events"))
       .text()
       .trim();

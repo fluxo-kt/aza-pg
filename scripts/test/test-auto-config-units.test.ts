@@ -104,10 +104,10 @@ describe("maintenance_work_mem: 1/16 of RAM (dw 1/8), floor 32 MB, cap 2048 MB",
 describe("work_mem: the session pool split over busy sessions, 1 MB floor, workload caps", () => {
   // [RAM, session pool, max_connections, parallel workers, active %, workload, expected kB]
   test.each([
-    [196608, 200000, 120, 8, 100, "mixed", "262144"], // (200000−128×3)×1024/(128×4) = 399232 → 256 MB cap at ≥32 GB
-    [196608, 100000, 200, 8, 100, "web", "32768"], // 122308 → web/oltp cap 32 MB
-    [1024, 1000, 100, 2, 25, "mixed", "6580"], // (1000−102×3)×1024/((25+2)×4)
-    [1024, 1000, 100, 2, 100, "mixed", "1741"], // same pool, every session busy
+    [196608, 200000, 120, 8, 100, "mixed", "262144"], // (200000−128×3−128×4)×1024/(128×4) = 398208 → 256 MB cap at ≥32 GB
+    [196608, 100000, 200, 8, 100, "web", "32768"], // (100000−208×7)×1024/(208×4) = 121285 → web/oltp cap 32 MB
+    [1024, 1000, 100, 2, 25, "mixed", "5556"], // (1000−102×3−27×4)×1024/(27×4): 27 = 25% of 100 + 2 workers
+    [1024, 1500, 100, 2, 100, "mixed", "1972"], // every session busy: (1500−102×3−102×4)×1024/(102×4)
     [512, 100, 60, 2, 100, "mixed", "1024"], // pool below the base cost → 1 MB floor
   ])(
     "%d MB RAM, pool %d MB, %d conns + %d workers, %d%% active, %s → %s kB",

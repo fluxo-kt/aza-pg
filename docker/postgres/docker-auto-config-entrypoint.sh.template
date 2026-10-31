@@ -47,15 +47,17 @@ readonly OS_RESERVE_MB=512
 
 # Memory model: max_connections and work_mem are sized so the busy share of all sessions fits the memory budget with
 # no swap (the common deployment, a 2 GB VPS giving PostgreSQL 1-1.5 GB, has none, and an overrun OOM-kills backends).
-# Measured at 1 GB, 2 CPUs, default preloads, 55 sessions each running a sort, a hash join and an aggregate:
-# 20 MB server private memory with no sessions, about 3 MB more per idle session, about 7 MB per busy one at
-# work_mem 1 MB; at work_mem 4 MB the same pool was OOM-killed, as the model predicts. Re-measure when preloads,
+# Measured at 1 GB, 2 CPUs, default preloads, sessions each running a sort, a parallel hash join and an aggregate:
+# 20 MB server private memory with no sessions and about 3 MB more per idle session. A busy session adds about 1 MB
+# private memory plus 3.4 x work_mem (25 sessions at work_mem 1 and 4 MB: 7.5 and 17.8 MB each), and about 3 MB of
+# System V shared memory for its parallel plan's segment, the same at both work_mem values. Re-measure when preloads,
 # hash_mem_multiplier or PostgreSQL's major version change: read memory.stat anon and memory.events oom_kill in the
 # container's cgroup under a full busy pool (scripts/test/test-memory-fit.ts).
 readonly MEMORY_HEADROOM_PERCENT=10 # kernel memory charged to the cgroup (page tables, sockets) and minimal page cache
 readonly SERVER_PRIVATE_MB=32       # postmaster, checkpointer, WAL writer and the extensions' background workers
 readonly SHARED_OVERHEAD_MB=48      # shared memory besides shared_buffers: locks, pg_stat_statements, pg_stat_monitor, WAL buffers
 readonly SESSION_BASE_MB=3          # one connected session doing nothing
+readonly BUSY_SESSION_MB=4          # a running query beyond work_mem: executor state and its parallel plan's segment
 # work_mem a busy session may hold at once: a sort, a hash (hash_mem_multiplier 2 doubles it) and an aggregate.
 # PostgreSQL has no per-session cap: a query with more sort or hash steps running together can exceed this.
 readonly WORK_MEM_UNITS_PER_SESSION=4
@@ -467,12 +469,13 @@ busy_sessions() {
 # and gives up connections first.
 calculate_max_connections() {
     [ -n "$OPERATOR_MAX_CONNECTIONS" ] && { echo "$OPERATOR_MAX_CONNECTIONS"; return; }
-    local wanted fits target_kb base_kb=$(( SESSION_BASE_MB * 1024 ))
+    local wanted fits target_kb busy_kb base_kb=$(( SESSION_BASE_MB * 1024 ))
     wanted=$(workload_connections)
     target_kb=${WORKLOAD_WORK_MEM_TARGET_KB[$(get_workload_type)]}
     # n × base + (n × share + workers) × units × target + workers × base <= pool, solved for n (in kB).
-    fits=$(( (SESSION_POOL_MB * 1024 - MAX_PARALLEL_WORKERS * (base_kb + WORK_MEM_UNITS_PER_SESSION * target_kb)) * 100 \
-        / (base_kb * 100 + WORK_MEM_UNITS_PER_SESSION * target_kb * ACTIVE_CONNECTIONS_PERCENT) ))
+    busy_kb=$(( BUSY_SESSION_MB * 1024 + WORK_MEM_UNITS_PER_SESSION * target_kb ))
+    fits=$(( (SESSION_POOL_MB * 1024 - MAX_PARALLEL_WORKERS * (base_kb + busy_kb)) * 100 \
+        / (base_kb * 100 + busy_kb * ACTIVE_CONNECTIONS_PERCENT) ))
     [ "$fits" -lt "$wanted" ] && wanted=$fits
     [ "$wanted" -lt "$MIN_CONNECTIONS" ] && wanted=$MIN_CONNECTIONS
     echo "$wanted"
@@ -482,8 +485,9 @@ calculate_max_connections() {
 calculate_work_mem() {
     [ -n "$OPERATOR_WORK_MEM_KB" ] && { echo "$OPERATOR_WORK_MEM_KB"; return; }
     local workload=$(get_workload_type)
-    local free=$(( SESSION_POOL_MB - (MAX_CONNECTIONS + MAX_PARALLEL_WORKERS) * SESSION_BASE_MB ))
-    local value=$(( free * 1024 / ($(busy_sessions "$MAX_CONNECTIONS") * WORK_MEM_UNITS_PER_SESSION) ))
+    local busy=$(busy_sessions "$MAX_CONNECTIONS")
+    local free=$(( SESSION_POOL_MB - (MAX_CONNECTIONS + MAX_PARALLEL_WORKERS) * SESSION_BASE_MB - busy * BUSY_SESSION_MB ))
+    local value=$(( free * 1024 / (busy * WORK_MEM_UNITS_PER_SESSION) ))
 
     # Minimum 1MB: below it hashes and sorts of a few thousand rows spill to disk
     [ "$value" -lt 1024 ] && value=1024
@@ -578,7 +582,7 @@ fi
 # Memory the sessions need when the active share of them is busy (MB).
 sessions_need_mb() {
     echo $(( (MAX_CONNECTIONS + MAX_PARALLEL_WORKERS) * SESSION_BASE_MB \
-        + $(busy_sessions "$MAX_CONNECTIONS") * WORK_MEM_UNITS_PER_SESSION * WORK_MEM_KB / 1024 ))
+        + $(busy_sessions "$MAX_CONNECTIONS") * (BUSY_SESSION_MB * 1024 + WORK_MEM_UNITS_PER_SESSION * WORK_MEM_KB) / 1024 ))
 }
 
 # Sized last: both depend on the memory every other setting above has claimed. When even the connection floor at

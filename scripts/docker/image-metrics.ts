@@ -4,7 +4,7 @@
 
 import { $ } from "bun";
 import { getErrorMessage } from "../utils/errors";
-import { formatSize } from "../utils/logger";
+import { formatDockerSize } from "../utils/logger";
 
 /**
  * Docker image metadata from `docker image inspect`
@@ -171,7 +171,7 @@ export async function getImageMetrics(imageTag: string): Promise<ImageMetrics> {
     compressedBytes,
     uncompressedBytes,
     layerCount,
-    compressedFormatted: formatSize(compressedBytes),
-    uncompressedFormatted: formatSize(uncompressedBytes),
+    compressedFormatted: formatDockerSize(compressedBytes),
+    uncompressedFormatted: formatDockerSize(uncompressedBytes),
   };
 }

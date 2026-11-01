@@ -141,6 +141,22 @@ export function formatSize(bytes: number): string {
 }
 
 /**
+ * Format an image size the way `docker images` prints it: decimal units, three significant digits ("416MB").
+ * Public surfaces (release notes, changelog) quote image sizes in Docker's form, so an operator checking with
+ * `docker images` sees the same number; everything else uses formatSize.
+ */
+export function formatDockerSize(bytes: number): string {
+  const units = ["B", "kB", "MB", "GB", "TB"] as const;
+  let value = bytes;
+  let unit = 0;
+  while (Number(value.toPrecision(3)) >= 1000 && unit < units.length - 1) {
+    value /= 1000;
+    unit++;
+  }
+  return `${Number(value.toPrecision(3))}${units[unit]}`;
+}
+
+/**
  * Format throughput as operations per second
  * @param count - Number of operations
  * @param duration - Duration in milliseconds

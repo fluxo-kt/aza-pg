@@ -30,9 +30,9 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
 
 - `primary` stack: PostgreSQL's default memory limit is 1536m instead of 2048m, so a 2 GB VPS keeps room for the OS, PgBouncer and the exporters (auto-config fills the limit). On a larger host set `POSTGRES_MEMORY_LIMIT` to use the memory. The `replica` stack's default rises from 512m to the same 1536m: a standby must run its primary's `max_connections`, which 512m cannot hold.
 - Image layers are zstd-compressed instead of gzip: about 26% less to download, and faster to unpack. Pulling needs Docker Engine 23+ or containerd 1.5+ (the README already requires Docker Engine 24+); older clients cannot pull the image.
-- The JIT carries only the LLVM code generator for the image's own architecture (x86-64 or arm64): LLVM is linked statically into `llvmjit.so` instead of shipping the full `libLLVM.so` with every target (GPU, RISC-V, WebAssembly…). About 100 MB smaller unpacked; JIT behaviour is unchanged. With the two entries below, the arm64 image shrinks from 617 to 413 MB unpacked.
-- The JIT's inlining bitcode ships without debug info: about 70 MB smaller unpacked. Generated code is unchanged; the cost is that gdb can no longer show source lines for PostgreSQL functions inlined into JIT-compiled code.
-- The server (with its JIT), extensions and Groonga ship without static symbol tables (`strip --strip-unneeded`), about 35 MB smaller unpacked. Nothing at runtime reads them; profiling or debugging a running container from the host (perf, gdb) no longer shows names of static functions in those binaries.
+- The JIT carries only the LLVM code generator for the image's own architecture (x86-64 or arm64): LLVM is linked statically into `llvmjit.so` instead of shipping the full `libLLVM.so` with every target (GPU, RISC-V, WebAssembly…). About 105 MB smaller unpacked; JIT behaviour is unchanged. With the two entries below, the arm64 image shrinks from 647 to 433 MB unpacked (`docker images`).
+- The JIT's inlining bitcode ships without debug info: about 72 MB smaller unpacked. Generated code is unchanged; the cost is that gdb can no longer show source lines for PostgreSQL functions inlined into JIT-compiled code.
+- The server (with its JIT), extensions and Groonga ship without static symbol tables (`strip --strip-unneeded`), about 37 MB smaller unpacked. Nothing at runtime reads them; profiling or debugging a running container from the host (perf, gdb) no longer shows names of static functions in those binaries.
 
 ## [v18.6-202610311330] - 2026-10-31
 

@@ -100,7 +100,7 @@ git show refs/heads/dev:CHANGELOG.md
 5. **Cross-validation**: Every version change MUST match `git diff $ANCHOR..refs/heads/dev -- scripts/extensions/manifest-data.ts`
 6. **No phantoms**: Don't claim fixes for things not broken in the last released version
 7. **`[Unreleased]` holds only this release.** Each release commit carries its own dated section (Phase 4.4), so everything under `[Unreleased]` on dev is new since the newest `## [v…]` heading.
-8. **Re-measure every number** in `[Unreleased]` (image size, store paths, MB added) on the image being released: each was measured when its entry was written, and any later closure change makes it false in a section that freezes at release. Read sizes as bytes (`docker image inspect -f '{{.Size}}'`) ÷ 1048576: `docker images` divides by 1000, which `Size Units` cannot catch.
+8. **Re-measure every number** in `[Unreleased]` (image size, store paths, MB added) on the image being released: each was measured when its entry was written, and any later closure change makes it false in a section that freezes at release. Quote image sizes exactly as `docker images` prints them (decimal MB), never converted to 1024-based units: an operator checking with the same tool must see the same number.
 
 Write down the specific CHANGELOG edits needed. You will apply them in Phase 4.4 AFTER the squash.
 

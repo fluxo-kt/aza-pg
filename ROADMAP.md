@@ -39,6 +39,10 @@ Option A in `docs/UPGRADING.md` needs the old and new PostgreSQL binaries, and e
 
 The memory fit charges a busy session about 11 MB at `work_mem` 1 MB; `test-memory-fit --all` measured about 8.4 MB, and peak anon + shmem stayed near 55% of a 1 GB limit (36 connections). 53 busy sessions at 1 GB were OOM-killed, so the safe count lies between. Calibrate `BUSY_SESSION_MB` and `MEMORY_HEADROOM_PERCENT` from repeated runs at 1 and 1.5 GB (variance, not one run), keeping zero OOM kills; dirty temp-file pages also need room.
 
+### Explain memory fitting in generated release configuration
+
+`scripts/generate-release-notes.ts` presents fixed workload connection counts and describes only RAM-tier reductions, although the released entrypoint also lowers them to fit its shared connection/query-memory budget. The v18.6-202610312251 notes therefore list `mixed` as 120 connections while their own change section gives 36 at 1 GB. Label these as workload targets, explain the additional memory fit, and expose `POSTGRES_ACTIVE_CONNECTIONS_PERCENT` and `-c`/`ALTER SYSTEM` precedence through the existing README auto-config reference; avoid copying its formulas into the generator.
+
 ### Match SBOM verification to the documented signer
 
 `scripts/release/verify-sbom.ts` promises this repository's workflow but passes only `--owner`, accepting the organization's identity rather than the specific repository and workflow. Scope verification to the source repository and signer workflow, including attestations promoted from the testing image. GitHub CLI provides `--repo` and `--signer-workflow`; use those native checks rather than another verifier.

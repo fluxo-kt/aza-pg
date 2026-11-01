@@ -76,15 +76,21 @@ export function generateHealthcheckScript(extensionsToEnable: ManifestEntry[]): 
     "# accepts socket connections and queries, then stops it and starts the final one by replacing itself with it (exec)."
   );
   lines.push(
-    "# So while a process still runs docker-entrypoint.sh, the server answering is not one dependents can use yet. The"
+    "# The auto-config shell sources upstream; tini retains the wrapper's name even after exec postgres."
   );
-  lines.push("# bracket keeps the pattern from matching grep's own command line.");
-  lines.push("if grep -qsa '/docker-entrypoint[.]sh' /proc/[0-9]*/cmdline; then");
   lines.push(
-    '    echo "FAIL: initialization still running (docker-entrypoint.sh has not started the final server)" >&2'
+    "# Inspect shell processes only, so the supervisor's arguments cannot keep a ready server unhealthy."
   );
-  lines.push("    exit 1");
-  lines.push("fi");
+  lines.push("for command in /proc/[0-9]*/cmdline; do");
+  lines.push('    IFS= read -r -d "" interpreter < "$command" || continue');
+  lines.push('    case "$interpreter" in bash|*/bash|sh|*/sh) ;; *) continue ;; esac');
+  lines.push("    if grep -qsaE '/docker-(auto-config-)?entrypoint[.]sh' \"$command\"; then");
+  lines.push(
+    '        echo "FAIL: initialization still running (entrypoint has not started the final server)" >&2'
+  );
+  lines.push("        exit 1");
+  lines.push("    fi");
+  lines.push("done");
   lines.push("");
 
   // Tier 1: Connection Test

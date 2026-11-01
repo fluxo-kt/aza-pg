@@ -4,6 +4,10 @@ Known defects and missing work, most severe first. Each entry says why it matter
 
 ## High
 
+### Health checks can admit the temporary initialization server
+
+The auto-config wrapper sources the upstream entrypoint, so initialization runs in `docker-auto-config-entrypoint.sh`; the generated health check only looks for `docker-entrypoint.sh`. Karakuri's AMD64 OS-update review reached setup SQL during the temporary server's shutdown. Detect the initializing shell for either entrypoint without mistaking tini's retained arguments for a running shell; prove rejection during initialization and acceptance after the final postmaster starts.
+
 ### Build the final image with Nix, not Debian
 
 Goal: the image holds only what PostgreSQL and our extensions need at runtime, each at its latest patched version, with no language runtime we can avoid. These are the goals in Karakuri's `docs/architecture.md` ("Choose responsibilities independently"); they cover container images too.

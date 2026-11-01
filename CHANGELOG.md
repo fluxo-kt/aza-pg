@@ -10,6 +10,10 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
 
 ## [Unreleased]
 
+### Fixed
+
+- Health checks reject the temporary initialization server when the auto-config wrapper sources the upstream entrypoint. The check reads each process's first argument to exclude tini's retained entrypoint arguments, so the final server can become healthy normally.
+
 ## [v18.6-202610312251] - 2026-10-31
 
 ### Breaking

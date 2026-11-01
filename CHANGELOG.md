@@ -10,6 +10,8 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
 
 ## [Unreleased]
 
+## [v18.6-202610312251] - 2026-10-31
+
 ### Breaking
 
 - Auto-config now sizes `max_connections` and `work_mem` together from the memory it detects (the container limit, else host RAM, or `POSTGRES_MEMORY`), so its defaults no longer overrun small containers. Nothing needs setting.
@@ -22,6 +24,7 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
 
 - A process dying inside the container no longer resets every database session. PostgreSQL ran as PID 1, so it adopted every orphaned process (a `docker exec` command whose shell exited first, a healthcheck killed on timeout); when one of those died by a signal, PostgreSQL took it for a crashed server process, dropped all connections and ran crash recovery. The image now starts `tini` (0.19.0) as PID 1, which adopts and reaps orphans; signals reach PostgreSQL as before. Operator action if you set `entrypoint:` in Compose: start it with `/usr/local/bin/tini`, `--` (the replica stack does).
 - Running out of memory no longer stops the database: the kernel could pick the postmaster (it counts the shared memory it touched), which exits the container until Docker restarts it. Every server process now carries an OOM score 1000 above the postmaster's (`PG_OOM_ADJUST_FILE`, `PG_OOM_ADJUST_VALUE` in the image env), so the kernel kills a backend instead and PostgreSQL recovers in seconds; the connections of that moment still drop. Measured at 1 GB without swap and 55 busy sessions: before, the container exited with code 137; after, it kept serving.
+- A first start can no longer log `ERROR: function pgflow.set_vt_batch … does not exist`: the pgflow schema now loads in one transaction, so pg_cron cannot run its 15-second requeue job before the schema has defined that function. The error was harmless log noise on a slow first start.
 
 ### Changed
 

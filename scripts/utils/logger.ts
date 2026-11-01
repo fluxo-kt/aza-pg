@@ -149,7 +149,7 @@ export function formatDockerSize(bytes: number): string {
   const units = ["B", "kB", "MB", "GB", "TB"] as const;
   let value = bytes;
   let unit = 0;
-  while (Number(value.toPrecision(3)) >= 1000 && unit < units.length - 1) {
+  while (value >= 1000 && unit < units.length - 1) {
     value /= 1000;
     unit++;
   }

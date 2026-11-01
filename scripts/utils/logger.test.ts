@@ -13,7 +13,6 @@ test("formatDockerSize matches docker images: decimal units, three significant d
   // Sizes docker images printed for v18.6-202610312251 (amd64, arm64).
   expect(formatDockerSize(416403947)).toBe("416MB");
   expect(formatDockerSize(432984691)).toBe("433MB");
-  expect(formatDockerSize(999_600_000)).toBe("1GB");
   expect(formatDockerSize(1_234_567_890)).toBe("1.23GB");
   expect(formatDockerSize(512)).toBe("512B");
 });

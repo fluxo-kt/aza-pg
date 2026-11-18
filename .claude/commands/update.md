@@ -39,7 +39,8 @@ Check:
 1. **Git-based extensions**:
 
    ```bash
-   bun scripts/extensions/check-updates.ts --format=json > /tmp/aza-updates.json
+   out=$(mktemp -d -t aza-pg-updates)   # delete it when the round's decisions are recorded
+   bun scripts/extensions/check-updates.ts --format=json > "$out/updates.json"
    echo "exit=$?"   # 0 = no ENABLED entry has an update, 1 = one does (NOT a failure), 2 = the check itself failed
    ```
    stdout carries only the report (progress goes to stderr), so the JSON file parses as-is. Exit 1 is the
@@ -52,6 +53,7 @@ Check:
    - If any enabled row has `updateAvailable: true`, either update it now or document a concrete skip reason
    Verify candidate updates are true upgrades in the same release family:
    - Ignore mismatched tag-family noise (e.g., monorepo tags like `foo@X.Y.Z` vs plain `X.Y.Z`)
+   - A row offering a newer PostgreSQL major line (pgaudit `18.0 -> 19.0`) is a checker defect, never noise to skip: the real update on our major (`18.1`) is hidden behind it. Extensions that keep one branch per PG major set `source.pgMajorTags: true` on the manifest entry, and the checker then offers only tags of `pgVersion`'s major; add the field to any entry that lacks it, then re-run
    - Ignore prereleases (`-beta`, `-rc`) unless intentionally targeting prereleases
    - Ignore downgrades (`current > candidate`) caused by mixed/non-semver tags
    - If GitHub API rate limits (`403`), verify the checker still resolves via tags API / `git ls-remote`
@@ -122,10 +124,8 @@ curl -s https://raw.githubusercontent.com/OWNER/REPO/NEW_TAG/CHANGELOG.md | head
 gh api repos/OWNER/REPO/compare/OLD_TAG...NEW_TAG --jq '.commits[].commit.message'
 
 # Method 5 (MANDATORY for git-ref updates): inspect commit range and touched paths
-git clone https://github.com/OWNER/REPO.git /tmp/EXT-REPO
-cd /tmp/EXT-REPO
-git log --oneline OLD_REF..NEW_REF
-git diff --name-status OLD_REF..NEW_REF
+gh api repos/OWNER/REPO/compare/OLD_REF...NEW_REF --jq '(.commits[].commit.message|split("\n")[0]), (.files[] | .status + " " + .filename)'
+# Need the full tree (grep, build)? Clone into /opt/apps/refs/_tmp/<name> (read /opt/apps/refs/AGENTS.md) and delete it at round end
 ```
 
 **⚠️ RTK proxy note**: `curl` to `api.github.com` returns RTK-filtered non-JSON output — `| jq` will fail. Always use `gh` CLI for GitHub API calls.
@@ -346,7 +346,24 @@ bun run build   # flake.nix refuses a pgVersion that differs from nixpkgs' serve
 - **Closure review**: every new store path in the image names the shipped feature that needs it
   (`docker run --rm --entrypoint sh <image> -c 'du -sk /nix/store/* | sort -rn | head'`); see AGENTS.md invariants.
 
-**⚠️ New security settings in PG minors**: a minor release can add a setting whose default refuses
+**⚠️ A PG minor can break shipped extensions at runtime while the build and most suites pass.** Security
+minors change server internals that C and pgrx extensions call: 18.7 made `PortalDrop()` refuse a portal
+still being set up, so every TimescaleDB policy job and every `pg_partman_bgw` run failed in background
+workers only, and it version-checked composite datums, which pgrx extensions skip until rebuilt on a fixed
+pgrx. Before bumping `flake.lock` past a minor, do all of this in the same round:
+
+1. Read the minor's release notes in full: the "Migration" section (reindex or backup actions go into the
+   CHANGELOG as operator steps) and every entry naming extensions, ABI, hooks or C functions. Open the
+   commit behind each such entry: its message lists the extensions it breaks.
+2. `rg` the pinned source of every shipped extension for each changed function. GitHub's code search sees only
+   default branches, so read the pinned commits (a tarball per entry: `gh api repos/OWNER/REPO/tarball/<commit>`).
+3. Read each C/pgrx extension's latest release notes for a supported PG-minor ceiling (TimescaleDB names
+   one: "compatible only with PostgreSQL versions up to 18.6") and for its fix of this minor's breakage.
+4. Every extension the minor breaks moves in the same round, to its fixed release, or to `build.patches` carrying the merged upstream fix when no tag has it yet. An open dependant fix never holds back the minor's CVE fixes (AGENTS.md "Latest stable versions everywhere").
+5. Make the break visible in a suite before the fix lands: a feature that runs in a background worker (a
+   scheduler, a maintenance worker) is untested until a suite lets that worker run it and reads the result.
+
+A minor release can also add a setting whose default refuses
 something the image ships. PostgreSQL 18.6 added `output_plugin_libraries`, refusing (superusers
 included) any logical-decoding plugin not listed, which would have broken the shipped wal2json. On every
 minor bump, read the release notes' new settings and their defaults. When adding or renaming a logical
@@ -365,6 +382,7 @@ postgres`> --single -D <pgdata> postgres` and feed it SQL on stdin.
 **⚠️ PG MAJOR version bump** (18→19): additional files need updating beyond manifest-data.ts:
 - Tool checks need no edit: `testToolsPresent` finds each tool by its manifest entry's `binaryPath`/`soFileName` and takes PG-major paths from `pg_config`; still grep `scripts/` for hardcoded `postgresql/[0-9]+/` paths
 - pgrx feature flags in manifest-data.ts (e.g., `features: ["pg18"]` → `features: ["pg19"]`)
+- `pgMajorTags` entries (pgaudit): the checker now offers the new major's tags; set each such entry to its first stable tag of that major
 - nixpkgs must package `postgresql_<new major>` at the locked revision; flake.nix picks it from `pgVersion`'s major
 
 ## Phase 4: Extensions (BY SOURCE TYPE)
@@ -406,7 +424,7 @@ bun run test:all  # Verify runtime compatibility
 - `postgis` → pgrouting
 - `timescaledb` → timescaledb_toolkit
 
-**If incompatible**: Skip update OR update both together in single commit.
+**If incompatible**: update both together in one commit (patch the dependent when its fixed release is not tagged yet); skipping is not an option (AGENTS.md "Latest stable versions everywhere").
 
 For encryption or key-loading changes, initialize the previous image with a disposable key and encrypted value, stop it, and open the same data with the candidate image and key. Check decryption before and after the documented SQL upgrade, plus restart/restore through the existing recovery suite. A fresh encrypted value cannot expose loss of access to old ciphertext.
 
@@ -527,7 +545,7 @@ PostgreSQL major (e.g. `features: ["pg18"]`).
 
 ### 5.4: Disabling Unmaintained Extensions
 
-Incompatibility starts investigation, not permission to remove a shipped capability. Compare a compatible patched release, the existing source-build path and a narrow upstream patch first; retain the working pin when the newer release removes useful behavior. Ask the owner about unresolved capability loss before disabling it. For an approved removal:
+Incompatibility starts investigation, not permission to remove a shipped capability. Compare a compatible patched release, the existing source-build path and a narrow upstream patch first. When the newer release itself removes useful behaviour, "latest everywhere" and "keep shipped capabilities" collide: ask Art with the evidence (what is lost, who uses it) instead of keeping the old pin on your own. Ask the owner about unresolved capability loss before disabling it. For an approved removal:
 
 ```typescript
 {
@@ -663,12 +681,12 @@ image can build cleanly if `set -e` is bypassed by `|| true` patterns.
 Common causes:
 - Missing build dependencies → add the nixpkgs attribute to the entry's `nix.inputs` (build tools: `nix.nativeInputs`)
 - Version incompatibility → Check the actual compiler/pgrx constraints and update compatible dependencies together
-- ABI break → Repair compatibility or retain the working pin; capability removal follows Phase 5.4
+- ABI break → Repair compatibility (newer release, or the merged upstream fix as `build.patches`); capability removal follows Phase 5.4
 
-Resolution options:
+Resolution options (an old pin is not one: AGENTS.md "Latest stable versions everywhere"):
 1. Fix (add missing deps, update versions) → regenerate → rebuild
-2. Retain the working pin with its concrete compatibility reason; escalate unresolved capability loss
-3. Patch build (add `build.patches` for sed fixes)
+2. Patch build (`build.patches`: the upstream fix commit when one exists, else our own minimal diff)
+3. Nothing works after 1–2 → ask Art with the evidence; hold only the work that depends on the answer
 
 ## Phase 9: Update CHANGELOG.md (Image Consumer Focus)
 
@@ -956,7 +974,7 @@ bun run test:all
 | Extension | Tag Format | Example |
 |-----------|------------|---------|
 | **pg_repack** | `ver_X.Y.Z` | `ver_1.5.3` |
-| **pgaudit** | `X.Y` (PG major) | `18.0` |
+| **pgaudit** | `X.Y` (X = PG major; entry sets `pgMajorTags`) | `18.0` |
 | **set_user** | `RELX_Y_Z` | `REL4_2_0` |
 | **pgbackrest** | `release/X.Y.Z` | `release/2.57.0` |
 | **wal2json** | `wal2json_X_Y` | `wal2json_2_6` |

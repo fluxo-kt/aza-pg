@@ -1020,6 +1020,29 @@ END$$
 SQL
 )
 image_key=$(readlink -f "$(command -v postgres)")
+previous_image=$(as_postgres cat "$IMAGE_MIGRATED_FILE" 2>/dev/null || true)
+# PostgreSQL 18.7 fixed two index corruptions without repairing existing indexes (its release notes order a REINDEX):
+# btree de-duplication on unconstrained bpchar columns (CHAR(n) is safe) returned wrong index-only results, and pg_trgm
+# GiST entries could lose their format flag. Rebuilt once, when the previous image ran an older server: the marker
+# holds that image's server path, which Nix names <hash>-postgresql-and-plugins-<version>; markers written by
+# Debian-built images name no version and count as older. Expression keys are not inspected (none ships bpchar ones).
+previous_server=$(printf '%s' "$previous_image" | sed -n 's#.*-postgresql-and-plugins-\([0-9.]*\)/.*#\1#p')
+if [ "$(printf '%s\n' "${previous_server:-0}" 18.7 | sort -V | head -n1)" != 18.7 ]; then
+    REINDEX_FOR_18_7=$(cat <<'SQL'
+DO $$DECLARE i regclass; BEGIN
+    FOR i IN SELECT x.indexrelid::regclass FROM pg_index x JOIN pg_class c ON c.oid = x.indexrelid
+        JOIN pg_am am ON am.oid = c.relam
+        WHERE (am.amname = 'btree' AND EXISTS (SELECT FROM pg_attribute a WHERE a.attrelid = x.indrelid
+                AND a.attnum = ANY (x.indkey) AND a.atttypid = 'bpchar'::regtype AND a.atttypmod = -1))
+            OR EXISTS (SELECT FROM pg_opclass o WHERE o.oid = ANY (x.indclass) AND o.opcname = 'gist_trgm_ops') LOOP
+        PERFORM set_config('client_min_messages', 'notice', true);
+        RAISE NOTICE '[POSTGRES] [AUTO-CONFIG] database %: rebuilding % (index corruption fixed in PostgreSQL 18.7)', current_database(), i;
+        EXECUTE format('REINDEX INDEX %s', i);
+    END LOOP;
+END$$
+SQL
+)
+fi
 migrate_sql() { # database, then psql arguments; failures are collected, the container stops after the server does
     local db="$1" out
     shift
@@ -1031,6 +1054,7 @@ migrate_database() {
     migrate_sql "$1" -v VERBOSITY=sqlstate -c "ALTER EXTENSION timescaledb UPDATE"
     migrate_sql "$1" -c "$UPDATE_EXTENSIONS"
     migrate_sql "$1" -c "$REBUILD_FOR_GLIBC"
+    [ -z "${REINDEX_FOR_18_7:-}" ] || migrate_sql "$1" -c "$REINDEX_FOR_18_7"
 }
 # A postmaster.pid left by an unclean stop (OOM kill, docker kill, stop timeout) names a PID that a fresh container
 # reuses: tini is PID 1, which older images' postmaster recorded, and later PIDs come back in the same order.
@@ -1048,7 +1072,7 @@ if [ "$STARTS_SERVER" = true ] && [ -f "${DATA_DIR}/postmaster.pid" ]; then
     fi
 fi
 if [ "$STARTS_SERVER" = true ] && [ -f "${DATA_DIR}/PG_VERSION" ] && [ ! -f "${DATA_DIR}/standby.signal" ] &&
-    [ ! -f "${DATA_DIR}/recovery.signal" ] && [ "$(as_postgres cat "$IMAGE_MIGRATED_FILE" 2>/dev/null)" != "$image_key" ]; then
+    [ ! -f "${DATA_DIR}/recovery.signal" ] && [ "$previous_image" != "$image_key" ]; then
     update_dir=$(as_postgres mktemp -d)
     # shellcheck disable=SC2016 # $1 is the inner sh's argument
     as_postgres sh -c 'printf "local all all trust\n" > "$1/pg_hba.conf"' sh "$update_dir"

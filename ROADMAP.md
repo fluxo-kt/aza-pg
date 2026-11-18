@@ -4,20 +4,6 @@ Known defects and missing work, most severe first. Each entry says why it matter
 
 ## High
 
-### PostgreSQL 18.7 is not shipped yet
-
-18.7 fixes more than 25 CVEs (CVE-2026-6460 and the rest in its release notes). It also breaks extensions at runtime while the build passes, so it moves only together with their fixes:
-
-- TimescaleDB before 2.32.1 fails every scheduler-run job (`PortalDrop` now refuses a portal still being set up; timescaledb#11038). Bump to 2.32.1, or carry upstream fix #11015 as `build.patches` on 2.32.0 if 2.32.1 is still untagged. `test-timescaledb-tsl.ts` must go red on 18.7 with the old TimescaleDB before it goes green with the fix. pg_partman 5.5.1 (already pinned) fixes the same bug in `pg_partman_bgw`, which no suite runs: prove it the same way.
-- pgrx extensions (pg_jsonschema, wrappers, vectorscale, timescaledb_toolkit) skip 18.7's composite-datum version check until rebuilt on pgrx 0.19.4+ or 0.20; none of their upstreams has released on one yet. Name this lost hardening in the CHANGELOG until they do.
-- CHANGELOG as Breaking: returning to an 18.6 image after DDL on 18.7 can raise errors (attribute versioning), so rollback is unsafe; 18.7's notes ask for REINDEX of indexes hit by its listed corruption fixes and a new full backup for users of PostgreSQL incremental backups.
-
-Also due with that bump: the sbomnix input (v1.10.0; run publish.yml's "Generate SBOM" locally), then the full `/update` gate (`test:all`, `test-memory-fit.ts --all`, stack suites, `validate:all`).
-
-### Nothing tests a new image on an older release's data directory
-
-The first-start migration (extension updates, glibc collation rebuild) runs only on volumes made by an earlier image, and no routine suite creates one, so a defect there reaches operators on upgrade day. Fix: one suite starts the last release (as `test-pgflow-upgrade.ts` pulls its `LEGACY` image), creates TimescaleDB with a hypertable, pg_partman and plpgsql_check in one database and leaves an opt-in extension uncreated, stops it, starts the new image on the same volume, and asserts every created extension reports the shipped version, the uncreated one stays absent, and an extension owning tables with no update path stops the container instead of dropping them.
-
 ### Health checks can admit the temporary initialization server
 
 Release `v18.6-202610312251` sources the upstream entrypoint inside `docker-auto-config-entrypoint.sh`, while its health check only looks for `docker-entrypoint.sh`. Karakuri's AMD64 OS-update review reached setup SQL during the temporary server's shutdown. Repair `78ac6da` detects either initializing shell and excludes tini's retained arguments; runtime acceptance still needs rejection during initialization and acceptance after the final postmaster starts.

@@ -1,0 +1,7 @@
+# /etc/gitconfig inside nix.ts's container (mounted read-only). Nix opens the repo flake through libgit2, which refuses a
+# repository its user does not own: the container runs as root, while on a Linux host (CI runners) /src belongs to
+# the host user, so every `nix … .#…` failed there with "repository path '/src' is not owned by current user".
+# Docker Desktop shows bind mounts as root-owned, so a Mac never shows it. libgit2 ignores GIT_CONFIG_* variables;
+# only a config file works. Trusts exactly the mounted repo.
+[safe]
+	directory = /src

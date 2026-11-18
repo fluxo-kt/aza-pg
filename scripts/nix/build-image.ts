@@ -17,7 +17,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { reclaimDanglingAzaImages } from "../docker/cleanup-artifacts";
-import { native, nixCommand, nixEnv, nixSystem } from "./nix";
+import { native, nixSystem, spawnNix } from "./nix";
 import { TOOL_NAMES } from "./tools";
 
 const flagValue = (flag: string) => {
@@ -32,14 +32,9 @@ if (retag === "" || push === "" || (retag && push) || (push && !native)) {
   );
   process.exit(64);
 }
-const build = Bun.spawn(
-  nixCommand(["nix", "build", `.#packages.${nixSystem}.image`, "--no-link", "--print-out-paths"]),
-  {
-    cwd: path.resolve(import.meta.dir, "../.."),
-    env: nixEnv(),
-    stdout: "pipe",
-    stderr: "inherit",
-  }
+const build = spawnNix(
+  ["nix", "build", `.#packages.${nixSystem}.image`, "--no-link", "--print-out-paths"],
+  { stdout: "pipe" }
 );
 const [built, buildExit] = await Promise.all([new Response(build.stdout).text(), build.exited]);
 const streamScript = built.trim();
@@ -68,24 +63,9 @@ if (push) {
     '"$0" | skopeo --dest-compress-format zstd --dest-compress-level 19 docker-archive:/dev/stdin "oci:$1:image" &&',
     'skopeo --format oci --dest-compress-format zstd --dest-force-compress-format --digestfile "$2" "oci:$1:image" "docker://$3"',
   ].join("\n");
-  const copy = Bun.spawn(
-    nixCommand([
-      "bash",
-      "-o",
-      "pipefail",
-      "-c",
-      script,
-      streamScript,
-      `${scratch}/oci`,
-      digestFile,
-      push,
-    ]),
-    {
-      cwd: path.resolve(import.meta.dir, "../.."),
-      env: nixEnv(),
-      stdout: "ignore",
-      stderr: "inherit",
-    }
+  const copy = spawnNix(
+    ["bash", "-o", "pipefail", "-c", script, streamScript, `${scratch}/oci`, digestFile, push],
+    { stdout: "ignore" }
   );
   const copyExit = await copy.exited;
   const digest = copyExit === 0 ? (await Bun.file(digestFile).text()).trim() : "";
@@ -100,24 +80,9 @@ if (push) {
   // publish.yml indexes and signs the image.
   const pushed = `docker://${push.replace(/:[^/:]*$/, "")}@${digest}`;
   const inspect = async (flag: string) => {
-    const p = Bun.spawn(
-      nixCommand([
-        "nix",
-        "run",
-        "--inputs-from",
-        ".",
-        "nixpkgs#skopeo",
-        "--",
-        "inspect",
-        flag,
-        pushed,
-      ]),
-      {
-        cwd: path.resolve(import.meta.dir, "../.."),
-        env: nixEnv(),
-        stdout: "pipe",
-        stderr: "inherit",
-      }
+    const p = spawnNix(
+      ["nix", "run", "--inputs-from", ".", "nixpkgs#skopeo", "--", "inspect", flag, pushed],
+      { stdout: "pipe" }
     );
     const [out, code] = await Promise.all([new Response(p.stdout).text(), p.exited]);
     if (code !== 0) throw new Error(`skopeo inspect ${flag} ${pushed} failed (exit ${code})`);
@@ -150,10 +115,8 @@ if (push) {
 }
 
 // The stream script is self-contained (its interpreter and inputs are store paths): it runs wherever the store is.
-const stream = Bun.spawn(nixCommand([streamScript]), {
-  env: nixEnv(),
+const stream = spawnNix([streamScript], {
   stdout: "pipe",
-  stderr: "inherit",
 });
 // The stream's pipe stays open in this process, so a reader that dies leaves the stream blocked on a full pipe for
 // ever instead of failing; kill it so the failure surfaces.
@@ -203,11 +166,7 @@ type FlakeNode = { path: string; inputs?: Record<string, FlakeNode> };
 const inputPaths = (node: FlakeNode): string[] =>
   Object.values(node.inputs ?? {}).flatMap((input) => [input.path, ...inputPaths(input)]);
 if (!native) {
-  const archive = Bun.spawn(nixCommand(["nix", "flake", "archive", "--json"]), {
-    env: nixEnv(),
-    stdout: "pipe",
-    stderr: "inherit",
-  });
+  const archive = spawnNix(["nix", "flake", "archive", "--json"], { stdout: "pipe" });
   const [archived, archiveExit] = await Promise.all([
     new Response(archive.stdout).text(),
     archive.exited,
@@ -216,15 +175,15 @@ if (!native) {
     console.error(`nix flake archive failed (exit ${archiveExit}); see the log above.`);
     process.exit(1);
   }
-  const checkers = Bun.spawn(
-    nixCommand([
+  const checkers = spawnNix(
+    [
       "nix",
       "build",
       "--no-link",
       "--print-out-paths",
       ...["vulnix", ...TOOL_NAMES].map((o) => `.#packages.${nixSystem}.${o}`),
-    ]),
-    { env: nixEnv(), stdout: "pipe", stderr: "inherit" }
+    ],
+    { stdout: "pipe" }
   );
   const [checkerPaths, checkersExit] = await Promise.all([
     new Response(checkers.stdout).text(),
@@ -239,8 +198,7 @@ if (!native) {
     ...checkerPaths.trim().split("\n"),
     ...new Set(inputPaths(JSON.parse(archived) as FlakeNode)),
   ];
-  const gc = Bun.spawn(nixCommand(["sh", "-c", REROOT_AND_COLLECT, GC_ROOTS, ...roots]), {
-    env: nixEnv(),
+  const gc = spawnNix(["sh", "-c", REROOT_AND_COLLECT, GC_ROOTS, ...roots], {
     stdout: "pipe",
     stderr: "pipe",
   });

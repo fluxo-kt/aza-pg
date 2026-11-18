@@ -16,8 +16,8 @@
  * the daemon socket only then. Anything else Trivy fetches from its registry anonymously.
  * Trivy runs from the repo root (scripts/nix/tools.ts), so a relative `--output` lands there.
  */
-import { runTool, spawnNix } from "../nix/tools";
-import { nixSystem } from "../nix/nix";
+import { nixSystem, spawnNix } from "../nix/nix";
+import { runTool } from "../nix/tools";
 
 /**
  * The release gate, `--gate` on the command line: fixable CRITICAL/HIGH fails. An unfixed CVE has no action, and a

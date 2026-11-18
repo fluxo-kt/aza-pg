@@ -41,11 +41,11 @@ function readGithubToken(): string | null {
 }
 
 /**
- * Environment every nixCommand argv must be spawned with (`Bun.spawn(nixCommand(…), { env: nixEnv(), … })`). The
+ * Environment every nixCommand argv must be spawned with (spawnNix does). The
  * container gets NIX_CONFIG by name (`-e NIX_CONFIG`) so the token never sits in a command line `ps` shows; Bun.spawn
  * passes children the process's startup environment unless `env` is given, so setting Bun.env would not reach it.
  */
-export function nixEnv(): Record<string, string | undefined> {
+function nixEnv(): Record<string, string | undefined> {
   if (native) return Bun.env;
   const token = readGithubToken();
   const auth = token ? `\naccess-tokens = github.com=${token}` : "";
@@ -90,12 +90,41 @@ export function nixCommand(
     `${path.resolve(import.meta.dir, "../..")}:/src`,
     "-w",
     "/src",
+    "-v",
+    `${path.resolve(import.meta.dir, "container.gitconfig")}:/etc/gitconfig:ro`,
     ...dockerArgs,
     // CI's Nix: the tag is the nix_version that setup-nix's cachix/install-nix-action pin installs (its
     // install-nix.sh), so a local build runs the same Nix. Bump both together.
     "nixos/nix:2.35.6@sha256:b49cb33f3a7e5cf3933ad8774529de0e3807ec5cf54987aa7ccdfb49f2fc55ed",
     ...command,
   ];
+}
+
+let spawns = 0;
+
+/**
+ * Spawns `command` (a nix invocation, or a store path) with the cwd and environment nixCommand needs: the only way
+ * scripts start Nix, so none can forget NIX_CONFIG (flakes would be off, the GitHub token missing). Each spawn gets
+ * its own container name: one process may run several at once. `dockerArgs` as for nixCommand.
+ */
+export function spawnNix(
+  command: string[],
+  options: {
+    dockerArgs?: string[];
+    stdout?: "inherit" | "pipe" | "ignore";
+    stderr?: "inherit" | "pipe" | "ignore";
+  } = {}
+) {
+  return Bun.spawn(
+    nixCommand(command, `aza-pg-nix-${process.pid}-${spawns++}`, options.dockerArgs),
+    {
+      cwd: path.resolve(import.meta.dir, "../.."),
+      env: nixEnv(),
+      stdin: "ignore",
+      stdout: options.stdout ?? "inherit",
+      stderr: options.stderr ?? "inherit",
+    }
+  );
 }
 
 if (import.meta.main) {

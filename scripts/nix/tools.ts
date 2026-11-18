@@ -8,9 +8,8 @@
  * the repo root.
  * `repository` and `tagPrefix` name the upstream release tags check-updates.ts compares each built version with.
  */
-import path from "node:path";
 import { type } from "arktype";
-import { nixCommand, nixEnv, nixSystem } from "./nix";
+import { nixSystem, spawnNix } from "./nix";
 
 export const TOOLS = {
   actionlint: { repository: "https://github.com/rhysd/actionlint", tagPrefix: "v" },
@@ -20,30 +19,8 @@ export const TOOLS = {
 export type Tool = keyof typeof TOOLS;
 export const TOOL_NAMES = Object.keys(TOOLS) as Tool[];
 
-const root = path.resolve(import.meta.dir, "../..");
-// One container name per run: a process may run several tools at once, and nix.ts names containers by pid.
-let runs = 0;
-
-interface RunOptions {
-  /** Extra `docker run` arguments, used only when Nix runs in its container. */
-  dockerArgs?: string[];
-  stdout?: "inherit" | "pipe";
-  stderr?: "inherit" | "pipe";
-}
-
-/** Spawns `command` (a nix invocation) with the cwd and environment every nix.ts command needs. */
-export function spawnNix(command: string[], options: RunOptions = {}) {
-  return Bun.spawn(nixCommand(command, `aza-pg-nix-${process.pid}-${runs++}`, options.dockerArgs), {
-    cwd: root,
-    env: nixEnv(),
-    stdin: "ignore",
-    stdout: options.stdout ?? "inherit",
-    stderr: options.stderr ?? "inherit",
-  });
-}
-
 /** Runs `tool args…` from this checkout's flake output; the exit code is the tool's. */
-export function runTool(tool: Tool, args: string[], options: RunOptions = {}) {
+export function runTool(tool: Tool, args: string[], options: Parameters<typeof spawnNix>[1] = {}) {
   return spawnNix(
     ["nix", "shell", `.#packages.${nixSystem}.${tool}`, "--command", tool, ...args],
     options

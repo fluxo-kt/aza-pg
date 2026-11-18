@@ -901,6 +901,12 @@
         "tag": "2.32.0",
         "commit": "b0474c32504c54edb44a23d33dc8a783745600cd"
       },
+      "build": {
+        "type": "timescaledb",
+        "patches": [
+          "timescaledb-portal-drop-pg18.7.patch"
+        ]
+      },
       "runtime": {
         "sharedPreload": true,
         "defaultEnable": true,
@@ -1080,7 +1086,7 @@
     }
   ],
   "metadata": {
-    "pgVersion": "18.6",
+    "pgVersion": "18.7",
     "bunImageSha": "sha256:93d5032fe06d163427822dc1598f420363759bb18155c9cc90eb1be05a64a19e",
     "locales": [
       "en_US",

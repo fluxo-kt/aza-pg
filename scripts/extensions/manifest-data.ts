@@ -15,7 +15,7 @@
  */
 export const MANIFEST_METADATA = {
   /** PostgreSQL version (e.g., "18.1") */
-  pgVersion: "18.6",
+  pgVersion: "18.7",
   /** Multi-arch digest of oven/bun:<.tool-versions bun>-debian, the pg_net test's echo server; re-resolve on every Bun bump. */
   bunImageSha: "sha256:93d5032fe06d163427822dc1598f420363759bb18155c9cc90eb1be05a64a19e",
   /**
@@ -895,6 +895,13 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       type: "git",
       repository: "https://github.com/timescale/timescaledb.git",
       tag: "2.32.0",
+    },
+    build: {
+      type: "timescaledb",
+      // Upstream e89c98f (#11015, due in 2.32.1): PostgreSQL 18.7's PortalDrop() refuses a portal still in
+      // PORTAL_NEW, which job_execute() left its scheduler portal in, so every scheduler-run job failed. Drop this
+      // once the tag carries the fix.
+      patches: ["timescaledb-portal-drop-pg18.7.patch"],
     },
     runtime: {
       sharedPreload: true,

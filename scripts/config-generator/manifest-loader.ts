@@ -53,7 +53,9 @@ export async function loadManifest(repoRoot: string): Promise<Manifest> {
  * Null when the tag ends in no version.
  */
 export function tagVersion(tag: string): string | null {
-  const m = tag.match(/^(?:.*[^0-9._])?[._]?([0-9][0-9._]*)$/);
+  // "+…" is semver build metadata ("1.27.0+p2", a re-stamped release), never part of the version; cut it first,
+  // or the greedy prefix reads "1.27.0+p2" as "2". nix/extensions.nix versionOf cuts it the same way.
+  const m = tag.split("+", 1)[0]!.match(/^(?:.*[^0-9._])?[._]?([0-9][0-9._]*)$/);
   return m?.[1] ? m[1].replaceAll("_", ".") : null;
 }
 

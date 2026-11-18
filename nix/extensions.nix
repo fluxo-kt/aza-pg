@@ -20,10 +20,12 @@ let
   # Upstream tags wrap the version in their own prefix ("v0.20.5", "ver_1.5.3", "REL4_2_0", "wal2json_2_7",
   # "release/2.60.0", "pgflow@0.17.2"): the version is the trailing run of digits, dots and underscores. Recipes
   # use it in file names (vectorscale-<version>.so), so it must be the real one. An untagged commit has none.
+  # A "+…" suffix is semver build metadata (toolkit's re-stamped "1.27.0+p2"), never part of the version: cut it
+  # first, since POSIX matching gives the prefix group the longest match and would read "1.27.0+p2" as "2".
   versionOf = e:
     if e.source.type == "git-ref" then "unstable-${builtins.substring 0 7 e.source.commit}"
     else
-      let m = builtins.match "(.*[^0-9._])?[._]?([0-9][0-9._]*)" e.source.tag;
+      let m = builtins.match "(.*[^0-9._])?[._]?([0-9][0-9._]*)" (builtins.head (lib.splitString "+" e.source.tag));
       in if m == null then throw "${e.name}: no version in tag ${e.source.tag}"
       else lib.replaceStrings [ "_" ] [ "." ] (builtins.elemAt m 1);
 

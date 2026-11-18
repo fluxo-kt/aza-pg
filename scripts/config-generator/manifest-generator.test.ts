@@ -150,6 +150,7 @@ describe("tagVersion", () => {
     expect(tagVersion("REL4_2_0")).toBe("4.2.0");
     expect(tagVersion("wal2json_2_7")).toBe("2.7");
     expect(tagVersion("pgflow@0.17.2")).toBe("0.17.2");
+    expect(tagVersion("1.27.0+p2")).toBe("1.27.0"); // semver build metadata, not the version
     expect(tagVersion("1.0.22-RELEASE")).toBeNull();
   });
 

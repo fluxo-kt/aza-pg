@@ -104,7 +104,7 @@ for (const file of composeFiles) {
 for (const [file, names] of ownServices)
   if (names.size > 1)
     problems.push(
-      `${file}: services ${[...names].join(", ")} all run the aza-pg image — only the PostgreSQL service may. Run each companion (pooler, exporter) from its own upstream image; adding a program to our image is Art's decision, never a fix for a companion's CVEs (AGENTS.md "Nothing ships…", "CVE scope")`
+      `${file}: services ${[...names].join(", ")} all run the aza-pg image — only the PostgreSQL service may. Run each companion (pooler, exporter) from its own upstream image; adding a program to our image is Art's decision, never a fix for a companion's CVEs (AGENTS.md "Nothing ships…", "CVE effort follows what we release")`
     );
 
 // Rule 3: the legacy path used as a path. Legal only as a mention: wrapped in backticks, or at the start of a line

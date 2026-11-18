@@ -336,7 +336,8 @@ the last release, not HEAD.
 bun scripts/nix/nix.ts flake update nixpkgs
 # Every extension at once: `bun run build` stops at the first failed derivation, so one broken recipe hides the next
 # (nixpkgs' build hooks change under all extensions together, e.g. its Rust hook forcing system C libraries).
-bun scripts/nix/nix.ts build .#packages.aarch64-linux.postgresql --no-link --keep-going   # x86_64-linux on Intel
+# `unshipped` builds the entries kept out of the image (nix.buildUnshipped): they get the same updates and must build too.
+bun scripts/nix/nix.ts build .#packages.aarch64-linux.postgresql .#packages.aarch64-linux.unshipped --no-link --keep-going   # x86_64-linux on Intel
 bun run build   # flake.nix refuses a pgVersion that differs from nixpkgs' server and names the right one
 ```
 
@@ -593,9 +594,14 @@ docker buildx imagetools inspect ORG/REPO:TAG --format '{{json .Manifest.Digest}
 1. Read the release notes from the current tag to the new one for removed or renamed flags, env vars
    and metrics. postgres-exporter 0.20 is the pattern: `PG_EXPORTER_DISABLE_SETTINGS_METRICS` was
    removed (the exporter ignores unknown env vars, so a dead setting stays silent) and
-   `pg_replication_slot_*` metrics became `pg_replication_slots_*`. Confirm each env var the stacks set
-   against the new binary's own flag list (`docker run --rm IMAGE --help`), with a definitely-invalid flag
-   as control. Rename users of changed metrics (dashboards and queries in `deployments/`).
+   `pg_replication_slot_*` metrics became `pg_replication_slots_*`. Go through every change, deprecation and
+   fix item in the range, not only those three kinds: each one touching a setting we pass, a metric or label
+   we expose, or behaviour under our config goes into the CHANGELOG entry (AGENTS.md "Entry rules").
+   BEFORE writing any flag or env var into `stacks/` or `deployments/` (a new `command:`, a renamed
+   variable, a flag the CHANGELOG tells operators to add), find it in the pinned binary's own flag list
+   (`docker run --rm IMAGE --help`) and run a definitely-invalid flag as control: release notes name flags
+   that a build lacks or spells differently, and an unknown flag only surfaces when the stack starts.
+   Rename users of changed metrics (dashboards and queries in `deployments/`).
 2. Update the compose defaults; run `bun run validate` until the pin check is clean.
 3. CHANGELOG entry (operators see companion images); removed settings or renamed metrics go under Breaking.
 4. Run the stack suites (`bun scripts/test-all.ts --group stacks`); each exporter's `/metrics` must show
@@ -664,6 +670,18 @@ Use affected checks for each focused commit, then run `validate:all` for the com
 # Build, validate:all, then every registered suite against the new image (exit 1 on any failure)
 bun run test:all
 # Already built? Only the suites: bun run test
+```
+
+A build and the suites take long, so prepare what does not read their output BEFORE starting them, and do
+the rest while they run, never idle-waiting: every edit the run reads lands first (AGENTS.md CRITICAL
+RULES). Checks that need no fresh image and put no load on the host: each companion flag against
+`--help` (§5.6), each CHANGELOG entry against the full release-note range, `imagetools inspect` of every
+pin only `deployments/` uses, and the last release's package list for the library diff:
+
+```bash
+# Last release vs local build: every store name whose version moved (glibc, OpenSSL, libraries) needs CHANGELOG wording
+for i in ghcr.io/fluxo-kt/aza-pg:18 aza-pg:pg18; do docker run --rm --entrypoint sh "$i" -c 'ls /nix/store' | sed 's/^[a-z0-9]\{32\}-//' | sort > "$t/$(echo "$i" | tr /: __)"; done
+diff "$t/ghcr.io_fluxo-kt_aza-pg_18" "$t/aza-pg_pg18"   # $t from mktemp -d
 ```
 
 When PostgreSQL, nixpkgs or any extension moved, run `bun scripts/test/test-memory-fit.ts --all` after `test:all` (never beside it): per-session memory may have grown, and the routine lane checks only 1 GB. An overrun means re-measuring the memory constants in the entrypoint (`SESSION_BASE_MB`, `SHARED_OVERHEAD_MB`, …), never raising a limit.

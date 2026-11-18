@@ -13,18 +13,29 @@ export interface StackImage {
   service: string;
   /** The default reference; null when the image line has no `${VAR:-…}` default. */
   ref: string | null;
+  /** The image line as written: what runs when it has no `${VAR:-…}` default (deployments/ pins this way). */
+  image: string;
 }
 
-export async function stackDefaultImages(): Promise<StackImage[]> {
+/** `pattern` and `cwd` let the CVE scan read every compose file (deployments/ too) from a release's extracted tree. */
+export async function stackDefaultImages(
+  pattern = "stacks/*/compose.yml",
+  cwd = "."
+): Promise<StackImage[]> {
   const images: StackImage[] = [];
-  for await (const file of new Glob("stacks/*/compose.yml").scan(".")) {
-    const compose = Bun.YAML.parse(await Bun.file(file).text()) as {
+  for await (const file of new Glob(pattern).scan(cwd)) {
+    const compose = Bun.YAML.parse(await Bun.file(`${cwd}/${file}`).text()) as {
       services?: Record<string, { image?: string }>;
     };
     for (const [service, def] of Object.entries(compose.services ?? {})) {
       const image = def.image?.trim();
       if (image === undefined) continue;
-      images.push({ file, service, ref: image.match(/^\$\{[A-Z0-9_]+:-(.+)\}$/)?.[1] ?? null });
+      images.push({
+        file,
+        service,
+        ref: image.match(/^\$\{[A-Z0-9_]+:-(.+)\}$/)?.[1] ?? null,
+        image,
+      });
     }
   }
   return images;

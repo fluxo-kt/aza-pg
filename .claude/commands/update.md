@@ -84,7 +84,8 @@ Check:
    add its GitHub repository to `IMAGE_SOURCES` in that script. Docs copying a companion pin are held to it by
    `validate`'s Companion Image Pins. The stack suites pull the stacks' images, but nothing pulls an image
    only `deployments/` uses: check each still resolves (`docker buildx imagetools inspect <ref>`). Update
-   procedure: Phase 5.6.
+   procedure: Phase 5.6. Being current is not being patched: `bun run security:scan` scans every pinned companion
+   with Trivy, and a fixable finding left after the bump is this round's work (AGENTS.md "CVE scope").
 
 ## Pre-Flight: Additional Checks (MANDATORY)
 

@@ -436,7 +436,7 @@ async function validate(
     },
     {
       name: "Workflow Expressions",
-      // One definition (pinned image, shellcheck on) shared with the CI lint-workflows job.
+      // One definition (flake.nix actionlint, shellcheck on) shared with the CI lint-workflows job.
       command: ["bun", "scripts/ci/lint-workflows.ts"],
       description:
         "GitHub Actions workflow syntax, expressions and run: shell (actionlint + shellcheck)",

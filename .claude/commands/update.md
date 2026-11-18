@@ -296,11 +296,11 @@ After action updates, scan workflow/composite scripts for mutable images and pin
 command grep -rn -E ":[Ll]atest\\b" .github/workflows/ .github/actions/ scripts/ | command grep -E "docker run|image"
 ```
 
-For security scanners, prefer the same pinned container used by local tooling (for example,
-`scripts/security/cve-scan.ts`) so CI diagnostics and local scans use the same scanner family.
-
-Tool images run by scripts (actionlint, yamllint, trivy) are invisible to `actions-up` and
-`bun outdated`, so bump them here. List them:
+Scanners and linters run only through `scripts/nix/tools.ts` (flake.nix outputs), so CI and local runs use the same
+build. Their versions follow nixpkgs: `check-updates.ts` reports each against its upstream release. An outdated row
+waits for no one: override that output in `flake.nix` (as yamllint's is), with an assert that fails once nixpkgs
+catches up. Tool images still run by scripts (`nixos/nix`) are invisible to `actions-up` and `bun outdated`, so bump
+them here. List them:
 
 ```bash
 rg -n '"[a-z0-9./_-]+(:[A-Za-z0-9._-]+)?@sha256:[0-9a-f]{64}"' scripts .github   # digest pins
@@ -312,8 +312,7 @@ A digest pin without a tag gets a "could not check" row (exit 2): rewrite it as 
 against the tool's upstream release: a wrapper that stopped publishing reads as "up to date".
 
 For each, read the latest release, resolve the index digest with `docker buildx imagetools inspect`,
-replace the reference everywhere it appears, and run the check that uses it (`bun run validate:all`
-runs actionlint and yamllint).
+replace the reference everywhere it appears, and run the check that uses it.
 
 **Validate after actions-up**:
 ```bash
@@ -910,7 +909,7 @@ due in this round, not the next:
 - nixpkgs revision (`flake.lock`): PostgreSQL minor, glibc, libraries
 - Git/tag/git-ref extensions from `check-updates.ts`
 - Companion images: compose pins (validate-enforced) and `deployments/`-only images
-- Tool images run by scripts (Phase 2.5)
+- Checkers (`scripts/nix/tools.ts`) and tool images run by scripts (Phase 2.5)
 - Bun runtime in `.tool-versions`
 - Bun package dependencies and `bun.lock`
 - GitHub Actions SHA pins, reusable workflow refs, and stale prose comments

@@ -21,6 +21,7 @@ import { type } from "arktype";
 import { MANIFEST_ENTRIES, MANIFEST_METADATA } from "./manifest-data";
 import type { ManifestEntry } from "./manifest-data";
 import { pinnedImages } from "../utils/stack-images";
+import { TOOLS, TOOL_NAMES, toolVersions } from "../nix/tools";
 
 interface UpdateInfo {
   name: string;
@@ -549,13 +550,6 @@ const IMAGE_SOURCES: Record<string, { repository: string; tagPrefix?: string; ta
     },
     "prom/prometheus": { repository: "https://github.com/prometheus/prometheus" },
     "grafana/grafana": { repository: "https://github.com/grafana/grafana", tagPrefix: "v" },
-    "rhysd/actionlint": { repository: "https://github.com/rhysd/actionlint", tagPrefix: "v" },
-    "aquasecurity/trivy": { repository: "https://github.com/aquasecurity/trivy", tagPrefix: "v" },
-    // Hosted on GitLab with no GitHub releases: the registry's tags are the only version list.
-    "pipelinecomponents/yamllint": {
-      repository: "https://gitlab.com/pipeline-components/yamllint",
-      tags: "registry",
-    },
   };
 
 const RegistryTagList = type({ tags: "string[] | null" });
@@ -839,6 +833,34 @@ async function main() {
         files: image.files,
         notes: `${update.notes} (${pinnedIn})`,
       });
+  }
+
+  // The checkers come from flake.nix (scripts/nix/tools.ts), so their versions follow nixpkgs, which can trail an
+  // upstream release; an outdated row means bump nixpkgs or override the output in flake.nix.
+  const versions = await toolVersions();
+  for (const tool of TOOL_NAMES) {
+    const { repository, tagPrefix } = TOOLS[tool];
+    if (typeof versions === "string") {
+      results.push({
+        name: tool,
+        current: "(unknown)",
+        latest: null,
+        updateAvailable: false,
+        source: "flake.nix",
+        sourceType: "git",
+        releaseUrl: null,
+        notes: `Could not read the flake's tool versions: ${versions}`,
+        enabled: true,
+      });
+      continue;
+    }
+    const update = await checkExtensionUpdates({
+      name: tool,
+      source: { type: "git", repository, tag: `${tagPrefix}${versions[tool]}` },
+      enabled: true,
+    });
+    if (update)
+      results.push({ ...update, current: versions[tool], notes: `${update.notes} (flake.nix)` });
   }
 
   if (args.format === "json") {

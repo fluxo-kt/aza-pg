@@ -17,7 +17,8 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { reclaimDanglingAzaImages } from "../docker/cleanup-artifacts";
-import { native, nixCommand, nixEnv, nixPlatform } from "./nix";
+import { native, nixCommand, nixEnv, nixSystem } from "./nix";
+import { TOOL_NAMES } from "./tools";
 
 const flagValue = (flag: string) => {
   const i = Bun.argv.indexOf(flag);
@@ -31,9 +32,8 @@ if (retag === "" || push === "" || (retag && push) || (push && !native)) {
   );
   process.exit(64);
 }
-const system = nixPlatform.endsWith("arm64") ? "aarch64-linux" : "x86_64-linux";
 const build = Bun.spawn(
-  nixCommand(["nix", "build", `.#packages.${system}.image`, "--no-link", "--print-out-paths"]),
+  nixCommand(["nix", "build", `.#packages.${nixSystem}.image`, "--no-link", "--print-out-paths"]),
   {
     cwd: path.resolve(import.meta.dir, "../.."),
     env: nixEnv(),
@@ -192,8 +192,9 @@ console.error(`Reclaimed ${await reclaimDanglingAzaImages()}`);
 // each build replaces the roots in GC_ROOTS with this image and the flake's inputs, then collects the rest.
 // keep-outputs (nix.ts) plus Nix's default keep-derivations make the image root keep every build input, so an
 // unchanged rebuild stays cached; flake inputs (nixpkgs' source) are fetched at evaluation, outside any derivation,
-// and need roots of their own or every build downloads them again. Replacing the whole directory drops the previous
-// build's roots. A native store is the host's (CI runners are discarded anyway): collecting it would delete the
+// and need roots of their own or every build downloads them again. The checkers scripts run (vulnix, scripts/nix/tools.ts)
+// are rooted too: collecting them would make the next lint or scan fetch or rebuild them (yamllint builds from
+// source). Replacing the whole directory drops the previous build's roots. A native store is the host's (CI runners are discarded anyway): collecting it would delete the
 // host's own paths.
 const GC_ROOTS = "/nix/var/nix/gcroots/aza-pg";
 const REROOT_AND_COLLECT =
@@ -215,7 +216,29 @@ if (!native) {
     console.error(`nix flake archive failed (exit ${archiveExit}); see the log above.`);
     process.exit(1);
   }
-  const roots = [streamScript, ...new Set(inputPaths(JSON.parse(archived) as FlakeNode))];
+  const checkers = Bun.spawn(
+    nixCommand([
+      "nix",
+      "build",
+      "--no-link",
+      "--print-out-paths",
+      ...["vulnix", ...TOOL_NAMES].map((o) => `.#packages.${nixSystem}.${o}`),
+    ]),
+    { env: nixEnv(), stdout: "pipe", stderr: "inherit" }
+  );
+  const [checkerPaths, checkersExit] = await Promise.all([
+    new Response(checkers.stdout).text(),
+    checkers.exited,
+  ]);
+  if (checkersExit !== 0) {
+    console.error(`building the checkers failed (exit ${checkersExit}); see the log above.`);
+    process.exit(1);
+  }
+  const roots = [
+    streamScript,
+    ...checkerPaths.trim().split("\n"),
+    ...new Set(inputPaths(JSON.parse(archived) as FlakeNode)),
+  ];
   const gc = Bun.spawn(nixCommand(["sh", "-c", REROOT_AND_COLLECT, GC_ROOTS, ...roots]), {
     env: nixEnv(),
     stdout: "pipe",

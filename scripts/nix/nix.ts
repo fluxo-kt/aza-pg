@@ -23,6 +23,8 @@ const FLAGS = "experimental-features = nix-command flakes\nkeep-outputs = true\n
 export const native = process.platform === "linux" && Bun.which("nix") !== null;
 export const nixPlatform =
   Bun.env.NIX_PLATFORM ?? (process.arch === "arm64" ? "linux/arm64" : "linux/amd64");
+/** The flake's system name for nixPlatform: `.#packages.${nixSystem}.<output>`. */
+export const nixSystem = nixPlatform.endsWith("arm64") ? "aarch64-linux" : "x86_64-linux";
 
 // Nix resolves github: inputs through GitHub's API, whose anonymous limit (60 requests an hour per IP) one update
 // round's other lookups exhaust; `flake update` then fails with HTTP 403. The container authenticates with
@@ -53,8 +55,15 @@ export function nixEnv(): Record<string, string | undefined> {
   };
 }
 
-/** argv that runs `command` (a nix invocation, or a store path such as the image's stream script) where the store is. */
-export function nixCommand(command: string[], container = `aza-pg-nix-${process.pid}`): string[] {
+/**
+ * argv that runs `command` (a nix invocation, or a store path such as the image's stream script) where the store is.
+ * `dockerArgs` reach only the container (e.g. the Docker socket a scanner needs); natively the host already has them.
+ */
+export function nixCommand(
+  command: string[],
+  container = `aza-pg-nix-${process.pid}`,
+  dockerArgs: string[] = []
+): string[] {
   if (native) return ["env", `NIX_CONFIG=${FLAGS}`, ...command];
   const arch = nixPlatform.replace("linux/", "");
   return [
@@ -81,6 +90,7 @@ export function nixCommand(command: string[], container = `aza-pg-nix-${process.
     `${path.resolve(import.meta.dir, "../..")}:/src`,
     "-w",
     "/src",
+    ...dockerArgs,
     // CI's Nix: the tag is the nix_version that setup-nix's cachix/install-nix-action pin installs (its
     // install-nix.sh), so a local build runs the same Nix. Bump both together.
     "nixos/nix:2.35.6@sha256:b49cb33f3a7e5cf3933ad8774529de0e3807ec5cf54987aa7ccdfb49f2fc55ed",

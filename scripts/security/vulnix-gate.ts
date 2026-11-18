@@ -16,7 +16,7 @@
  */
 
 import path from "node:path";
-import { native, nixCommand, nixPlatform } from "../nix/nix";
+import { native, nixCommand, nixEnv, nixPlatform } from "../nix/nix";
 
 const root = path.resolve(import.meta.dir, "../..");
 const system = nixPlatform === "linux/arm64" ? "aarch64-linux" : "x86_64-linux";
@@ -29,7 +29,7 @@ const build = Bun.spawn(
     "--no-link",
     "--print-out-paths",
   ]),
-  { cwd: root, stdout: "pipe", stderr: "inherit" }
+  { cwd: root, env: nixEnv(), stdout: "pipe", stderr: "inherit" }
 );
 const [contents, buildExit] = await Promise.all([new Response(build.stdout).text(), build.exited]);
 if (buildExit !== 0) {
@@ -52,7 +52,7 @@ const scan = Bun.spawn(
     "--closure",
     contents.trim(),
   ]),
-  { cwd: root, stdout: "inherit", stderr: "inherit" }
+  { cwd: root, env: nixEnv(), stdout: "inherit", stderr: "inherit" }
 );
 const scanExit = await scan.exited;
 // vulnix exits 2 when it reports a vulnerability, 0 when none remains after the whitelist, anything else on error.

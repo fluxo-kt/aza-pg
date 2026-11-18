@@ -17,7 +17,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { reclaimDanglingAzaImages } from "../docker/cleanup-artifacts";
-import { native, nixCommand, nixPlatform } from "./nix";
+import { native, nixCommand, nixEnv, nixPlatform } from "./nix";
 
 const flagValue = (flag: string) => {
   const i = Bun.argv.indexOf(flag);
@@ -36,6 +36,7 @@ const build = Bun.spawn(
   nixCommand(["nix", "build", `.#packages.${system}.image`, "--no-link", "--print-out-paths"]),
   {
     cwd: path.resolve(import.meta.dir, "../.."),
+    env: nixEnv(),
     stdout: "pipe",
     stderr: "inherit",
   }
@@ -79,7 +80,12 @@ if (push) {
       digestFile,
       push,
     ]),
-    { cwd: path.resolve(import.meta.dir, "../.."), stdout: "ignore", stderr: "inherit" }
+    {
+      cwd: path.resolve(import.meta.dir, "../.."),
+      env: nixEnv(),
+      stdout: "ignore",
+      stderr: "inherit",
+    }
   );
   const copyExit = await copy.exited;
   const digest = copyExit === 0 ? (await Bun.file(digestFile).text()).trim() : "";
@@ -106,7 +112,12 @@ if (push) {
         flag,
         pushed,
       ]),
-      { cwd: path.resolve(import.meta.dir, "../.."), stdout: "pipe", stderr: "inherit" }
+      {
+        cwd: path.resolve(import.meta.dir, "../.."),
+        env: nixEnv(),
+        stdout: "pipe",
+        stderr: "inherit",
+      }
     );
     const [out, code] = await Promise.all([new Response(p.stdout).text(), p.exited]);
     if (code !== 0) throw new Error(`skopeo inspect ${flag} ${pushed} failed (exit ${code})`);
@@ -139,7 +150,11 @@ if (push) {
 }
 
 // The stream script is self-contained (its interpreter and inputs are store paths): it runs wherever the store is.
-const stream = Bun.spawn(nixCommand([streamScript]), { stdout: "pipe", stderr: "inherit" });
+const stream = Bun.spawn(nixCommand([streamScript]), {
+  env: nixEnv(),
+  stdout: "pipe",
+  stderr: "inherit",
+});
 // The stream's pipe stays open in this process, so a reader that dies leaves the stream blocked on a full pipe for
 // ever instead of failing; kill it so the failure surfaces.
 const stopStreamOnFailure = async (reader: { exited: Promise<number> }) => {
@@ -188,6 +203,7 @@ const inputPaths = (node: FlakeNode): string[] =>
   Object.values(node.inputs ?? {}).flatMap((input) => [input.path, ...inputPaths(input)]);
 if (!native) {
   const archive = Bun.spawn(nixCommand(["nix", "flake", "archive", "--json"]), {
+    env: nixEnv(),
     stdout: "pipe",
     stderr: "inherit",
   });
@@ -201,6 +217,7 @@ if (!native) {
   }
   const roots = [streamScript, ...new Set(inputPaths(JSON.parse(archived) as FlakeNode))];
   const gc = Bun.spawn(nixCommand(["sh", "-c", REROOT_AND_COLLECT, GC_ROOTS, ...roots]), {
+    env: nixEnv(),
     stdout: "pipe",
     stderr: "pipe",
   });

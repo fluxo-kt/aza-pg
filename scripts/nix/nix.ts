@@ -24,6 +24,35 @@ export const native = process.platform === "linux" && Bun.which("nix") !== null;
 export const nixPlatform =
   Bun.env.NIX_PLATFORM ?? (process.arch === "arm64" ? "linux/arm64" : "linux/amd64");
 
+// Nix resolves github: inputs through GitHub's API, whose anonymous limit (60 requests an hour per IP) one update
+// round's other lookups exhaust; `flake update` then fails with HTTP 403. The container authenticates with
+// GITHUB_TOKEN or the local `gh` login. Read once per process: build-image.ts runs several containers.
+let githubToken: string | null | undefined;
+function readGithubToken(): string | null {
+  if (githubToken !== undefined) return githubToken;
+  const gh = Bun.env.GITHUB_TOKEN
+    ? null
+    : Bun.spawnSync(["gh", "auth", "token"], { stderr: "ignore" });
+  githubToken =
+    Bun.env.GITHUB_TOKEN || (gh?.exitCode === 0 ? gh.stdout.toString().trim() : "") || null;
+  return githubToken;
+}
+
+/**
+ * Environment every nixCommand argv must be spawned with (`Bun.spawn(nixCommand(…), { env: nixEnv(), … })`). The
+ * container gets NIX_CONFIG by name (`-e NIX_CONFIG`) so the token never sits in a command line `ps` shows; Bun.spawn
+ * passes children the process's startup environment unless `env` is given, so setting Bun.env would not reach it.
+ */
+export function nixEnv(): Record<string, string | undefined> {
+  if (native) return Bun.env;
+  const token = readGithubToken();
+  const auth = token ? `\naccess-tokens = github.com=${token}` : "";
+  return {
+    ...Bun.env,
+    NIX_CONFIG: `filter-syscalls = false\nsandbox = true\nsandbox-fallback = false\n${FLAGS}${auth}`,
+  };
+}
+
 /** argv that runs `command` (a nix invocation, or a store path such as the image's stream script) where the store is. */
 export function nixCommand(command: string[], container = `aza-pg-nix-${process.pid}`): string[] {
   if (native) return ["env", `NIX_CONFIG=${FLAGS}`, ...command];
@@ -40,7 +69,7 @@ export function nixCommand(command: string[], container = `aza-pg-nix-${process.
     "--platform",
     nixPlatform,
     "-e",
-    `NIX_CONFIG=filter-syscalls = false\nsandbox = true\nsandbox-fallback = false\n${FLAGS}`,
+    "NIX_CONFIG",
     "-v",
     `aza-pg-nix-${arch}:/nix`,
     // builtins.fetchGit (every source in nix/extensions.nix) caches its clones here, outside the store; without the
@@ -70,6 +99,7 @@ if (import.meta.main) {
   const container = `aza-pg-nix-${process.pid}`;
   const proc = Bun.spawn(nixCommand(["nix", ...args], container), {
     cwd: path.resolve(import.meta.dir, "../.."),
+    env: nixEnv(),
     stdin: "inherit",
     stdout: "inherit",
     stderr: "inherit",

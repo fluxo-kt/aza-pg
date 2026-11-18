@@ -12,7 +12,7 @@
  */
 import { Glob } from "bun";
 // aza-pg's own image is not a companion (see OWN_IMAGE).
-import { OWN_IMAGE, stackDefaultImages } from "../utils/stack-images";
+import { OWN_IMAGE, pinnedImages, stackDefaultImages } from "../utils/stack-images";
 const SCANNED = [
   "stacks/*/.env.example",
   ".env.example",
@@ -88,6 +88,24 @@ for (const file of [...scanned].sort()) {
     }
   });
 }
+
+// Tool images (scripts/, .github/) have one runner each, which owns the pin: a second pin or install of the same tool
+// drifts unseen. The release gate once ran trivy-action, which installs its own default Trivy (v0.70.0) from release
+// binaries, while security:scan ran the pinned 0.76.2 — so the gate and the local check could disagree.
+const toolFiles = [...tracked].filter((f) => f.startsWith("scripts/") || f.startsWith(".github/"));
+const toolPins = new Map<string, Set<string>>();
+for (const { repo, files } of await pinnedImages(toolFiles))
+  for (const f of files) toolPins.set(repo, (toolPins.get(repo) ?? new Set()).add(f));
+for (const [repo, files] of toolPins)
+  if (files.size > 1)
+    problems.push(
+      `${repo} is pinned in ${[...files].join(", ")}; keep one runner script owning the pin and call it from the others (as scripts/security/trivy.ts does for Trivy)`
+    );
+for (const file of toolFiles.filter((f) => f.startsWith(".github/")))
+  if (/aquasecurity\/(trivy-action|setup-trivy)/.test(await Bun.file(file).text()))
+    problems.push(
+      `${file}: aquasecurity/trivy-action and setup-trivy install their own Trivy from release binaries; run \`bun scripts/security/trivy.ts <image> --gate\` instead (AGENTS.md "Security Scanner Resilience")`
+    );
 
 if (problems.length > 0) {
   console.error(`Companion image pins drifted:\n${problems.map((p) => `  - ${p}`).join("\n")}`);

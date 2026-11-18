@@ -334,6 +334,9 @@ the last release, not HEAD.
 
 ```bash
 bun scripts/nix/nix.ts flake update nixpkgs
+# Every extension at once: `bun run build` stops at the first failed derivation, so one broken recipe hides the next
+# (nixpkgs' build hooks change under all extensions together, e.g. its Rust hook forcing system C libraries).
+bun scripts/nix/nix.ts build .#packages.aarch64-linux.postgresql --no-link --keep-going   # x86_64-linux on Intel
 bun run build   # flake.nix refuses a pgVersion that differs from nixpkgs' server and names the right one
 ```
 

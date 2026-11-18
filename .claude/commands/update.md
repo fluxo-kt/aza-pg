@@ -85,7 +85,8 @@ Check:
    `validate`'s Companion Image Pins. The stack suites pull the stacks' images, but nothing pulls an image
    only `deployments/` uses: check each still resolves (`docker buildx imagetools inspect <ref>`). Update
    procedure: Phase 5.6. Being current is not being patched: `bun run security:scan` scans every pinned companion
-   with Trivy, and a fixable finding left after the bump is this round's work (AGENTS.md "CVE scope").
+   with Trivy, and a fixable finding left after the bump is this round's work (AGENTS.md "CVE scope"; method:
+   Phase 5.6 "Vulnerable companion").
 
 ## Pre-Flight: Additional Checks (MANDATORY)
 
@@ -586,6 +587,17 @@ what it lists.
 Images that appear only outside `stacks/` (e.g. `deployments/` Prometheus/Grafana, or a different
 pgbouncer repository there) have no compose pin, so the check cannot see them: update and pin them by
 hand, each with `tag@digest`.
+
+**Vulnerable companion** (`security:scan` still flags it on upstream's newest tag). NEVER build it into our image
+or point its service at our image: the image carries only what its own PostgreSQL container uses (AGENTS.md
+"Nothing ships…"), and adding anything there is Art's decision. Instead:
+1. Trivy-scan, in one sequential pass with the pinned Trivy, the current pin and every live alternative: other
+   maintainers' images of the same program (pgbouncer: `ghcr.io/cloudnative-pg/pgbouncer`), the project's own
+   unreleased builds (`:master`). Prefer a publisher that rebuilds on patched bases (timestamped rebuild tags):
+   a tag that never moves keeps every later base-OS CVE.
+2. Before switching, run the candidate's shell and check every binary our entrypoint, config template and
+   healthcheck call, its user id against mounted file ownership, and its entrypoint/CMD and config path.
+3. None clean: report the findings upstream and to Art with the scan output; never accept them silently.
 
 ```bash
 # Index digest for a new tag (no layers downloaded)

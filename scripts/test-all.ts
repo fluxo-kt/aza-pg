@@ -31,6 +31,7 @@ import {
   TEST_SCOPE_ENV,
 } from "./utils/docker";
 import { DEFAULT_TEST_IMAGE } from "./test/image-resolver";
+import { staleImageReason } from "./nix/image-inputs";
 
 export const GROUPS = ["extensions", "security", "stacks", "features", "regression"] as const;
 export type Group = (typeof GROUPS)[number];
@@ -323,6 +324,11 @@ async function main(): Promise<void> {
     `Image ${image}; groups ${groups.join(", ")}; ${queue.length} suites, ${workers} at a time`
   );
   await ensureImageAvailable(image);
+  const stale = await staleImageReason(image);
+  if (stale !== null) {
+    console.error(stale);
+    process.exit(1);
+  }
   const orphans = await sweepOrphanedTestResources();
   if (orphans.found.length > 0)
     console.log(`Removed what killed earlier test runs left: ${orphans.found.join(", ")}`);

@@ -530,32 +530,32 @@ async function checkExtensionUpdates(
  * what the repository puts before the image tag: Grafana tags images 13.2.3 but releases v13.2.3, and comparing
  * the bare form picks up Grafana's old unprefixed tags instead.
  */
-const IMAGE_SOURCES: Record<
-  string,
-  { repository: string; tagPrefix?: string; tags?: "docker-hub" }
-> = {
-  // Local Nix: its tag must equal CI's (the nix_version in install-nix-action's install-nix.sh), see /update.
-  "nixos/nix": { repository: "https://github.com/NixOS/nix", tags: "docker-hub" },
-  "edoburu/pgbouncer": {
-    repository: "https://github.com/edoburu/docker-pgbouncer",
-    tags: "docker-hub",
-  },
-  "prometheuscommunity/pgbouncer-exporter": {
-    repository: "https://github.com/prometheus-community/pgbouncer_exporter",
-  },
-  "prometheuscommunity/postgres-exporter": {
-    repository: "https://github.com/prometheus-community/postgres_exporter",
-  },
-  "prom/prometheus": { repository: "https://github.com/prometheus/prometheus" },
-  "grafana/grafana": { repository: "https://github.com/grafana/grafana", tagPrefix: "v" },
-  "rhysd/actionlint": { repository: "https://github.com/rhysd/actionlint", tagPrefix: "v" },
-  "aquasecurity/trivy": { repository: "https://github.com/aquasecurity/trivy", tagPrefix: "v" },
-  // Hosted on GitLab with no GitHub releases: the registry's tags are the only version list.
-  "pipelinecomponents/yamllint": {
-    repository: "https://gitlab.com/pipeline-components/yamllint",
-    tags: "docker-hub",
-  },
-};
+const IMAGE_SOURCES: Record<string, { repository: string; tagPrefix?: string; tags?: "registry" }> =
+  {
+    // Local Nix: its tag must equal CI's (the nix_version in install-nix-action's install-nix.sh), see /update.
+    "nixos/nix": { repository: "https://github.com/NixOS/nix", tags: "registry" },
+    // CloudNativePG rebuilds each PgBouncer release on patched Debian about weekly, as a new timestamped tag
+    // (1.26.1-<UTC stamp>-trixie): only the registry's tags show those rebuilds, the GitHub releases do not.
+    "cloudnative-pg/pgbouncer": {
+      repository: "https://github.com/cloudnative-pg/pgbouncer-containers",
+      tags: "registry",
+    },
+    "prometheuscommunity/pgbouncer-exporter": {
+      repository: "https://github.com/prometheus-community/pgbouncer_exporter",
+    },
+    "prometheuscommunity/postgres-exporter": {
+      repository: "https://github.com/prometheus-community/postgres_exporter",
+    },
+    "prom/prometheus": { repository: "https://github.com/prometheus/prometheus" },
+    "grafana/grafana": { repository: "https://github.com/grafana/grafana", tagPrefix: "v" },
+    "rhysd/actionlint": { repository: "https://github.com/rhysd/actionlint", tagPrefix: "v" },
+    "aquasecurity/trivy": { repository: "https://github.com/aquasecurity/trivy", tagPrefix: "v" },
+    // Hosted on GitLab with no GitHub releases: the registry's tags are the only version list.
+    "pipelinecomponents/yamllint": {
+      repository: "https://gitlab.com/pipeline-components/yamllint",
+      tags: "registry",
+    },
+  };
 
 /**
  * Every image reference in tracked files under stacks/ and deployments/ (compose files and the compose snippets
@@ -563,13 +563,15 @@ const IMAGE_SOURCES: Record<
  * `${…IMAGE:-repo:tag@sha256:…}`, which the stacks write on the line after `image:`. aza-pg's own image, published
  * or built locally, is skipped: the stacks follow its floating major tag on purpose.
  */
-async function pinnedImages(): Promise<Array<{ repo: string; tag: string; files: string[] }>> {
+async function pinnedImages(): Promise<
+  Array<{ host: string; repo: string; tag: string; files: string[] }>
+> {
   // scripts/ and .github/ pin the tool images the checks run (actionlint, trivy) as repo:tag@sha256:…
   // literals (tag for this check, digest for integrity); without them here those pins went stale unseen.
   const files = (await Bun.$`git ls-files -- stacks deployments scripts .github`.quiet().text())
     .split("\n")
     .filter(Boolean);
-  const images = new Map<string, { repo: string; tag: string; files: string[] }>();
+  const images = new Map<string, { host: string; repo: string; tag: string; files: string[] }>();
   for (const file of files) {
     const tool = file.startsWith("scripts/") || file.startsWith(".github/");
     for (const line of (await Bun.file(file).text()).split("\n")) {
@@ -577,7 +579,7 @@ async function pinnedImages(): Promise<Array<{ repo: string; tag: string; files:
       // `image: repo` that floats on latest) names no version to compare, so it is kept with tag ""
       // and reported as uncheckable instead of matching nothing and going stale without any row.
       const m = tool
-        ? /\b([a-z0-9][a-z0-9._-]*\/[a-z0-9._-]+)(?::([A-Za-z0-9._-]+))?@sha256:[0-9a-f]{64}/.exec(
+        ? /\b((?:[a-z0-9-]+\.[a-z0-9.-]+\/)?[a-z0-9][a-z0-9._-]*\/[a-z0-9._-]+)(?::([A-Za-z0-9._-]+))?@sha256:[0-9a-f]{64}/.exec(
             line
           )
         : /(?:^\s*image:\s*|\$\{[A-Z0-9_]*IMAGE:-)([a-z0-9][a-z0-9./_-]*)(?::([A-Za-z0-9._-]+))?/.exec(
@@ -585,10 +587,12 @@ async function pinnedImages(): Promise<Array<{ repo: string; tag: string; files:
           );
       if (!m) continue;
       const tag = m[2] ?? "";
+      // The host decides where registry-mode checks list tags; a bare repo lives on Docker Hub.
+      const host = /^(docker\.io|quay\.io|ghcr\.io)\//.exec(m[1]!)?.[1] ?? "docker.io";
       const repo = m[1]!.replace(/^(docker\.io|quay\.io|ghcr\.io)\//, "");
       if (repo === "fluxo-kt/aza-pg" || repo === "aza-pg") continue;
       const key = `${repo}:${tag}`;
-      const known = images.get(key) ?? { repo, tag, files: [] };
+      const known = images.get(key) ?? { host, repo, tag, files: [] };
       if (!known.files.includes(file)) known.files.push(file);
       images.set(key, known);
     }
@@ -596,16 +600,74 @@ async function pinnedImages(): Promise<Array<{ repo: string; tag: string; files:
   return [...images.values()];
 }
 
-const DockerHubTagPage = type({
-  next: "string | null",
-  results: type({ name: "string" }).array(),
-});
+const RegistryTagList = type({ tags: "string[] | null" });
+const RegistryToken = type({ "token?": "string", "access_token?": "string" });
 
-async function checkDockerHubImage(repo: string, current: string): Promise<UpdateInfo> {
-  // Registry publication and wrapper releases are independent; only published image tags establish
-  // what operators can pull. Bound requests and refuse partial enumeration rather than report it current.
-  const source = `https://hub.docker.com/v2/repositories/${repo}/tags`;
-  const base = { name: repo, current, source, sourceType: "git" as const, enabled: true };
+/**
+ * Every tag of `host/repo`, read through the OCI distribution API (`GET /v2/<repo>/tags/list`), which Docker Hub,
+ * GHCR and Quay all serve behind the same anonymous Bearer handshake: a 401 names the token realm in
+ * WWW-Authenticate. One reader covers every registry, so moving a companion to another registry needs no new code.
+ * Returns an error string instead of a partial list: a truncated enumeration would report a stale pin as current.
+ */
+async function registryTags(host: string, repo: string): Promise<string[] | string> {
+  const api = host === "docker.io" ? "registry-1.docker.io" : host;
+  const name = host === "docker.io" && !repo.includes("/") ? `library/${repo}` : repo;
+  const get = (url: string, token?: string) =>
+    fetch(url, {
+      signal: AbortSignal.timeout(15_000),
+      headers: token === undefined ? {} : { Authorization: `Bearer ${token}` },
+    });
+  let url = `https://${api}/v2/${name}/tags/list?n=1000`;
+  let token: string | undefined;
+  const tags: string[] = [];
+  try {
+    for (let page = 1; page <= 20; page++) {
+      let response = await get(url, token);
+      if (response.status === 401 && token === undefined) {
+        const challenge = response.headers.get("www-authenticate") ?? "";
+        const field = (k: string) => new RegExp(`${k}="([^"]*)"`).exec(challenge)?.[1];
+        const realm = field("realm");
+        if (realm === undefined) return `no token realm in 401 challenge: ${challenge}`;
+        const tokenUrl = new URL(realm);
+        const service = field("service");
+        if (service !== undefined) tokenUrl.searchParams.set("service", service);
+        tokenUrl.searchParams.set("scope", field("scope") ?? `repository:${name}:pull`);
+        const t = RegistryToken(await (await get(tokenUrl.href)).json());
+        if (t instanceof type.errors) return `token response: ${t.summary}`;
+        token = t.token ?? t.access_token;
+        if (token === undefined) return "token response carried no token";
+        response = await get(url, token);
+      }
+      if (!response.ok) return `registry returned HTTP ${response.status}`;
+      const data = RegistryTagList(await response.json());
+      if (data instanceof type.errors) return data.summary;
+      tags.push(...(data.tags ?? []));
+      // Distribution-spec pagination: a Link header names the next page, relative to the registry.
+      const next = /<([^>]+)>;\s*rel="next"/.exec(response.headers.get("link") ?? "")?.[1];
+      if (next === undefined) return tags;
+      url = new URL(next, `https://${api}`).href;
+    }
+    return "registry exceeded 20 pages of tags; inspect the catalog before raising the bound";
+  } catch (error) {
+    return String(error);
+  }
+}
+
+async function checkRegistryImage(
+  host: string,
+  repo: string,
+  current: string,
+  repository: string
+): Promise<UpdateInfo> {
+  // Registry publication and wrapper releases are independent; only published image tags establish what operators
+  // can pull, and a rebuild that patches the base without a new component version appears only as a new tag.
+  const base = {
+    name: repo,
+    current,
+    source: `${host}/${repo}`,
+    sourceType: "git" as const,
+    enabled: true,
+  };
   const unavailable = (reason: string): UpdateInfo => ({
     ...base,
     latest: null,
@@ -613,47 +675,26 @@ async function checkDockerHubImage(repo: string, current: string): Promise<Updat
     releaseUrl: null,
     notes: `Could not check published image tags: ${reason}`,
   });
+  const tags = await registryTags(host, repo);
+  if (typeof tags === "string") return unavailable(tags);
   let latest: string | null = null;
-  let pageUrl = `${source}?page_size=100`;
-  const registryOrigin = new URL(source).origin;
-  try {
-    for (let page = 1; page <= 10; page++) {
-      const response = await fetch(pageUrl, {
-        signal: AbortSignal.timeout(15_000),
-      });
-      if (!response.ok) return unavailable(`registry returned HTTP ${response.status}`);
-      const data = DockerHubTagPage(await response.json());
-      if (data instanceof type.errors) return unavailable(data.summary);
-      for (const { name } of data.results) {
-        if (
-          !hasSameTagShape(current, name) ||
-          !canUseCandidateTag(current, name) ||
-          compareTagVersions(current, name) === null
-        )
-          continue;
-        if (latest === null || (compareTagVersions(latest, name) ?? 0) > 0) latest = name;
-      }
-      if (data.next === null) {
-        if (latest === null) return unavailable(`no tags comparable with ${current}`);
-        return {
-          ...base,
-          latest,
-          updateAvailable: (compareTagVersions(current, latest) ?? 0) > 0,
-          releaseUrl: `https://hub.docker.com/r/${repo}/tags?name=${encodeURIComponent(latest)}`,
-          notes: "Latest compatible published image tag; verify the bundled binary separately",
-        };
-      }
-      const nextPage = new URL(data.next, source);
-      if (nextPage.origin !== registryOrigin)
-        return unavailable("pagination left the registry origin");
-      pageUrl = nextPage.href;
-    }
-    return unavailable(
-      "registry exceeded 1,000 tags; inspect the catalog before raising the bound"
-    );
-  } catch (error) {
-    return unavailable(String(error));
+  for (const name of tags) {
+    if (
+      !hasSameTagShape(current, name) ||
+      !canUseCandidateTag(current, name) ||
+      compareTagVersions(current, name) === null
+    )
+      continue;
+    if (latest === null || (compareTagVersions(latest, name) ?? 0) > 0) latest = name;
   }
+  if (latest === null) return unavailable(`no tags comparable with ${current}`);
+  return {
+    ...base,
+    latest,
+    updateAvailable: (compareTagVersions(current, latest) ?? 0) > 0,
+    releaseUrl: repository,
+    notes: "Latest compatible published image tag; verify the bundled binary separately",
+  };
 }
 
 function printTable(updates: UpdateInfo[]) {
@@ -816,8 +857,13 @@ async function main() {
       });
       continue;
     }
-    if (upstream.tags === "docker-hub") {
-      const update = await checkDockerHubImage(image.repo, image.tag);
+    if (upstream.tags === "registry") {
+      const update = await checkRegistryImage(
+        image.host,
+        image.repo,
+        image.tag,
+        upstream.repository
+      );
       results.push({ ...update, files: image.files, notes: `${update.notes} (${pinnedIn})` });
       continue;
     }

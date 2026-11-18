@@ -10,6 +10,15 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
 
 ## [Unreleased]
 
+### Security
+
+- **Grafana 13.3.0 → 13.3.1** (`deployments/phase1-single-vps`): fixes CVE-2026-102589, CVE-2026-107509, CVE-2026-110992, CVE-2026-111024, CVE-2026-13721 and CVE-2026-14242.
+
+### Changed
+
+- **postgres-exporter 0.20.1 → 0.21.1** (all stacks and `deployments/phase1-single-vps`). Counters above 2^53 now wrap so single-unit changes stay exact; the first scrape after the upgrade reads such a counter as a reset, so `rate()`/`increase()` over that window can show one large false spike (alerts on rates of very large counters may fire once). Add `--no-wrap-large-counters` to the exporter's `command` to keep the old conversion. Other changes that reach these stacks: `pg_stat_replication_*` metrics gain a `pid` label; a collector failing part way through a scrape now drops all its metrics for that scrape (still reported by `pg_scrape_collector_success`); concurrent scrapes are capped at 40 (`--web.max-requests`, excess gets HTTP 503); new `pg_database_wraparound_age_datfrozenxid`/`_datminmxid` gauges replace the misnamed `_seconds` ones, which stay as deprecated aliases. The `PG_EXPORTER_*` environment variables are deprecated upstream (removed in 0.22), so the stacks now pass the same settings as flags in `command`; a deployment that overrides the exporter's `command` must keep `--extend.query-path=/etc/postgres_exporter/queries.yaml`, or the custom metrics disappear.
+- **Prometheus 3.15.1 → 3.16.0** (`deployments/phase1-single-vps`): no change to this deployment's configuration; PromQL fixes wrong results of `==`, `!=`, `changes()` and `count_values` on native histograms inside `histogram_count()`/`histogram_sum()`/`histogram_avg()`.
+
 ### Fixed
 
 - Health checks reject the temporary initialization server when the auto-config wrapper sources the upstream entrypoint. The check reads each process's first argument to exclude tini's retained entrypoint arguments, so the final server can become healthy normally.

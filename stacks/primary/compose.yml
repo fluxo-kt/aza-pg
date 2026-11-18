@@ -101,17 +101,17 @@ services:
 
   postgres_exporter:
     image: >-
-      ${POSTGRES_EXPORTER_IMAGE:-prometheuscommunity/postgres-exporter:v0.20.1@sha256:ac5ec343104fae0e2d84a27bb8d69b38430a11910c5382cad85d478d2bab713e}
+      ${POSTGRES_EXPORTER_IMAGE:-prometheuscommunity/postgres-exporter:v0.21.1@sha256:3b8e05a84282cd1199ad2fb6c66f362738bf4c68c1547d8f4226a34a7dd6d8d7}
     container_name: ${COMPOSE_PROJECT_NAME:-aza-pg}-postgres-exporter-primary
     restart: unless-stopped
+    # Flags, not PG_EXPORTER_* env vars: 0.21 deprecates those (startup warning) and 0.22 removes them.
+    command: ["--extend.query-path=/etc/postgres_exporter/queries.yaml"]
 
     environment:
       DATA_SOURCE_NAME: "postgresql://${POSTGRES_USER:-postgres}@postgres:5432/postgres?sslmode=disable"
       # SECURITY NOTE: PGPASSWORD is visible in docker inspect. This is acceptable for
       # monitoring on private Docker networks. For production, consider Docker secrets.
       PGPASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
-      PG_EXPORTER_EXTEND_QUERY_PATH: /etc/postgres_exporter/queries.yaml
-      PG_EXPORTER_DISABLE_DEFAULT_METRICS: "false"
 
     volumes:
       - ../../docker/postgres/configs/postgres_exporter_queries.yaml:/etc/postgres_exporter/queries.yaml:ro

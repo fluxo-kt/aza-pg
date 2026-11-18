@@ -36,6 +36,9 @@ async function run(): Promise<void> {
   await sql(
     "SELECT partman.create_parent('public.events', 'at', '1 day', 'range', p_premake := 3)"
   );
+  // Maintenance premakes time partitions ahead of the newest row only (infinite_time_partitions defaults to false,
+  // so a set without data gets no new children): a row at now() is what makes the dropped one due again.
+  await sql("INSERT INTO events VALUES (1, now())");
   const newest = await sql(
     "SELECT partition_schemaname || '.' || partition_tablename FROM partman.show_partitions('public.events', 'DESC') LIMIT 1"
   );

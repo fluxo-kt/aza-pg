@@ -247,7 +247,9 @@ const SEED_WORKER = "00000000-0000-4000-8000-000000000001";
 // Each prints one "key value" line before the pgflow lines, whose last line the run-id parse anchors on.
 const MIGRATION_SEED_SQL = `
 CREATE EXTENSION IF NOT EXISTS plpgsql_check;
-CREATE EXTENSION IF NOT EXISTS wrappers;
+DO $$BEGIN -- only where that release shipped it: later releases without an FDW lack it
+  IF EXISTS (SELECT FROM pg_available_extensions WHERE name = 'wrappers') THEN CREATE EXTENSION IF NOT EXISTS wrappers; END IF;
+END$$;
 CREATE FUNCTION aza_checked() RETURNS int LANGUAGE plpgsql AS $$ BEGIN RETURN 1; END $$;
 CREATE TABLE aza_chars (loose bpchar COLLATE "C", fixed char(4) COLLATE "C"); -- "C": no glibc rebuild touches them
 CREATE INDEX aza_loose_idx ON aza_chars (loose);

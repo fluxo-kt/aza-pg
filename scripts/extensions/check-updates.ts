@@ -427,9 +427,12 @@ async function checkGitHubRelease(
 }
 
 async function checkExtensionUpdates(
-  entry: Pick<ManifestEntry, "name" | "source" | "enabled">
+  entry: Pick<ManifestEntry, "name" | "source" | "enabled" | "nix">
 ): Promise<UpdateInfo | null> {
-  const { name, source, enabled = true } = entry;
+  const { name, source } = entry;
+  // An unshipped entry kept building (nix.buildUnshipped) is updated like a shipped one: its build runs every round,
+  // and letting it fall behind defeats keeping it ready to ship. So its update counts as work (exit 1).
+  const enabled = (entry.enabled ?? true) || entry.nix?.buildUnshipped === true;
 
   // Skip built-in extensions
   if (source.type === "builtin") {

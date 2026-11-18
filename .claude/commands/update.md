@@ -566,11 +566,12 @@ had the wrong `.so` filename — the dead entry went unnoticed until an explicit
 
 ### 5.5: Updating Disabled Extensions
 
-**Identify**: `command grep 'enabled: false' scripts/extensions/manifest-data.ts -B 2 | command grep 'name:'`
+**Identify** from the generated manifest (manifest-data.ts may compute `enabled`, so grepping it misses entries):
+`jq -r '.entries[] | select(.enabled == false) | "\(.name) buildUnshipped=\(.nix.buildUnshipped // false)"' docker/postgres/extensions.manifest.json`
 
-**Principle**: Update disabled extensions if they're still tested or might be re-enabled. Skip if permanently incompatible.
-
-Extensions still in test suites should stay current. Permanently broken extensions can be skipped.
+An entry with `nix.buildUnshipped` is updated like a shipped one: `check-updates.ts` counts its update as work, and
+the `unshipped` build in Phase 3 must pass. Other disabled entries are updated when still tested or likely to return;
+permanently incompatible ones are skipped.
 
 ### 5.6: Compose Stack Images (Outside Manifest)
 

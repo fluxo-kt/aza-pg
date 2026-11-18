@@ -55,8 +55,11 @@ services:
       start_interval: 1s
 
   pgbouncer:
+    # CloudNativePG's image: it rebuilds each PgBouncer release on patched Debian about weekly (timestamped tags),
+    # while edoburu/pgbouncer stopped rebuilding and kept fixable musl, libpq and zlib CVEs. Only pgbouncer, sh,
+    # sed and psql (healthcheck) are used, through the stack's own entrypoint below.
     image: >-
-      ${PGBOUNCER_IMAGE:-edoburu/pgbouncer:v1.26.1-p0@sha256:488422e38cff912895d0d65d8963fcd306e6ac589a724398b6eb8e294e94d624}
+      ${PGBOUNCER_IMAGE:-ghcr.io/cloudnative-pg/pgbouncer:1.26.1-202611121015-trixie@sha256:6c91fd7383b8b098bc0c3b71dba4e98bd568c0d301b9fc66027fbc23259c6a7d}
     container_name: ${COMPOSE_PROJECT_NAME:-aza-pg}-pgbouncer-primary
     restart: unless-stopped
 

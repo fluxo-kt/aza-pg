@@ -44,27 +44,19 @@ services:
 
   # PgBouncer - Connection Pooling
   pgbouncer:
-    # Keep the stack's wrapper image so its authentication and healthcheck behavior stay aligned.
-    image: edoburu/pgbouncer:v1.26.1-p0@sha256:488422e38cff912895d0d65d8963fcd306e6ac589a724398b6eb8e294e94d624
+    # The stack's image (stacks/primary/compose.yml says why CloudNativePG's). It reads /etc/pgbouncer/pgbouncer.ini,
+    # rendered by Compose from the `pgbouncer.ini` config at the end of this file.
+    image: ghcr.io/cloudnative-pg/pgbouncer:1.26.1-202611121015-trixie@sha256:6c91fd7383b8b098bc0c3b71dba4e98bd568c0d301b9fc66027fbc23259c6a7d
     container_name: pgbouncer
     restart: unless-stopped
+    # uid 70 owns pgbouncer/userlist.txt (setup.sh, mode 600); the image's own user (998) could not read it.
+    user: "70:70"
     environment:
-      DB_HOST: postgres
-      DB_PORT: 5432
-      DB_NAME: ${POSTGRES_DB:-main}
-      # No DB_PASSWORD: with one, the image appends a credential to userlist.txt, which is mounted read-only. Logins
-      # to PostgreSQL reuse each client's SCRAM secret from userlist.txt.
-      DB_USER: ${POSTGRES_USER:-postgres}
-      LISTEN_PORT: 6432
-      POOL_MODE: ${PGBOUNCER_POOL_MODE:-transaction}
-      DEFAULT_POOL_SIZE: ${PGBOUNCER_DEFAULT_POOL_SIZE:-25}
-      MAX_CLIENT_CONN: ${PGBOUNCER_MAX_CLIENT_CONN:-2000}
-      AUTH_TYPE: scram-sha-256
-      AUTH_FILE: /etc/pgbouncer/userlist.txt
-      STATS_USERS: ${POSTGRES_USER:-postgres}
-      IGNORE_STARTUP_PARAMETERS: extra_float_digits
       # For the healthcheck's psql only: PgBouncer authenticates every client with scram-sha-256
       PGPASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD not set}
+    configs:
+      - source: pgbouncer.ini
+        target: /etc/pgbouncer/pgbouncer.ini
     volumes:
       - ./pgbouncer/userlist.txt:/etc/pgbouncer/userlist.txt:ro
     networks:
@@ -202,6 +194,27 @@ services:
         limits:
           cpus: "0.25"
           memory: 512M
+
+configs:
+  # Compose interpolates ${…} in inline content (Compose 2.23.1+), so the .env knobs reach PgBouncer without a
+  # generator script. No password here: logins reuse each client's SCRAM secret from userlist.txt.
+  pgbouncer.ini:
+    content: |
+      [databases]
+      ${POSTGRES_DB:-main} = host=postgres port=5432 auth_user=${POSTGRES_USER:-postgres}
+
+      [pgbouncer]
+      listen_addr = 0.0.0.0
+      listen_port = 6432
+      unix_socket_dir =
+      auth_type = scram-sha-256
+      auth_file = /etc/pgbouncer/userlist.txt
+      pool_mode = ${PGBOUNCER_POOL_MODE:-transaction}
+      max_client_conn = ${PGBOUNCER_MAX_CLIENT_CONN:-2000}
+      default_pool_size = ${PGBOUNCER_DEFAULT_POOL_SIZE:-25}
+      ignore_startup_parameters = extra_float_digits
+      admin_users = ${POSTGRES_USER:-postgres}
+      stats_users = ${POSTGRES_USER:-postgres}
 
 networks:
   aza-pg-network:

@@ -82,14 +82,22 @@ async function runCheckUntimed(
 
   // Check Docker availability if needed
   if (check.requiresDocker && !(await isDockerDaemonRunning())) {
-    const message = `${check.name} skipped - Docker not available. Install Docker or set ${check.envOverride}=1`;
+    // The reason travels in stderr too: parallel mode prints only captured output, and a bare
+    // "<check> failed" there reads as a lint finding in the files instead of a stopped daemon.
+    const message = `${check.name} did not run: the Docker daemon is not running (the linter runs in a pinned container). Start Docker and re-run; ${check.envOverride}=1 skips it locally only, CI still runs it.`;
     if (effectivelyRequired) {
       if (!bufferOutput) error(message);
-      return { passed: false, critical: true, name: check.name };
+      return { passed: false, critical: true, name: check.name, stderr: `${message}\n` };
     } else {
       if (!bufferOutput) warning(message);
       // Sanctioned skip, not a failure: the check is optional (envOverride set) and Docker is absent.
-      return { passed: false, skipped: true, critical: false, name: check.name };
+      return {
+        passed: false,
+        skipped: true,
+        critical: false,
+        name: check.name,
+        stderr: `${message}\n`,
+      };
     }
   }
 

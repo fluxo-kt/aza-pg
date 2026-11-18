@@ -400,8 +400,8 @@
       "source": {
         "type": "git",
         "repository": "https://github.com/percona/pg_stat_monitor.git",
-        "tag": "2.4.0",
-        "commit": "2de2db763db9f590cd28159741c36b41f66eb985"
+        "tag": "2.4.1",
+        "commit": "33eeadf2a4b7bfe9797fbd867d506a4c0cb176db"
       },
       "soFileName": "pg_stat_monitor.so",
       "build": {

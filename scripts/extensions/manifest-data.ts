@@ -865,7 +865,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     source: {
       type: "git",
       repository: "https://github.com/percona/pg_stat_monitor.git",
-      tag: "2.4.0",
+      tag: "2.4.1",
     },
     soFileName: "pg_stat_monitor.so",
     build: { type: "pgxs" },

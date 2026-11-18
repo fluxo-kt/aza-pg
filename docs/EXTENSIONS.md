@@ -85,7 +85,7 @@ The tables below are generated from `extensions.manifest.json`. Columns indicate
 
 | Extension                                                       | Version                                                                | Enabled by Default | Shared Preload | Documentation                                    | Notes                                                       |
 | --------------------------------------------------------------- | ---------------------------------------------------------------------- | ------------------ | -------------- | ------------------------------------------------ | ----------------------------------------------------------- |
-| [`pg_stat_monitor`](https://github.com/percona/pg_stat_monitor) | [2.4.0](https://github.com/percona/pg_stat_monitor/releases/tag/2.4.0) | Yes                | Yes            | [Docs](https://docs.percona.com/pg-stat-monitor) | Enhanced query performance telemetry with bucketed metrics. |
+| [`pg_stat_monitor`](https://github.com/percona/pg_stat_monitor) | [2.4.1](https://github.com/percona/pg_stat_monitor/releases/tag/2.4.1) | Yes                | Yes            | [Docs](https://docs.percona.com/pg-stat-monitor) | Enhanced query performance telemetry with bucketed metrics. |
 
 ### operations
 

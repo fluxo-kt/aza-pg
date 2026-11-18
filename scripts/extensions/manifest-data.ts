@@ -75,7 +75,15 @@ export const MANIFEST_METADATA = {
 
 export type SourceSpec =
   | { type: "builtin" }
-  | { type: "git"; repository: string; tag: string }
+  | {
+      type: "git";
+      repository: string;
+      tag: string;
+      // Upstream keeps one branch per PostgreSQL major and tags it with that major (pgaudit 18.1 vs 19.0).
+      // Set it so check-updates.ts offers only tags of MANIFEST_METADATA.pgVersion's major: otherwise the
+      // newest tag belongs to the next PG major and hides the real update on ours.
+      pgMajorTags?: true;
+    }
   | { type: "git-ref"; repository: string; ref: string };
 
 export type BuildKind =
@@ -250,6 +258,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       type: "git",
       repository: "https://github.com/pgaudit/pgaudit.git",
       tag: "18.0",
+      pgMajorTags: true,
     },
     build: { type: "pgxs" },
     runtime: {

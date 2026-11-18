@@ -466,6 +466,7 @@
         "type": "git",
         "repository": "https://github.com/pgaudit/pgaudit.git",
         "tag": "18.0",
+        "pgMajorTags": true,
         "commit": "f39f8dbb15dc5bd4cbe5f1e5abe0d930ed7593a8"
       },
       "build": {

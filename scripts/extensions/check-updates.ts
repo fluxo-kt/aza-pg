@@ -18,7 +18,7 @@
  */
 
 import { type } from "arktype";
-import { MANIFEST_ENTRIES } from "./manifest-data";
+import { MANIFEST_ENTRIES, MANIFEST_METADATA } from "./manifest-data";
 import type { ManifestEntry } from "./manifest-data";
 
 interface UpdateInfo {
@@ -249,9 +249,23 @@ async function checkGitRefHead(
   return { head, error: null };
 }
 
+export function isSameReleaseLine(
+  currentTag: string,
+  candidateTag: string,
+  pgMajor?: number
+): boolean {
+  // Same tag family and, for an entry whose tags carry the PG major (`pgMajor` set, from the entry's
+  // `pgMajorTags`), the same first version number as that major. Prefix families alone cannot tell
+  // pgaudit's `18.1` from `19.0` (both bare numbers): without the major check the next PG major's
+  // release wins and the update for ours is never reported.
+  if (compareTagVersions(currentTag, candidateTag) === null) return false;
+  return pgMajor === undefined || parseTagVersion(candidateTag)?.segments[0] === pgMajor;
+}
+
 async function checkGitHubRelease(
   repository: string,
-  currentTag: string
+  currentTag: string,
+  pgMajor?: number
 ): Promise<{
   latest: string | null;
   url: string | null;
@@ -280,7 +294,7 @@ async function checkGitHubRelease(
     const comparableTags = tags
       .map((tag) => tag.name)
       .filter((tag) => canUseCandidateTag(currentTag, tag))
-      .filter((tag) => compareTagVersions(currentTag, tag) !== null);
+      .filter((tag) => isSameReleaseLine(currentTag, tag, pgMajor));
 
     if (comparableTags.length === 0) {
       return { latest: null, url: null };
@@ -323,7 +337,7 @@ async function checkGitHubRelease(
       .map((ref) => ref.replace("refs/tags/", ""))
       .filter((tag) => tag.length > 0)
       .filter((tag) => canUseCandidateTag(currentTag, tag))
-      .filter((tag) => compareTagVersions(currentTag, tag) !== null);
+      .filter((tag) => isSameReleaseLine(currentTag, tag, pgMajor));
 
     if (comparableTags.length === 0) {
       return { latest: null, url: null };
@@ -379,7 +393,7 @@ async function checkGitHubRelease(
     const data = (await response.json()) as GitHubRelease;
     // Some monorepos publish release tags for other packages. If tag family
     // differs, prefer a comparable git tag for this extension.
-    if (compareTagVersions(currentTag, data.tag_name) === null) {
+    if (!isSameReleaseLine(currentTag, data.tag_name, pgMajor)) {
       const tagsFallback = await fallbackToComparableTags();
       if (tagsFallback.latest !== null) {
         return {
@@ -450,7 +464,8 @@ async function checkExtensionUpdates(
   if (source.type === "git") {
     const { latest, url, usedTagsFallback, fallbackSource } = await checkGitHubRelease(
       source.repository,
-      source.tag
+      source.tag,
+      source.pgMajorTags ? Number.parseInt(MANIFEST_METADATA.pgVersion, 10) : undefined
     );
 
     if (latest === null) {

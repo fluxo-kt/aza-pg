@@ -23,6 +23,7 @@ export const SourceSpecSchema = type({
     type: "'git'",
     repository: "string",
     tag: "string",
+    "pgMajorTags?": "true",
   })
   .or({
     type: "'git-ref'",

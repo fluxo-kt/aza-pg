@@ -5,6 +5,7 @@ import {
   compareTagVersions,
   hasSameTagShape,
   isPreReleaseTag,
+  isSameReleaseLine,
   parseLsRemoteHeadOutput,
   refsPointToSameCommit,
 } from "./check-updates";
@@ -29,6 +30,18 @@ describe("compareTagVersions", () => {
     expect(compareTagVersions("v1.24.1-p0", "v1.24.1-p1")).toBe(1);
     expect(compareTagVersions("v1.24.1-p2", "v1.24.1-p10")).toBe(1);
     expect(compareTagVersions("v1.24.1-p99", "v1.25.0-p0")).toBe(1);
+  });
+});
+
+describe("isSameReleaseLine", () => {
+  test("a PG-major-tagged entry stays on the shipped major, so 19.0 cannot hide 18.1", () => {
+    expect(isSameReleaseLine("18.0", "18.1", 18)).toBeTrue();
+    expect(isSameReleaseLine("18.0", "19.0", 18)).toBeFalse();
+  });
+
+  test("other entries keep their own majors (pgvector 0.x -> 1.x is a real update)", () => {
+    expect(isSameReleaseLine("0.8.1", "1.0.0")).toBeTrue();
+    expect(isSameReleaseLine("pgflow@0.14.1", "@pgflow/edge-worker@0.14.2")).toBeFalse();
   });
 });
 

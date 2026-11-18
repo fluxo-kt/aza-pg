@@ -47,6 +47,7 @@ export const SUITES: Suite[] = [
   { path: "scripts/test/test-extension-versions.ts", group: "extensions" },
   { path: "scripts/test/test-timescaledb-tsl.ts", group: "extensions" },
   { path: "scripts/test/test-pg-partman-bgw.ts", group: "extensions" },
+  { path: "scripts/test/test-healthcheck-init.ts", group: "features" },
   { path: "scripts/test/test-pgmq-functional.ts", group: "extensions" },
   { path: "scripts/test/test-supautils-functional.ts", group: "extensions" },
   { path: "scripts/test/test-pg-net-functional.ts", group: "extensions" },

@@ -257,7 +257,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     source: {
       type: "git",
       repository: "https://github.com/pgaudit/pgaudit.git",
-      tag: "18.0",
+      tag: "18.1",
       pgMajorTags: true,
     },
     build: { type: "pgxs" },
@@ -364,7 +364,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     source: {
       type: "git",
       repository: "https://github.com/HypoPG/hypopg.git",
-      tag: "1.4.4",
+      tag: "1.4.5",
     },
     build: { type: "pgxs" },
     runtime: {
@@ -405,7 +405,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     source: {
       type: "git",
       repository: "https://github.com/okbob/plpgsql_check.git",
-      tag: "v2.10.16",
+      tag: "v2.11.0",
     },
     build: { type: "pgxs" },
     runtime: {
@@ -451,7 +451,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     source: {
       type: "git",
       repository: "https://github.com/supabase/supautils.git",
-      tag: "v4.0.0",
+      tag: "v4.0.1",
     },
     build: { type: "pgxs" },
     runtime: {
@@ -738,7 +738,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     source: {
       type: "git",
       repository: "https://github.com/tembo-io/pgmq.git",
-      tag: "v1.13.1",
+      tag: "v1.13.2",
     },
     build: { type: "pgxs", subdir: "pgmq-extension" },
     runtime: {
@@ -894,7 +894,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     source: {
       type: "git",
       repository: "https://github.com/timescale/timescaledb.git",
-      tag: "2.31.0",
+      tag: "2.32.0",
     },
     runtime: {
       sharedPreload: true,
@@ -917,13 +917,14 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     source: {
       type: "git",
       repository: "https://github.com/timescale/timescaledb-toolkit.git",
-      tag: "1.26.0",
+      tag: "1.27.0+p2",
     },
     build: {
       type: "cargo-pgrx",
-      // Cargo.lock moved with `cargo update -p <crate> --precise <version>` at the pinned commit: hashbrown 0.15.1
-      // (GHSA-wwq9-3cpr-mm53, HIGH) and rand 0.8.8 (GHSA-cq8v-f236-94qc). Regenerate the same way on a bump; drop it
-      // once a release locks these; a stale one fails the build.
+      // Cargo.lock moved with `cargo update -p <crate> --precise <version>` at the pinned commit: rand 0.8.8
+      // (GHSA-cq8v-f236-94qc); upstream's own lock already has a fixed hashbrown (GHSA-wwq9-3cpr-mm53). Regenerate the
+      // same way on a bump, keeping only bumps upstream still lacks; drop it once a release locks these; a stale one
+      // fails the build.
       patches: ["timescaledb_toolkit-cargo-lock.patch"],
     },
     dependencies: ["timescaledb"],
@@ -966,7 +967,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     source: {
       type: "git",
       repository: "https://github.com/pgpartman/pg_partman.git",
-      tag: "v5.5.0",
+      tag: "v5.5.1",
     },
     build: { type: "pgxs" },
     runtime: {
@@ -1068,7 +1069,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     source: {
       type: "git",
       repository: "https://github.com/pgbackrest/pgbackrest.git",
-      tag: "release/2.60.0",
+      tag: "release/2.60.1",
     },
     runtime: {
       sharedPreload: false,
@@ -1092,7 +1093,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     source: {
       type: "git",
       repository: "https://github.com/pgaudit/set_user.git",
-      tag: "REL4_2_0",
+      tag: "REL4_3_0",
     },
     build: { type: "pgxs" },
     runtime: {

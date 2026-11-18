@@ -119,8 +119,8 @@
       "source": {
         "type": "git",
         "repository": "https://github.com/HypoPG/hypopg.git",
-        "tag": "1.4.4",
-        "commit": "4e564ebbd46e1ab365ad0d05ca4a2f19cf316ba7"
+        "tag": "1.4.5",
+        "commit": "9ab5c4fd3701b14ca3c996da360bba9fa5e9b970"
       },
       "build": {
         "type": "pgxs"
@@ -287,8 +287,8 @@
       "source": {
         "type": "git",
         "repository": "https://github.com/pgpartman/pg_partman.git",
-        "tag": "v5.5.0",
-        "commit": "f7e83b9c441c7e97066d815bbe14e02a9dc5ff94"
+        "tag": "v5.5.1",
+        "commit": "e0a6c384a6c77846d2560f9251089339c9637814"
       },
       "build": {
         "type": "pgxs"
@@ -465,9 +465,9 @@
       "source": {
         "type": "git",
         "repository": "https://github.com/pgaudit/pgaudit.git",
-        "tag": "18.0",
+        "tag": "18.1",
         "pgMajorTags": true,
-        "commit": "f39f8dbb15dc5bd4cbe5f1e5abe0d930ed7593a8"
+        "commit": "91b7db030d44c1b5585f851de1923eeec1b2d625"
       },
       "build": {
         "type": "pgxs"
@@ -508,8 +508,8 @@
       "source": {
         "type": "git",
         "repository": "https://github.com/pgbackrest/pgbackrest.git",
-        "tag": "release/2.60.0",
-        "commit": "2e1c4f2ba727c45a0a23d4b326905088dc15b1a1"
+        "tag": "release/2.60.1",
+        "commit": "7aeba299c49abd768ca741506569007a5cab0870"
       },
       "runtime": {
         "sharedPreload": false,
@@ -579,8 +579,8 @@
       "source": {
         "type": "git",
         "repository": "https://github.com/tembo-io/pgmq.git",
-        "tag": "v1.13.1",
-        "commit": "8eab18272e50077ab9f72d9787296655f2849dcc"
+        "tag": "v1.13.2",
+        "commit": "51468f6ba2afeb4a4a9a67e9a532f37b590a0929"
       },
       "build": {
         "type": "pgxs",
@@ -738,8 +738,8 @@
       "source": {
         "type": "git",
         "repository": "https://github.com/okbob/plpgsql_check.git",
-        "tag": "v2.10.16",
-        "commit": "9a5c0ec4babebd5eb8e0db104c54f7ddb43fcc07"
+        "tag": "v2.11.0",
+        "commit": "e8bbdc6f5923c1096c6de52f93db83aa693e64d0"
       },
       "build": {
         "type": "pgxs"
@@ -813,8 +813,8 @@
       "source": {
         "type": "git",
         "repository": "https://github.com/pgaudit/set_user.git",
-        "tag": "REL4_2_0",
-        "commit": "db4e871528c4b62bba672abaf9044f4cc618ae8c"
+        "tag": "REL4_3_0",
+        "commit": "45fc481de6874c2afc5199d7efbd2e32c66d702e"
       },
       "build": {
         "type": "pgxs"
@@ -869,8 +869,8 @@
       "source": {
         "type": "git",
         "repository": "https://github.com/supabase/supautils.git",
-        "tag": "v4.0.0",
-        "commit": "7a22990746ec17b1a84cf2a097dda411222f8ec7"
+        "tag": "v4.0.1",
+        "commit": "5e06656eef2dd35763576b781c5dac6b9820b411"
       },
       "build": {
         "type": "pgxs"
@@ -898,8 +898,8 @@
       "source": {
         "type": "git",
         "repository": "https://github.com/timescale/timescaledb.git",
-        "tag": "2.31.0",
-        "commit": "4fa2a7c6b579171a1a8966fd87a0d4189ebab43b"
+        "tag": "2.32.0",
+        "commit": "b0474c32504c54edb44a23d33dc8a783745600cd"
       },
       "runtime": {
         "sharedPreload": true,
@@ -924,8 +924,8 @@
       "source": {
         "type": "git",
         "repository": "https://github.com/timescale/timescaledb-toolkit.git",
-        "tag": "1.26.0",
-        "commit": "4cea9322535c2566d873e5d6c42bb6d3c51c238e"
+        "tag": "1.27.0+p2",
+        "commit": "bef872ee684670e2f9a545e114890ddd5dcaf997"
       },
       "build": {
         "type": "cargo-pgrx",

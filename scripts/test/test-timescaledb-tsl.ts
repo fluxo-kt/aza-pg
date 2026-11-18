@@ -10,6 +10,8 @@
  * equal the same aggregate computed directly, so a refresh that silently skips compressed chunks
  * fails too.
  *
+ * A job started by the scheduler must succeed: policies run in a background worker, a path no direct call takes.
+ *
  * Usage: bun scripts/test/test-timescaledb-tsl.ts [image] [--image=TAG]
  */
 import { $ } from "bun";
@@ -65,6 +67,39 @@ async function run(): Promise<void> {
       `continuous aggregate rows differ from direct aggregate:\n${fromAggregate}\n!=\n${direct}`
     );
   }
+
+  // Every policy (compression, retention, aggregate refresh) runs in the scheduler's background worker through
+  // job_execute(), which the direct calls above never reach. A PostgreSQL minor can break only that path
+  // (18.7's PortalDrop check failed every scheduled job while CALL run_job() still passed), so a job the
+  // scheduler itself starts must succeed. A user-defined action takes the same path with no policy offsets.
+  await sql(
+    "CREATE PROCEDURE tsl_tick(job_id int, config jsonb) LANGUAGE plpgsql AS $$ BEGIN PERFORM 1; END $$"
+  );
+  const jobId = Number(await sql("SELECT add_job('tsl_tick', '1 second')"));
+  const deadline = Date.now() + TIMEOUTS.health * 1000;
+  let successes = 0;
+  while (Date.now() < deadline && successes === 0) {
+    const [ok = 0, failed = 0] = (
+      await sql(
+        `SELECT total_successes || ' ' || total_failures FROM timescaledb_information.job_stats WHERE job_id = ${jobId}`
+      )
+    )
+      .split(" ")
+      .map(Number);
+    if (failed > 0) {
+      const reason = await sql(
+        `SELECT coalesce(string_agg(err_message, '; '), 'no job_errors row') FROM timescaledb_information.job_errors WHERE job_id = ${jobId}`
+      );
+      throw new Error(`a job started by the TimescaleDB scheduler failed: ${reason}`);
+    }
+    successes = ok;
+    if (successes === 0) await Bun.sleep(250);
+  }
+  if (successes === 0) {
+    throw new Error(
+      `the TimescaleDB scheduler ran no job within ${TIMEOUTS.health} s (scheduler not started, or no background worker slot)`
+    );
+  }
 }
 
 let failure: string | null = null;
@@ -79,4 +114,6 @@ if (failure) {
   console.error(`FAIL: timescaledb TSL: ${failure}`);
   process.exit(1);
 }
-console.log("PASS: timescaledb TSL compression and continuous aggregate over compressed chunks");
+console.log(
+  "PASS: timescaledb TSL compression, continuous aggregate over compressed chunks, scheduler-run job"
+);

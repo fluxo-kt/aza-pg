@@ -1050,7 +1050,9 @@
       "nix": {
         "inputs": [
           "openssl",
-          "pkg-config"
+          "pkg-config",
+          "aws-lc",
+          "zstd"
         ]
       },
       "displayName": "supabase-wrappers",

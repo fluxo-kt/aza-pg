@@ -513,7 +513,10 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
   {
     name: "wrappers",
     license: "Apache-2.0",
-    nix: { inputs: ["openssl", "pkg-config"] },
+    // nixpkgs' cargoSetupHook makes aws-lc-sys and zstd-sys link the system library instead of vendoring their C, so
+    // both come from nixpkgs: vulnix then sees their CVEs, and flake.lock bumps update them. nixpkgs builds aws-lc with
+    // prefixed symbols, so it coexists with the OpenSSL that PostgreSQL loads into the same backend.
+    nix: { inputs: ["openssl", "pkg-config", "aws-lc", "zstd"] },
     displayName: "supabase-wrappers",
     kind: "extension",
     category: "integration",

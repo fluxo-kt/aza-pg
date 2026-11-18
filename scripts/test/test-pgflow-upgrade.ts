@@ -9,7 +9,7 @@
  * because NULL and the default ACL mean the same.
  *
  * Cases: the release's volume keeps its pgsodium key (the published one) and warns; the first start updates every
- * extension the release created (recreating one without an update path), creates none, and rebuilds only the indexes
+ * extension the release created (recreating one without an update path), drops one the image no longer ships, creates none, and rebuilds only the indexes
  * PostgreSQL 18.7 fixed; a migration that fails rolls the whole database back (fingerprint byte-identical, files restored); the real
  * upgrade matches the fresh install; a run the release left in flight is backfilled and completes; a second run says
  * "up to date"; a database name that reads as a connection string stays a name; a schema without
@@ -242,10 +242,12 @@ const SEED_FLOW = "Seed_Flow";
 const SEED_WORKER = "00000000-0000-4000-8000-000000000001";
 // The first start's own migrations also need state only a release creates (they run on its volumes alone):
 // plpgsql_check at an older version (2.11 ships no update path, so it must be recreated), a function for it to check,
-// and two indexes for the PostgreSQL 18.7 rebuild: unconstrained bpchar (must be rebuilt) and CHAR(n) (must not be).
+// two indexes for the PostgreSQL 18.7 rebuild: unconstrained bpchar (must be rebuilt) and CHAR(n) (must not be), and
+// wrappers, which releases shipped and an image without a chosen FDW does not (its empty tables let the start drop it).
 // Each prints one "key value" line before the pgflow lines, whose last line the run-id parse anchors on.
 const MIGRATION_SEED_SQL = `
 CREATE EXTENSION IF NOT EXISTS plpgsql_check;
+CREATE EXTENSION IF NOT EXISTS wrappers;
 CREATE FUNCTION aza_checked() RETURNS int LANGUAGE plpgsql AS $$ BEGIN RETURN 1; END $$;
 CREATE TABLE aza_chars (loose bpchar COLLATE "C", fixed char(4) COLLATE "C"); -- "C": no glibc rebuild touches them
 CREATE INDEX aza_loose_idx ON aza_chars (loose);
@@ -311,7 +313,7 @@ async function routine(fresh: Promise<string>, hashSql: string): Promise<void> {
     if (state !== "true|") throw new Error(`timescaledb current, then stale databases: "${state}"`);
   });
 
-  await test("the first start updates every created extension, creates none, and rebuilds only 18.7's indexes", async () => {
+  await test("the first start updates every created extension, drops unshipped ones, creates none, and rebuilds only 18.7's indexes", async () => {
     const seededLine = (key: string) => new RegExp(`^${key} (.*)$`, "m").exec(seeded)?.[1] ?? "";
     const now = (
       await psql(
@@ -320,14 +322,21 @@ async function routine(fresh: Promise<string>, hashSql: string): Promise<void> {
             FROM pg_extension JOIN pg_available_extensions ON name = extname WHERE extversion <> default_version), '');
          SELECT string_agg(extname, ',' ORDER BY extname) FROM pg_extension;
          SELECT pg_relation_filenode('aza_loose_idx') || ',' || pg_relation_filenode('aza_fixed_idx');
-         SELECT count(*) FROM plpgsql_check_function_tb('aza_checked()');`
+         SELECT count(*) FROM plpgsql_check_function_tb('aza_checked()');
+         SELECT string_agg(name, ',') FROM pg_available_extensions;`
       )
     ).split("\n");
-    const [stale, extensions, filenodes] = now;
+    const [stale, extensions, filenodes, , available] = now;
+    // Every seeded extension survives, except one this image no longer ships, which the start must drop.
+    const shipped = new Set((available ?? "").split(","));
+    const expected = seededLine("extensions")
+      .split(",")
+      .filter((name) => shipped.has(name))
+      .join(",");
     if (stale) throw new Error(`extensions left behind the image: ${stale}`);
-    if (extensions !== seededLine("extensions")) {
+    if (extensions !== expected) {
       throw new Error(
-        `extension set changed:\n before ${seededLine("extensions")}\n after  ${extensions}`
+        `extension set wrong:\n seeded   ${seededLine("extensions")}\n expected ${expected}\n after    ${extensions}`
       );
     }
     const [looseBefore, fixedBefore] = seededLine("filenodes").split(",");

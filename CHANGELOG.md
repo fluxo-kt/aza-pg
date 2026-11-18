@@ -41,6 +41,10 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
 
 - Health checks reject the temporary initialization server when the auto-config wrapper sources the upstream entrypoint. The check reads each process's first argument to exclude tini's retained entrypoint arguments, so the final server can become healthy normally.
 
+### Removed
+
+- **wrappers (supabase-wrappers)** is no longer in the image. It never included a foreign data wrapper (built without any FDW feature), so `CREATE EXTENSION wrappers` gave an empty stats table and nothing to query; earlier entries about its HTTPS FDWs' TLS libraries described code the image did not ship. The first start drops it from each database where it was created (that table cannot hold rows without an FDW). It returns once specific FDWs are chosen for the image.
+
 ## [v18.6-202610312251] - 2026-10-31
 
 ### Breaking

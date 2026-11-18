@@ -1053,8 +1053,11 @@
           "pkg-config",
           "aws-lc",
           "zstd"
-        ]
+        ],
+        "buildUnshipped": true
       },
+      "enabled": false,
+      "disabledReason": "No foreign data wrapper is chosen (WRAPPERS_FDWS is empty): without one the extension offers nothing to query.",
       "displayName": "supabase-wrappers",
       "kind": "extension",
       "category": "integration",

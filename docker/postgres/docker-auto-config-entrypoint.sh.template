@@ -998,7 +998,7 @@ SQL
 # path (plpgsql_check), DROP + CREATE in the same schema rebuilds it; DROP deletes member tables, so an extension owning
 # any stops the container instead, and DROP without CASCADE refuses, naming them, when user objects depend on it.
 UPDATE_EXTENSIONS=$(cat <<'SQL'
-DO $$DECLARE e record; BEGIN
+DO $$DECLARE e record; t record; has_rows boolean; BEGIN
     FOR e IN SELECT x.oid, x.extname, x.extversion, n.nspname, a.default_version FROM pg_extension x
         JOIN pg_namespace n ON n.oid = x.extnamespace JOIN pg_available_extensions a ON a.name = x.extname
         WHERE x.extversion <> a.default_version AND x.extname <> 'timescaledb' LOOP
@@ -1015,6 +1015,22 @@ DO $$DECLARE e record; BEGIN
             EXECUTE format('DROP EXTENSION %I', e.extname);
             EXECUTE format('CREATE EXTENSION %I SCHEMA %I', e.extname, e.nspname);
         END IF;
+    END LOOP;
+    -- An extension the image no longer ships (its control file is gone) breaks every later use and every pg_dump
+    -- restore. Dropping it loses nothing when its own tables hold no rows; otherwise the operator decides.
+    FOR e IN SELECT x.oid, x.extname FROM pg_extension x
+        WHERE NOT EXISTS (SELECT FROM pg_available_extensions a WHERE a.name = x.extname) LOOP
+        PERFORM set_config('client_min_messages', 'notice', true);
+        FOR t IN SELECT c.oid::regclass AS rel FROM pg_depend d JOIN pg_class c ON c.oid = d.objid
+                WHERE d.classid = 'pg_class'::regclass AND d.refclassid = 'pg_extension'::regclass
+                AND d.refobjid = e.oid AND d.deptype = 'e' AND c.relkind IN ('r', 'p') LOOP
+            EXECUTE format('SELECT EXISTS (SELECT FROM %s)', t.rel) INTO has_rows;
+            IF has_rows THEN
+                RAISE EXCEPTION 'database %: extension % is no longer in this image and its table % holds rows. Export them, run DROP EXTENSION %, then start the container again (or keep the previous image)', current_database(), e.extname, t.rel, e.extname;
+            END IF;
+        END LOOP;
+        RAISE NOTICE '[POSTGRES] [AUTO-CONFIG] database %: extension % dropped (no longer in this image; its tables were empty)', current_database(), e.extname;
+        EXECUTE format('DROP EXTENSION %I', e.extname);
     END LOOP;
 END$$
 SQL

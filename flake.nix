@@ -131,9 +131,21 @@
             meta = (o.meta or { }) // { inherit (postgresql.meta) license; };
             postBuild = (o.postBuild or "") + "\nrm $out/share/man\n";
           });
+          # Entries with nix.buildUnshipped stay out of the image but are built by the same recipe (/update builds
+          # this output), so shipping one later finds it current instead of broken by months of nixpkgs changes.
+          unshippedExtensions = import ./nix/extensions.nix {
+            inherit pkgs postgresql inputs hardeningEnable stripUnneeded targetCpu;
+            inherit (pkgs) lib;
+            manifest = manifest // {
+              entries = map (e: e // { enabled = true; })
+                (builtins.filter (e: !(e.enabled or true) && (e.nix.buildUnshipped or false)) manifest.entries);
+            };
+          };
         in
         rec {
           inherit extensions;
+          unshipped = pkgs.linkFarm "aza-pg-unshipped-extensions"
+            (pkgs.lib.mapAttrsToList (name: path: { inherit name path; }) unshippedExtensions);
           postgresql = server;
           # A script that streams the image tarball: scripts/nix/build-image.ts pipes it into `docker load`.
           image = import ./nix/image.nix {
@@ -161,6 +173,6 @@
         };
     in
     {
-      packages = nixpkgs.lib.genAttrs systems (s: let r = perSystem s; in { inherit (r) postgresql image contents vulnix; } // r.extensions);
+      packages = nixpkgs.lib.genAttrs systems (s: let r = perSystem s; in { inherit (r) postgresql image contents vulnix unshipped; } // r.extensions);
     };
 }

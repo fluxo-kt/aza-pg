@@ -182,6 +182,11 @@ export interface ManifestEntry {
     mesonFlags?: string[];
     bin?: string[];
     postInstall?: string;
+    /**
+     * Keep building the entry while `enabled: false` (flake output `unshipped`, built by /update): a capability we
+     * may ship later stays current and buildable instead of rotting until someone needs it.
+     */
+    buildUnshipped?: boolean;
   };
   enabled?: boolean;
   disabledReason?: string;
@@ -197,6 +202,13 @@ export interface ManifestEntry {
    */
   docsUrl?: string;
 }
+
+/**
+ * Foreign data wrappers the image bundles: Cargo features of wrappers/Cargo.toml (e.g. "stripe_fdw", "s3_fdw").
+ * wrappers without one is only an empty stats table, nothing a user can query, so with this list empty the entry is
+ * not shipped (but still built, nix.buildUnshipped); adding a feature here ships it with no other change.
+ */
+const WRAPPERS_FDWS: string[] = [];
 
 export const MANIFEST_ENTRIES: ManifestEntry[] = [
   {
@@ -513,10 +525,15 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
   {
     name: "wrappers",
     license: "Apache-2.0",
-    // nixpkgs' cargoSetupHook makes aws-lc-sys and zstd-sys link the system library instead of vendoring their C, so
-    // both come from nixpkgs: vulnix then sees their CVEs, and flake.lock bumps update them. nixpkgs builds aws-lc with
-    // prefixed symbols, so it coexists with the OpenSSL that PostgreSQL loads into the same backend.
-    nix: { inputs: ["openssl", "pkg-config", "aws-lc", "zstd"] },
+    // Build inputs only: nixpkgs' cargoSetupHook makes the aws-lc-sys and zstd-sys build scripts demand system
+    // libraries, and Cargo compiles those crates (wrappers depends on rustls unconditionally) even with no FDW chosen,
+    // when nothing links them (the .so then references only glibc and gcc's runtime).
+    nix: { inputs: ["openssl", "pkg-config", "aws-lc", "zstd"], buildUnshipped: true },
+    ...(WRAPPERS_FDWS.length === 0 && {
+      enabled: false,
+      disabledReason:
+        "No foreign data wrapper is chosen (WRAPPERS_FDWS is empty): without one the extension offers nothing to query.",
+    }),
     displayName: "supabase-wrappers",
     kind: "extension",
     category: "integration",
@@ -528,7 +545,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     },
     build: {
       type: "cargo-pgrx",
-      features: ["pg18"],
+      features: ["pg18", ...WRAPPERS_FDWS],
       noDefaultFeatures: true,
       subdir: "wrappers",
       // Cargo.lock moved by `cargo update -p rustls@0.23.37 --precise 0.23.46` at the pinned commit: rustls 0.23.46,

@@ -128,6 +128,7 @@ export const ManifestEntrySchema = type({
     "mesonFlags?": "string[]",
     "bin?": "string[]",
     "postInstall?": "string",
+    "buildUnshipped?": "boolean",
   },
   "enabled?": "boolean",
 });

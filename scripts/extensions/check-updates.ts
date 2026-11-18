@@ -20,6 +20,7 @@
 import { type } from "arktype";
 import { MANIFEST_ENTRIES, MANIFEST_METADATA } from "./manifest-data";
 import type { ManifestEntry } from "./manifest-data";
+import { pinnedImages } from "../utils/stack-images";
 
 interface UpdateInfo {
   name: string;
@@ -557,49 +558,6 @@ const IMAGE_SOURCES: Record<string, { repository: string; tagPrefix?: string; ta
     },
   };
 
-/**
- * Every image reference in tracked files under stacks/ and deployments/ (compose files and the compose snippets
- * in their READMEs), one entry per repo:tag: an `image: repo:tag` line, or a compose default
- * `${…IMAGE:-repo:tag@sha256:…}`, which the stacks write on the line after `image:`. aza-pg's own image, published
- * or built locally, is skipped: the stacks follow its floating major tag on purpose.
- */
-async function pinnedImages(): Promise<
-  Array<{ host: string; repo: string; tag: string; files: string[] }>
-> {
-  // scripts/ and .github/ pin the tool images the checks run (actionlint, trivy) as repo:tag@sha256:…
-  // literals (tag for this check, digest for integrity); without them here those pins went stale unseen.
-  const files = (await Bun.$`git ls-files -- stacks deployments scripts .github`.quiet().text())
-    .split("\n")
-    .filter(Boolean);
-  const images = new Map<string, { host: string; repo: string; tag: string; files: string[] }>();
-  for (const file of files) {
-    const tool = file.startsWith("scripts/") || file.startsWith(".github/");
-    for (const line of (await Bun.file(file).text()).split("\n")) {
-      // The tag is optional in both patterns: a reference without one (`repo@sha256:…`, or a compose
-      // `image: repo` that floats on latest) names no version to compare, so it is kept with tag ""
-      // and reported as uncheckable instead of matching nothing and going stale without any row.
-      const m = tool
-        ? /\b((?:[a-z0-9-]+\.[a-z0-9.-]+\/)?[a-z0-9][a-z0-9._-]*\/[a-z0-9._-]+)(?::([A-Za-z0-9._-]+))?@sha256:[0-9a-f]{64}/.exec(
-            line
-          )
-        : /(?:^\s*image:\s*|\$\{[A-Z0-9_]*IMAGE:-)([a-z0-9][a-z0-9./_-]*)(?::([A-Za-z0-9._-]+))?/.exec(
-            line
-          );
-      if (!m) continue;
-      const tag = m[2] ?? "";
-      // The host decides where registry-mode checks list tags; a bare repo lives on Docker Hub.
-      const host = /^(docker\.io|quay\.io|ghcr\.io)\//.exec(m[1]!)?.[1] ?? "docker.io";
-      const repo = m[1]!.replace(/^(docker\.io|quay\.io|ghcr\.io)\//, "");
-      if (repo === "fluxo-kt/aza-pg" || repo === "aza-pg") continue;
-      const key = `${repo}:${tag}`;
-      const known = images.get(key) ?? { host, repo, tag, files: [] };
-      if (!known.files.includes(file)) known.files.push(file);
-      images.set(key, known);
-    }
-  }
-  return [...images.values()];
-}
-
 const RegistryTagList = type({ tags: "string[] | null" });
 const RegistryToken = type({ "token?": "string", "access_token?": "string" });
 
@@ -824,7 +782,8 @@ async function main() {
     }
   }
 
-  for (const image of await pinnedImages()) {
+  const tracked = (await Bun.$`git ls-files`.quiet().text()).split("\n").filter(Boolean);
+  for (const image of await pinnedImages(tracked)) {
     const upstream = IMAGE_SOURCES[image.repo];
     const pinnedIn = `pinned in ${image.files.join(", ")}`;
     if (image.tag === "") {

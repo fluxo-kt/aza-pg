@@ -156,15 +156,9 @@ bun scripts/test/wait-for-postgres.ts
 bun scripts/tools/restore-postgres.ts backup-pg18.sql.gz postgres
 ```
 
-#### Step 6: Update Extension Versions
+#### Step 6: Extension Versions
 
-```sql
--- After successful upgrade, update extensions
-ALTER EXTENSION vector UPDATE;
-ALTER EXTENSION pg_cron UPDATE;
-ALTER EXTENSION pgaudit UPDATE;
-ALTER EXTENSION pg_stat_statements UPDATE;
-```
+Nothing to run: the first start on a new image updates every extension created in each database to the version the image ships, before clients connect (see "Major Extension Updates" below).
 
 #### Step 7: Verify and Optimize
 
@@ -242,26 +236,7 @@ docker compose exec postgres psql -U postgres -c "\dx vector"
 
 ### Major Extension Updates (Breaking Changes)
 
-Some extension updates require manual migration:
-
-```sql
--- Example: pgvector 0.7.x → 0.8.x (hypothetical breaking change)
-
--- 1. Backup affected tables
-CREATE TABLE embeddings_backup AS SELECT * FROM embeddings;
-
--- 2. Update extension
-ALTER EXTENSION vector UPDATE TO '0.8.0';
-
--- 3. Migrate data (if needed)
--- Consult extension changelog for migration steps
-
--- 4. Verify
-SELECT COUNT(*) FROM embeddings;
-
--- 5. Drop backup after verification
-DROP TABLE embeddings_backup;
-```
+The first start on a new image runs `ALTER EXTENSION … UPDATE` for every extension created in each database whose version the image changed, before clients connect; extensions nobody created are left alone. An extension upstream ships without an update path is dropped and recreated in the same schema, unless it owns tables (then the container stops and names the export, recreate and restore steps) or other objects depend on it (PostgreSQL's error names them). If any update fails, the server does not start and the log names the database and the error; fix the cause and start again, since every step is retried. Read the CHANGELOG before upgrading: an upstream release can still need action before its update can run.
 
 ## Breaking Changes
 

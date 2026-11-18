@@ -61,6 +61,16 @@ export function scanImage(image: string, flags: string[], stdio: Stdio = "inheri
 const SCAN_CLOSURE =
   'set -eu; d=$(mktemp -d); trap \'chmod -R u+w "$d"; rm -rf "$d"\' EXIT; cp -a $(nix-store -qR $ROOTS) "$d"; trivy rootfs --cache-dir .trivy-cache "$@" "$d"';
 
+/** Exit code and output of a process spawned with stdout and stderr piped. */
+export async function collect(proc: Bun.Subprocess) {
+  const [out, err, code] = await Promise.all([
+    new Response(proc.stdout as ReadableStream).text(),
+    new Response(proc.stderr as ReadableStream).text(),
+    proc.exited,
+  ]);
+  return { code, out, err };
+}
+
 /**
  * Scans the runtime closures of `outputs` (flake outputs of `flake`, e.g. the checkers) with the gate flags, for
  * language packages: Go binaries' modules and Python distributions. Their C libraries are vulnix's (vulnix-gate.ts),
@@ -70,14 +80,6 @@ export async function scanClosure(
   flake: string,
   outputs: string[]
 ): Promise<{ code: number; output: string }> {
-  const collect = async (proc: ReturnType<typeof spawnNix>) => {
-    const [out, err, code] = await Promise.all([
-      new Response(proc.stdout as ReadableStream).text(),
-      new Response(proc.stderr as ReadableStream).text(),
-      proc.exited,
-    ]);
-    return { code, out, err };
-  };
   const installables = outputs.map((o) => `${flake}#packages.${nixSystem}.${o}`);
   const built = await collect(
     spawnNix(["nix", "build", "--no-link", "--print-out-paths", ...installables], {

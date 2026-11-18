@@ -19,13 +19,13 @@ OPTIONAL ADDITIONAL NOTES FROM USER: $ARGUMENTS
 
 ## Pre-Flight: Docker Availability Check (FIRST)
 
-Before launching Docker checks, confirm Docker is available. Keep unavailable runtime checks open; they block acceptance of the update, not preservation of finished local work:
+The round needs a running Docker daemon (Nix runs in a container; builds and suites need it). A stopped daemon is yours to start, never a reason to stop or to report work as open:
 
 ```bash
-docker info >/dev/null 2>&1 && echo "Docker: OK" || echo "Docker offline: finish independent work; runtime verification remains open"
+docker info >/dev/null 2>&1 || { orb start 2>/dev/null || open -ga OrbStack; until docker info >/dev/null 2>&1; do sleep 2; done; }
 ```
 
-If Docker is offline, finish independent discovery and focused commits. Restore Docker and complete every affected runtime check before presenting the update for acceptance.
+**An update round ends only when the whole matrix below is done and Phase 12 passed.** Never stop mid-round and never move the round's own work (a bump, a migration it needs, a missing test it uncovered, a broken script or check met on the way) to `ROADMAP.md`: the roadmap is only for out-of-scope findings. Anything blocking the round is part of the round.
 
 ## Pre-Flight: Detect Available Updates (RUN IN PARALLEL)
 

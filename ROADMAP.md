@@ -1,6 +1,6 @@
 # Roadmap
 
-Known defects and missing work, most severe first. Each entry says why it matters and what fixing it takes. **Needs a decision** marks an entry that waits on a maintainer choice, not on effort. Remove an entry in the commit that fixes it.
+Known defects and missing work, most severe first. Each entry says why it matters and what fixing it takes. **Needs a decision** marks an entry that waits on a maintainer choice, not on effort. Remove an entry in the commit that fixes it. Only work outside the current task belongs here: work a task needs or uncovers (an `/update` round's bumps, migrations, tests) is finished in that task, never parked here.
 
 ## High
 

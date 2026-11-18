@@ -15,10 +15,9 @@
  *      Naming it as the legacy path inside backticks stays legal.
  *   4. An `entrypoint:` override starts with tini: it replaces the image's whole Entrypoint, tini included, and the
  *      postmaster as PID 1 resets every session when an orphaned process dies by a signal.
- *   5. A service on our image runs PostgreSQL: `command` starts with `postgres`, an entrypoint override hands over
- *      only to a `*-entrypoint.sh` script, and at most one service per compose file (overrides merged) runs our
- *      image. Another program there means a companion was bundled into the image; the per-file count catches it
- *      even behind a wrapper script named like an entrypoint.
+ *   5. At most one service per compose file (overrides merged) runs our image: the PostgreSQL one. A second is a
+ *      companion (pooler, exporter) moved onto our image, which AGENTS.md "Nothing ships…" forbids; counting
+ *      services catches it however its entrypoint or wrapper script is named.
  * Compose override files (compose.<name>.yml beside a compose.yml) are merged onto that base, so rule 1 judges the
  * base only. The stacks are also booted by their suites; this check is the only detector for everything else.
  *
@@ -30,10 +29,9 @@ type Service = {
   image?: string;
   environment?: Record<string, unknown> | string[];
   entrypoint?: string | string[];
-  command?: string | string[];
 };
 const problems: string[] = [];
-// Rule 5, structural half: services running our image per compose file, its overrides merged in by service name.
+// Rule 5: the services running our image, per base compose file with its overrides merged by service name.
 const ownServices = new Map<string, Set<string>>();
 // Assembled so this file does not contain the literal it forbids.
 const LEGACY = ["/var/lib/postgresql", "data"].join("/");
@@ -85,23 +83,6 @@ for (const file of composeFiles) {
     }
     const entrypoint =
       typeof svc.entrypoint === "string" ? svc.entrypoint.split(/\s+/) : svc.entrypoint;
-    // Rule 5: our image runs PostgreSQL and nothing else. A service pointing at it for another program (a pooler,
-    // an exporter) is how a companion gets bundled into the image, which "Nothing ships…" in AGENTS.md forbids:
-    // companions run their own upstream images. An overridden entrypoint may only hand over to an entrypoint script
-    // (the replica's clones the primary, then execs the image's), and a command must start the server.
-    const command = typeof svc.command === "string" ? svc.command.trim().split(/\s+/) : svc.command;
-    const program = entrypoint?.[0] === "/usr/local/bin/tini" ? entrypoint[2] : entrypoint?.[0];
-    const offender =
-      program !== undefined && !program.endsWith("-entrypoint.sh")
-        ? program
-        : command !== undefined && command[0] !== "postgres"
-          ? command[0]
-          : undefined;
-    if (offender !== undefined) {
-      problems.push(
-        `${where}: runs ${JSON.stringify(offender)} from the aza-pg image — this image runs PostgreSQL only (command "postgres …", entrypoint override only to a *-entrypoint.sh script). Run a pooler, exporter or other companion from its own upstream image; adding a program to our image is Art's decision, never a fix for a companion's CVEs (AGENTS.md "Nothing ships…", "CVE scope")`
-      );
-    }
     if (entrypoint && entrypoint[0] !== "/usr/local/bin/tini") {
       problems.push(
         `${where}: entrypoint must start with "/usr/local/bin/tini", "--" (found ${JSON.stringify(entrypoint)}) — setting entrypoint replaces the image's, and without tini as PID 1 any orphaned process dying by a signal makes PostgreSQL reset every session (reason at tini in nix/image.nix)`

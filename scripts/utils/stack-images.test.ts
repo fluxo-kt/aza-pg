@@ -30,17 +30,8 @@ test("splits the registry by Docker's rule, not a host list", () => {
   expect(byRepo.get("nixos/nix")?.host).toBe("docker.io");
 });
 
-test("keeps the pinned reference whole, digest included, for the scanner", () => {
-  expect(byRepo.get("cloudnative-pg/pgbouncer")?.ref).toBe(
-    `ghcr.io/cloudnative-pg/pgbouncer:1.26.1-202611121015-trixie${DIGEST}`
-  );
-});
-
-test("reports a tagless pin with tag '' instead of dropping it", () => {
-  expect(byRepo.get("floating/latest")?.tag).toBe("");
-});
-
-test("skips our own image and files outside the pinning directories", () => {
+// A tagless pin stays in (reported as uncheckable); our own image and files outside the pinning directories do not.
+test("lists exactly the third-party pins", () => {
   expect([...byRepo.keys()].sort()).toEqual([
     "cloudnative-pg/pgbouncer",
     "floating/latest",

@@ -920,9 +920,9 @@ fi
 
 # The first start on a different image fixes, before the server serves clients, what an image change breaks in an
 # existing data directory. The data directory records the image it last did this for (aza-pg-image); the key is the
-# resolved server binary (in the Nix image a store path, which changes with glibc, ICU or anything else it links) plus
-# TimescaleDB's version (constant paths on Debian), so other starts cost one file read. A private socket and a
-# trust-only hba_file keep clients out and need no password whatever pg_hba.conf says. Standbys get both fixes through
+# resolved server binary: nixpkgs' withPackages wraps bin/postgres in the env's own store path, which changes with
+# any extension as well as with glibc, ICU or anything else the server links, so other starts cost one file read. A private socket and a
+# trust-only hba_file keep clients out and need no password whatever pg_hba.conf says. Standbys get these fixes through
 # WAL from their primary; a restore gets them on the next start once it has finished. Connections go to database
 # postgres, as pgflow-upgrade's do: releases made template1 refuse connections.
 # 1. TimescaleDB's loader opens the library of each database's INSTALLED version (timescaledb-<version>.so) and the
@@ -991,8 +991,35 @@ DO $$DECLARE same text[] := '{2.41,2.44}'; colls oid[]; idx regclass[]; i regcla
 END$$
 SQL
 )
-timescaledb_version=$(sed -n "s/^default_version = '\(.*\)'$/\1/p" "${PG_SHAREDIR}/extension/timescaledb.control" 2>/dev/null || true)
-image_key="$(readlink -f "$(command -v postgres)") ${timescaledb_version}"
+# Extensions created in this database whose SQL version differs from the one the image ships: a new library over old
+# SQL is buggy (fixes live in the update scripts) or fails outright. Only CREATEd extensions are listed, so opt-in ones
+# nobody enabled stay absent, and one the image no longer ships has no pg_available_extensions row and is left alone.
+# TimescaleDB is excluded: its update must be the session's first command (migrate_database). With no upstream update
+# path (plpgsql_check), DROP + CREATE in the same schema rebuilds it; DROP deletes member tables, so an extension owning
+# any stops the container instead, and DROP without CASCADE refuses, naming them, when user objects depend on it.
+UPDATE_EXTENSIONS=$(cat <<'SQL'
+DO $$DECLARE e record; BEGIN
+    FOR e IN SELECT x.oid, x.extname, x.extversion, n.nspname, a.default_version FROM pg_extension x
+        JOIN pg_namespace n ON n.oid = x.extnamespace JOIN pg_available_extensions a ON a.name = x.extname
+        WHERE x.extversion <> a.default_version AND x.extname <> 'timescaledb' LOOP
+        PERFORM set_config('client_min_messages', 'notice', true);
+        IF EXISTS (SELECT FROM pg_extension_update_paths(e.extname)
+                WHERE source = e.extversion AND target = e.default_version AND path IS NOT NULL) THEN
+            RAISE NOTICE '[POSTGRES] [AUTO-CONFIG] database %: extension % % -> %', current_database(), e.extname, e.extversion, e.default_version;
+            EXECUTE format('ALTER EXTENSION %I UPDATE', e.extname);
+        ELSIF EXISTS (SELECT FROM pg_depend d JOIN pg_class c ON c.oid = d.objid WHERE d.classid = 'pg_class'::regclass
+                AND d.refclassid = 'pg_extension'::regclass AND d.refobjid = e.oid AND d.deptype = 'e' AND c.relkind IN ('r', 'p')) THEN
+            RAISE EXCEPTION 'database %: extension % has no update path from % to % and owns tables, so it cannot be recreated without losing them. Export its data, run DROP EXTENSION % and CREATE EXTENSION %, restore, then start the container again', current_database(), e.extname, e.extversion, e.default_version, e.extname, e.extname;
+        ELSE
+            RAISE NOTICE '[POSTGRES] [AUTO-CONFIG] database %: extension % % -> % (recreated: upstream ships no update path)', current_database(), e.extname, e.extversion, e.default_version;
+            EXECUTE format('DROP EXTENSION %I', e.extname);
+            EXECUTE format('CREATE EXTENSION %I SCHEMA %I', e.extname, e.nspname);
+        END IF;
+    END LOOP;
+END$$
+SQL
+)
+image_key=$(readlink -f "$(command -v postgres)")
 migrate_sql() { # database, then psql arguments; failures are collected, the container stops after the server does
     local db="$1" out
     shift
@@ -1002,6 +1029,7 @@ migrate_sql() { # database, then psql arguments; failures are collected, the con
 }
 migrate_database() {
     migrate_sql "$1" -v VERBOSITY=sqlstate -c "ALTER EXTENSION timescaledb UPDATE"
+    migrate_sql "$1" -c "$UPDATE_EXTENSIONS"
     migrate_sql "$1" -c "$REBUILD_FOR_GLIBC"
 }
 # A postmaster.pid left by an unclean stop (OOM kill, docker kill, stop timeout) names a PID that a fresh container
@@ -1050,7 +1078,7 @@ if [ "$STARTS_SERVER" = true ] && [ -f "${DATA_DIR}/PG_VERSION" ] && [ ! -f "${D
     fi
     # shellcheck disable=SC2016 # $1/$2/$3 are the inner sh's arguments
     as_postgres sh -c 'printf "%s\n" "$1" > "$2" && rm -rf "$3"' sh "$image_key" "$IMAGE_MIGRATED_FILE" "$update_dir"
-    echo "[POSTGRES] [AUTO-CONFIG] data directory brought up to this image: TimescaleDB ${timescaledb_version:-absent}, en_US collation versions current"
+    echo "[POSTGRES] [AUTO-CONFIG] data directory brought up to this image: extensions at the shipped versions, en_US collation versions current"
 fi
 
 # Keep the superuser password out of the server's environment. Upstream file_env exports POSTGRES_PASSWORD (or the

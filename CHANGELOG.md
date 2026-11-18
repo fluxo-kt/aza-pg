@@ -10,10 +10,6 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
 
 ## [Unreleased]
 
-### Breaking
-
-- **plpgsql_check 2.10.16 → 2.11.0**: upstream ships no 2.10 → 2.11 upgrade script, so in databases created by an older image the check and profiler functions fail with "extension plpgsql_check is not updated in system catalog", and `ALTER EXTENSION … UPDATE` fails too. In each database that uses it, run `DROP EXTENSION plpgsql_check; CREATE EXTENSION plpgsql_check;`. Adds a warning when a pure expression uses a label and a check that assigned `search_path` values are safe; removes many false alarms.
-
 ### Security
 
 - **set_user 4.2.0 → 4.3.0**: fixes ways a session escalated with `set_user()` could return to its original role without the reset token or crash the backend; group entries in allowlists now match, and role names match case-sensitively; reset tokens are compared in constant time.
@@ -24,9 +20,11 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
 
 ### Changed
 
-- **pg_partman 5.5.0 → 5.5.1**: fixes `partition_data_time()`/`partition_data_proc()` moving rows on a range's first day into the wrong child when the control column is `date`, `show_partition_info()` reporting the interval end equal to its start, child tables getting a template's `INCLUDE` index columns as key columns, and the background worker's portal handling. `uuid7_time_encoder()`/`uuid7_time_decoder()` become `IMMUTABLE`, so UUIDv7 partition sets prune again. Run `ALTER EXTENSION pg_partman UPDATE` in existing databases to get the SQL fixes.
-- **pgmq 1.13.1 → 1.13.2**: `pgmq.create()` on an existing queue no longer waits for transactions using it. Run `ALTER EXTENSION pgmq UPDATE` in existing databases.
-- **TimescaleDB Toolkit 1.26.0 → 1.27.0**: adds equality operators for `statssummary1d`/`statssummary2d`; fixes sparse `hyperloglog` sketches never becoming dense in `rollup`/`hyperloglog_union`, `counter_agg` counting a reset for an ignored point, and a missing ACL check in pipeline `map`; rejects invalid UTF-8 `StateAgg` state names, oversized lambdas and mismatched frequency aggregates. Run `ALTER EXTENSION timescaledb_toolkit UPDATE` in existing databases.
+- **Every extension is updated automatically** at the first start after an image upgrade (was TimescaleDB only): each extension created in a database is brought to the version the image ships before clients connect, so no `ALTER EXTENSION … UPDATE` is left to run by hand. An extension upstream ships without an update path is dropped and recreated in the same schema, which resets grants on its functions; one that owns tables, or that other objects depend on, stops the container with the fix named instead. A failed update stops the container naming the database.
+- **plpgsql_check 2.10.16 → 2.11.0** (recreated at first start: upstream ships no 2.10 → 2.11 update path): warns when a pure expression uses a label, checks that assigned `search_path` values are safe, and removes many false alarms.
+- **pg_partman 5.5.0 → 5.5.1**: fixes `partition_data_time()`/`partition_data_proc()` moving rows on a range's first day into the wrong child when the control column is `date`, `show_partition_info()` reporting the interval end equal to its start, child tables getting a template's `INCLUDE` index columns as key columns, and the background worker's portal handling. `uuid7_time_encoder()`/`uuid7_time_decoder()` become `IMMUTABLE`, so UUIDv7 partition sets prune again.
+- **pgmq 1.13.1 → 1.13.2**: `pgmq.create()` on an existing queue no longer waits for transactions using it.
+- **TimescaleDB Toolkit (timescaledb_toolkit) 1.26.0 → 1.27.0**: adds equality operators for `statssummary1d`/`statssummary2d`; fixes sparse `hyperloglog` sketches never becoming dense in `rollup`/`hyperloglog_union`, `counter_agg` counting a reset for an ignored point, and a missing ACL check in pipeline `map`; rejects invalid UTF-8 `StateAgg` state names, oversized lambdas and mismatched frequency aggregates.
 - **HypoPG 1.4.4 → 1.4.5**: fixes a crash in hypothetical index relid handling and an estimate error in `hypo_estimate_index`.
 - **supautils 4.0.0 → 4.0.1**: fixes role checks on statements that name no role, extension authorization, and running dependent custom scripts when there is no cycle.
 - **pgBackRest 2.60.0 → 2.60.1**: fixes `annotate` saving `backup.info` to the default repository, block-incremental restore and file-handle reuse after a reconnect on SFTP, excessive memory use, and lowering a minimum TLS version set in the OpenSSL config.

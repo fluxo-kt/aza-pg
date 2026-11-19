@@ -19,13 +19,13 @@ OPTIONAL ADDITIONAL NOTES FROM USER: $ARGUMENTS
 
 ## Pre-Flight: Docker Availability Check (FIRST)
 
-Before launching Docker checks, confirm Docker is available. Keep unavailable runtime checks open; they block acceptance of the update, not preservation of finished local work:
+The round needs a running Docker daemon (Nix runs in a container; builds and suites need it). A stopped daemon is yours to start, never a reason to stop or to report work as open:
 
 ```bash
-docker info >/dev/null 2>&1 && echo "Docker: OK" || echo "Docker offline: finish independent work; runtime verification remains open"
+docker info >/dev/null 2>&1 || { orb start 2>/dev/null || open -ga OrbStack; until docker info >/dev/null 2>&1; do sleep 2; done; }
 ```
 
-If Docker is offline, finish independent discovery and focused commits. Restore Docker and complete every affected runtime check before presenting the update for acceptance.
+**An update round ends only when the whole matrix below is done and Phase 12 passed.** Never stop mid-round and never move the round's own work (a bump, a migration it needs, a missing test it uncovered, a broken script or check met on the way) to `ROADMAP.md`: the roadmap is only for out-of-scope findings. Anything blocking the round is part of the round.
 
 ## Pre-Flight: Detect Available Updates (RUN IN PARALLEL)
 
@@ -39,7 +39,8 @@ Check:
 1. **Git-based extensions**:
 
    ```bash
-   bun scripts/extensions/check-updates.ts --format=json > /tmp/aza-updates.json
+   out=$(mktemp -d -t aza-pg-updates)   # delete it when the round's decisions are recorded
+   bun scripts/extensions/check-updates.ts --format=json > "$out/updates.json"
    echo "exit=$?"   # 0 = no ENABLED entry has an update, 1 = one does (NOT a failure), 2 = the check itself failed
    ```
    stdout carries only the report (progress goes to stderr), so the JSON file parses as-is. Exit 1 is the
@@ -52,6 +53,7 @@ Check:
    - If any enabled row has `updateAvailable: true`, either update it now or document a concrete skip reason
    Verify candidate updates are true upgrades in the same release family:
    - Ignore mismatched tag-family noise (e.g., monorepo tags like `foo@X.Y.Z` vs plain `X.Y.Z`)
+   - A row offering a newer PostgreSQL major line (pgaudit `18.0 -> 19.0`) is a checker defect, never noise to skip: the real update on our major (`18.1`) is hidden behind it. Extensions that keep one branch per PG major set `source.pgMajorTags: true` on the manifest entry, and the checker then offers only tags of `pgVersion`'s major; add the field to any entry that lacks it, then re-run
    - Ignore prereleases (`-beta`, `-rc`) unless intentionally targeting prereleases
    - Ignore downgrades (`current > candidate`) caused by mixed/non-semver tags
    - If GitHub API rate limits (`403`), verify the checker still resolves via tags API / `git ls-remote`
@@ -78,11 +80,15 @@ Check:
 
 4. **Companion images** — every container image the repo runs or tells operators to run (not in manifest!).
    `check-updates.ts` (item 1) already reports each image pinned in `stacks/` and `deployments/` against its
-   upstream releases, naming the files that pin it. A row "could not check … IMAGE_SOURCES" is a new image:
-   add its GitHub repository to `IMAGE_SOURCES` in that script. Docs copying a companion pin are held to it by
+   upstream releases, naming the files that pin it. Read every image row, including script and workflow pins
+   such as test fixtures. For a missing `IMAGE_SOURCES` entry, add its upstream repository and use registry
+   tags when published image tags differ from release tags. Re-run the checker and require a resolved tag
+   for that image. Docs copying a companion pin are held to it by
    `validate`'s Companion Image Pins. The stack suites pull the stacks' images, but nothing pulls an image
    only `deployments/` uses: check each still resolves (`docker buildx imagetools inspect <ref>`). Update
-   procedure: Phase 5.6.
+   procedure: Phase 5.6. Being current is not being patched: `bun run security:scan` scans every pinned companion
+   with Trivy, and a fixable finding left after the bump takes its reasonable route this round (AGENTS.md "CVE effort follows what we release"; method:
+   Phase 5.6 "Vulnerable companion").
 
 ## Pre-Flight: Additional Checks (MANDATORY)
 
@@ -122,10 +128,8 @@ curl -s https://raw.githubusercontent.com/OWNER/REPO/NEW_TAG/CHANGELOG.md | head
 gh api repos/OWNER/REPO/compare/OLD_TAG...NEW_TAG --jq '.commits[].commit.message'
 
 # Method 5 (MANDATORY for git-ref updates): inspect commit range and touched paths
-git clone https://github.com/OWNER/REPO.git /tmp/EXT-REPO
-cd /tmp/EXT-REPO
-git log --oneline OLD_REF..NEW_REF
-git diff --name-status OLD_REF..NEW_REF
+gh api repos/OWNER/REPO/compare/OLD_REF...NEW_REF --jq '(.commits[].commit.message|split("\n")[0]), (.files[] | .status + " " + .filename)'
+# Need the full tree (grep, build)? Clone into /opt/apps/refs/_tmp/<name> (read /opt/apps/refs/AGENTS.md) and delete it at round end
 ```
 
 **⚠️ RTK proxy note**: `curl` to `api.github.com` returns RTK-filtered non-JSON output — `| jq` will fail. Always use `gh` CLI for GitHub API calls.
@@ -181,10 +185,11 @@ gh release view --repo oven-sh/bun --json tagName --jq .tagName  # e.g. "bun-v1.
 # NOTE: `bun upgrade` has no --dry-run flag — it upgrades immediately; do NOT run it
 ```
 
-If a new stable runtime is available, update `.tool-versions` manually:
-```bash
-# Edit .tool-versions: bump bun X.Y.Z to latest stable
-```
+If a new stable runtime is available, move every declaration of it together: `.tool-versions` (`bun X.Y.Z`),
+`package.json` `engines.bun` (`>=X.Y.Z`), and `MANIFEST_METADATA.bunImage` (the pg_net echo server,
+`oven/bun:X.Y.Z-alpine@<digest>` from `docker buildx imagetools inspect`; `bun-image-pin.test.ts` fails until it
+matches). Then `bun run generate`. Other Bun projects under `/opt/apps` move to the same version (global CLAUDE.md
+runtime alignment); remove superseded installs no running process uses (`ps -axo command | grep installs/bun/`).
 
 Note: `@types/bun` may lag the runtime release. That is expected.
 Keep `.tool-versions` and `@types/bun` approximately in sync but they need not be identical.
@@ -294,11 +299,11 @@ After action updates, scan workflow/composite scripts for mutable images and pin
 command grep -rn -E ":[Ll]atest\\b" .github/workflows/ .github/actions/ scripts/ | command grep -E "docker run|image"
 ```
 
-For security scanners, prefer the same pinned container used by local tooling (for example,
-`scripts/security/cve-scan.ts`) so CI diagnostics and local scans use the same scanner family.
-
-Tool images run by scripts (actionlint, yamllint, trivy) are invisible to `actions-up` and
-`bun outdated`, so bump them here. List them:
+Scanners and linters run only through `scripts/nix/tools.ts` (flake.nix outputs), so CI and local runs use the same
+build. Their versions follow nixpkgs: `check-updates.ts` reports each against its upstream release. An outdated row
+waits for no one: override that output in `flake.nix` (as yamllint's is), with an assert that fails once nixpkgs
+catches up. Tool images still run by scripts (`nixos/nix`) are invisible to `actions-up` and `bun outdated`, so bump
+them here. List them:
 
 ```bash
 rg -n '"[a-z0-9./_-]+(:[A-Za-z0-9._-]+)?@sha256:[0-9a-f]{64}"' scripts .github   # digest pins
@@ -310,8 +315,7 @@ A digest pin without a tag gets a "could not check" row (exit 2): rewrite it as 
 against the tool's upstream release: a wrapper that stopped publishing reads as "up to date".
 
 For each, read the latest release, resolve the index digest with `docker buildx imagetools inspect`,
-replace the reference everywhere it appears, and run the check that uses it (`bun run validate:all`
-runs actionlint and yamllint).
+replace the reference everywhere it appears, and run the check that uses it.
 
 **Validate after actions-up**:
 ```bash
@@ -331,9 +335,15 @@ name, so also read the security pages of PostgreSQL, OpenSSL and glibc for the s
 After `bun run build` and before (never beside) `test:all`, `bun run security:scan HEAD aza-pg:pg18` runs both scanners on what this round will release:
 vulnix on HEAD's closure, Trivy on the local image (Rust crates, bundled JS). Without the image argument Trivy scans
 the last release, not HEAD.
+Read every surface's verdict. Repair and retry a `SCAN FAILED` result before deciding exposure.
+Only a completed scan can support a finding or a clean result.
 
 ```bash
 bun scripts/nix/nix.ts flake update nixpkgs
+# Every extension at once: `bun run build` stops at the first failed derivation, so one broken recipe hides the next
+# (nixpkgs' build hooks change under all extensions together, e.g. its Rust hook forcing system C libraries).
+# `unshipped` builds the entries kept out of the image (nix.buildUnshipped): they get the same updates and must build too.
+bun scripts/nix/nix.ts build .#packages.aarch64-linux.postgresql .#packages.aarch64-linux.unshipped --no-link --keep-going   # x86_64-linux on Intel
 bun run build   # flake.nix refuses a pgVersion that differs from nixpkgs' server and names the right one
 ```
 
@@ -346,7 +356,24 @@ bun run build   # flake.nix refuses a pgVersion that differs from nixpkgs' serve
 - **Closure review**: every new store path in the image names the shipped feature that needs it
   (`docker run --rm --entrypoint sh <image> -c 'du -sk /nix/store/* | sort -rn | head'`); see AGENTS.md invariants.
 
-**⚠️ New security settings in PG minors**: a minor release can add a setting whose default refuses
+**⚠️ A PG minor can break shipped extensions at runtime while the build and most suites pass.** Security
+minors change server internals that C and pgrx extensions call: 18.7 made `PortalDrop()` refuse a portal
+still being set up, so every TimescaleDB policy job and every `pg_partman_bgw` run failed in background
+workers only, and it version-checked composite datums, which pgrx extensions skip until rebuilt on a fixed
+pgrx. Before bumping `flake.lock` past a minor, do all of this in the same round:
+
+1. Read the minor's release notes in full: the "Migration" section (reindex or backup actions go into the
+   CHANGELOG as operator steps) and every entry naming extensions, ABI, hooks or C functions. Open the
+   commit behind each such entry: its message lists the extensions it breaks.
+2. `rg` the pinned source of every shipped extension for each changed function. GitHub's code search sees only
+   default branches, so read the pinned commits (a tarball per entry: `gh api repos/OWNER/REPO/tarball/<commit>`).
+3. Read each C/pgrx extension's latest release notes for a supported PG-minor ceiling (TimescaleDB names
+   one: "compatible only with PostgreSQL versions up to 18.6") and for its fix of this minor's breakage.
+4. Every extension the minor breaks moves in the same round, to its fixed release, or to `build.patches` carrying the merged upstream fix when no tag has it yet. An open dependant fix never holds back the minor's CVE fixes (AGENTS.md "Latest stable versions everywhere").
+5. Make the break visible in a suite before the fix lands: a feature that runs in a background worker (a
+   scheduler, a maintenance worker) is untested until a suite lets that worker run it and reads the result.
+
+A minor release can also add a setting whose default refuses
 something the image ships. PostgreSQL 18.6 added `output_plugin_libraries`, refusing (superusers
 included) any logical-decoding plugin not listed, which would have broken the shipped wal2json. On every
 minor bump, read the release notes' new settings and their defaults. When adding or renaming a logical
@@ -365,6 +392,7 @@ postgres`> --single -D <pgdata> postgres` and feed it SQL on stdin.
 **⚠️ PG MAJOR version bump** (18→19): additional files need updating beyond manifest-data.ts:
 - Tool checks need no edit: `testToolsPresent` finds each tool by its manifest entry's `binaryPath`/`soFileName` and takes PG-major paths from `pg_config`; still grep `scripts/` for hardcoded `postgresql/[0-9]+/` paths
 - pgrx feature flags in manifest-data.ts (e.g., `features: ["pg18"]` → `features: ["pg19"]`)
+- `pgMajorTags` entries (pgaudit): the checker now offers the new major's tags; set each such entry to its first stable tag of that major
 - nixpkgs must package `postgresql_<new major>` at the locked revision; flake.nix picks it from `pgVersion`'s major
 
 ## Phase 4: Extensions (BY SOURCE TYPE)
@@ -395,7 +423,7 @@ command grep -B 30 "dependencies:.*EXTENSION_NAME" scripts/extensions/manifest-d
 # Test after update
 bun run generate
 bun run build  # Fails if ABI incompatible
-bun run test:all  # Verify runtime compatibility
+# Verify affected runtime behavior in Phase 8 and run the committed gate in Phase 12.
 ```
 
 **Common dependency chains:**
@@ -406,7 +434,7 @@ bun run test:all  # Verify runtime compatibility
 - `postgis` → pgrouting
 - `timescaledb` → timescaledb_toolkit
 
-**If incompatible**: Skip update OR update both together in single commit.
+**If incompatible**: update both together in one commit (patch the dependent when its fixed release is not tagged yet); skipping is not an option (AGENTS.md "Latest stable versions everywhere").
 
 For encryption or key-loading changes, initialize the previous image with a disposable key and encrypted value, stop it, and open the same data with the candidate image and key. Check decryption before and after the documented SQL upgrade, plus restart/restore through the existing recovery suite. A fresh encrypted value cannot expose loss of access to old ciphertext.
 
@@ -421,12 +449,13 @@ A bump can stop the build with `Patch <file> no longer applies`: refresh the dif
 **Identify**: every entry that is not `kind: "builtin"`
 - `command grep -B 5 'build:' scripts/extensions/manifest-data.ts | command grep 'name:'`
 
-Update ONLY `source.tag`:
+Change `source.tag` in the manifest entry. Update its build patches or installed library name only
+when the new source or image proves those facts changed. Keep them on that entry so consumers regenerate together.
 
 ```typescript
 {
   name: "extension_name",
-  source: { type: "git", tag: "vX.Y.Z" },         // ← Only this field
+  source: { type: "git", tag: "vX.Y.Z" },
 }
 ```
 
@@ -527,7 +556,7 @@ PostgreSQL major (e.g. `features: ["pg18"]`).
 
 ### 5.4: Disabling Unmaintained Extensions
 
-Incompatibility starts investigation, not permission to remove a shipped capability. Compare a compatible patched release, the existing source-build path and a narrow upstream patch first; retain the working pin when the newer release removes useful behavior. Ask the owner about unresolved capability loss before disabling it. For an approved removal:
+Incompatibility starts investigation, not permission to remove a shipped capability. Compare a compatible patched release, the existing source-build path and a narrow upstream patch first. When the newer release itself removes useful behaviour, "latest everywhere" and "keep shipped capabilities" collide: ask Art with the evidence (what is lost, who uses it) instead of keeping the old pin on your own. Ask the owner about unresolved capability loss before disabling it. For an approved removal:
 
 ```typescript
 {
@@ -544,11 +573,12 @@ had the wrong `.so` filename — the dead entry went unnoticed until an explicit
 
 ### 5.5: Updating Disabled Extensions
 
-**Identify**: `command grep 'enabled: false' scripts/extensions/manifest-data.ts -B 2 | command grep 'name:'`
+**Identify** from the generated manifest (manifest-data.ts may compute `enabled`, so grepping it misses entries):
+`jq -r '.entries[] | select(.enabled == false) | "\(.name) buildUnshipped=\(.nix.buildUnshipped // false)"' docker/postgres/extensions.manifest.json`
 
-**Principle**: Update disabled extensions if they're still tested or might be re-enabled. Skip if permanently incompatible.
-
-Extensions still in test suites should stay current. Permanently broken extensions can be skipped.
+An entry with `nix.buildUnshipped` is updated like a shipped one: `check-updates.ts` counts its update as work, and
+the `unshipped` build in Phase 3 must pass. Other disabled entries are updated when still tested or likely to return;
+permanently incompatible ones are skipped.
 
 ### 5.6: Compose Stack Images (Outside Manifest)
 
@@ -563,6 +593,18 @@ Images that appear only outside `stacks/` (e.g. `deployments/` Prometheus/Grafan
 pgbouncer repository there) have no compose pin, so the check cannot see them: update and pin them by
 hand, each with `tag@digest`.
 
+**Vulnerable companion** (`security:scan` still flags it on upstream's newest tag). NEVER build it into our image
+or point its service at our image: the image carries only what its own PostgreSQL container uses (AGENTS.md
+"Nothing ships…"), and adding anything there is Art's decision. Instead:
+1. Trivy-scan, in one sequential pass with the pinned Trivy, the current pin and every live alternative: other
+   maintainers' images of the same program (pgbouncer: `ghcr.io/cloudnative-pg/pgbouncer`), the project's own
+   unreleased builds (`:master`). Prefer a publisher that rebuilds on patched bases (timestamped rebuild tags):
+   a tag that never moves keeps every later base-OS CVE.
+2. Before switching, run the candidate's shell and check every binary our entrypoint, config template and
+   healthcheck call, its user id against mounted file ownership, and its entrypoint/CMD and config path.
+3. None clean: list the findings (scan output) in the round's report and wait for upstream's fix; open no upstream
+   issue or request unless Art asks (AGENTS.md "CVE effort follows what we release").
+
 ```bash
 # Index digest for a new tag (no layers downloaded)
 docker buildx imagetools inspect ORG/REPO:TAG --format '{{json .Manifest.Digest}}'
@@ -572,9 +614,14 @@ docker buildx imagetools inspect ORG/REPO:TAG --format '{{json .Manifest.Digest}
 1. Read the release notes from the current tag to the new one for removed or renamed flags, env vars
    and metrics. postgres-exporter 0.20 is the pattern: `PG_EXPORTER_DISABLE_SETTINGS_METRICS` was
    removed (the exporter ignores unknown env vars, so a dead setting stays silent) and
-   `pg_replication_slot_*` metrics became `pg_replication_slots_*`. Confirm each env var the stacks set
-   against the new binary's own flag list (`docker run --rm IMAGE --help`), with a definitely-invalid flag
-   as control. Rename users of changed metrics (dashboards and queries in `deployments/`).
+   `pg_replication_slot_*` metrics became `pg_replication_slots_*`. Go through every change, deprecation and
+   fix item in the range, not only those three kinds: each one touching a setting we pass, a metric or label
+   we expose, or behaviour under our config goes into the CHANGELOG entry (AGENTS.md "Entry rules").
+   BEFORE writing any flag or env var into `stacks/` or `deployments/` (a new `command:`, a renamed
+   variable, a flag the CHANGELOG tells operators to add), find it in the pinned binary's own flag list
+   (`docker run --rm IMAGE --help`) and run a definitely-invalid flag as control: release notes name flags
+   that a build lacks or spells differently, and an unknown flag only surfaces when the stack starts.
+   Rename users of changed metrics (dashboards and queries in `deployments/`).
 2. Update the compose defaults; run `bun run validate` until the pin check is clean.
 3. CHANGELOG entry (operators see companion images); removed settings or renamed metrics go under Breaking.
 4. Run the stack suites (`bun scripts/test-all.ts --group stacks`); each exporter's `/metrics` must show
@@ -637,18 +684,27 @@ bun run validate:all
 
 Use affected checks for each focused commit, then run `validate:all` for the completed shell and YAML changes. It catches ShellCheck and yamllint defects that fast validation misses. Commit before long verification; a failed gate gets a follow-up repair commit.
 
-## Phase 8: Build & Test (Intermediate Check)
+## Phase 8: Gather Image and Upgrade Evidence
+
+Use the Phase 3 build for security scanning and image comparisons. Run a targeted suite only when its
+result can change an update decision. Run the complete suite once on the final committed inputs in Phase 12.
+
+A build and the suites take long, so prepare what does not read their output BEFORE starting them, and do
+the rest while they run, never idle-waiting: every edit the run reads lands first (AGENTS.md CRITICAL
+RULES). Checks that need no fresh image and put no load on the host: each companion flag against
+`--help` (§5.6), each CHANGELOG entry against the full release-note range, `imagetools inspect` of every
+pin only `deployments/` uses, and the last release's package list for the library diff:
 
 ```bash
-# Build, validate:all, then every registered suite against the new image (exit 1 on any failure)
-bun run test:all
-# Already built? Only the suites: bun run test
+# Last release vs local build: every store name whose version moved (glibc, OpenSSL, libraries) needs CHANGELOG wording
+for i in ghcr.io/fluxo-kt/aza-pg:18 aza-pg:pg18; do docker run --rm --entrypoint sh "$i" -c 'ls /nix/store' | sed 's/^[a-z0-9]\{32\}-//' | sort > "$t/$(echo "$i" | tr /: __)"; done
+diff "$t/ghcr.io_fluxo-kt_aza-pg_18" "$t/aza-pg_pg18"   # $t from mktemp -d
 ```
 
-When PostgreSQL, nixpkgs or any extension moved, run `bun scripts/test/test-memory-fit.ts --all` after `test:all` (never beside it): per-session memory may have grown, and the routine lane checks only 1 GB. An overrun means re-measuring the memory constants in the entrypoint (`SESSION_BASE_MB`, `SHARED_OVERHEAD_MB`, …), never raising a limit.
-
-**IMPORTANT**: This is an intermediate check — NOT the final gate. Phases 9–11 add more commits
-(CHANGELOG, skill update). **Phase 12 is the mandatory final gate** after all commits are done.
+When PostgreSQL, nixpkgs or any extension moved, run `bun scripts/test/test-memory-fit.ts --all` after
+the Phase 12 suite. Per-session memory may have grown, and the routine lane checks only 1 GB. An overrun
+means re-measuring the memory constants in the entrypoint (`SESSION_BASE_MB`, `SHARED_OVERHEAD_MB`, …),
+never raising a limit.
 
 **Multi-arch verification**: Image builds for both amd64 and arm64 are verified in GitHub Actions after the user pushes changes. Agents should ensure local tests pass before committing.
 
@@ -663,12 +719,12 @@ image can build cleanly if `set -e` is bypassed by `|| true` patterns.
 Common causes:
 - Missing build dependencies → add the nixpkgs attribute to the entry's `nix.inputs` (build tools: `nix.nativeInputs`)
 - Version incompatibility → Check the actual compiler/pgrx constraints and update compatible dependencies together
-- ABI break → Repair compatibility or retain the working pin; capability removal follows Phase 5.4
+- ABI break → Repair compatibility (newer release, or the merged upstream fix as `build.patches`); capability removal follows Phase 5.4
 
-Resolution options:
+Resolution options (an old pin is not one: AGENTS.md "Latest stable versions everywhere"):
 1. Fix (add missing deps, update versions) → regenerate → rebuild
-2. Retain the working pin with its concrete compatibility reason; escalate unresolved capability loss
-3. Patch build (add `build.patches` for sed fixes)
+2. Patch build (`build.patches`: the upstream fix commit when one exists, else our own minimal diff)
+3. Nothing works after 1–2 → ask Art with the evidence; hold only the work that depends on the answer
 
 ## Phase 9: Update CHANGELOG.md (Image Consumer Focus)
 
@@ -799,53 +855,15 @@ what would they find?" Find it yourself first.
 Commit with `git commit --only -m "…" -- <every file of the change>`: a bare `git commit` takes the
 whole index, including renames and files another agent staged.
 
-## Phase 11: Retrospective & Skill Self-Update (MANDATORY)
+## Phase 11: Repair Guidance That Failed
 
-After every update round, perform a mandatory self-reflection before closing out the work:
+When the round exposes a guidance defect, fix the instruction the next agent sees before repeating
+the affected work. Put reusable rules in the nearest auto-loaded AGENTS.md and keep update-specific
+steps where they run in this procedure. A rule must name the trigger, required act, and evidence
+that closes it. Keep the reason at the decision. Add a check only if it detects the failure itself.
 
-1. **What was missed in pre-flight?** Items caught mid-implementation instead of upfront
-2. **What was assumed without verification?** Version strings, API signatures, URLs, compatibility
-3. **What hardcoded values broke tests?** Document the pattern for future detection
-4. **What files were unexpectedly required?** A change that needs edits in several files to stay
-   consistent means a fact is stored twice — move it onto the manifest entry instead of syncing copies
-5. **What upstream API was different from expected?** (e.g., pgmq topic API uses `bind_topic`,
-   not `create_topic`/`subscribe` — always verify from actual source before writing tests)
-6. **Were all tooling version files kept in sync?** `.tool-versions` (Bun runtime), `package.json`
-   (@types/bun). These are updated separately — `bun update` does NOT touch `.tool-versions`.
-7. **Were validator error messages and fix instructions actually correct?** When editing any
-   validator script, verify that following its own fix instructions would resolve the error it
-   reports.
-8. **Were stale prose version comments audited?** `actions-up` updates `uses:` line comments
-   automatically — the risk is prose comments *elsewhere* in the file. See Phase 2.5 MANDATORY
-   section for the exact grep command and what to look for.
-8a. **Were branch-pinned reusable workflow refs checked?** Run Phase 2.5's branch-reference search and inspect `actions-up`'s skips; obtain every replacement SHA through that tool.
-9. **Was `flake.lock` bumped (or shown current)?** It carries every C library's security fixes; a clean extension list
-   says nothing about them.
-10. **Was extension update detection quality-checked?** If `check-updates.ts` output looked noisy,
-    verify each candidate is same-family + monotonic (not prerelease/downgrade) and confirm fallback
-    paths were exercised when GitHub API was rate-limited.
-11. **Was changelog gating enforced?** If any image-affecting files changed, verify `CHANGELOG.md`
-    was updated in the same round with user-facing entries (or explicitly document why no user-facing
-    impact exists).
-12. **Are changelog claims evidence-backed?** Cross-check each changelog statement against actual
-    upstream diff evidence (release notes, compare output, commit/file diffs). Remove any claim that
-    cannot be tied to concrete upstream changes.
-13. **Were all bug fixes systematically verified with a full-codebase grep?** A targeted fix (e.g.,
-    fixing `.env()` calls in the files that visibly failed) is not the same as verifying the entire
-    codebase. After any structural fix pattern, run a grep across ALL relevant files to confirm zero
-    remaining violations before declaring done. Latent bugs in gracefully-degrading code paths
-    (try/catch → warning, optional fallback branches) pass tests silently until they hit edge cases.
-    Run the validate check or a direct grep: `bun run validate` now includes "Subprocess Env Safety"
-    for the `.env()` pattern specifically.
-
-Then update THIS SKILL FILE (`.claude/commands/update.md`) with concrete improvements:
-- Add checks that would have caught missed items
-- Strengthen wording where guidance was too weak
-- Fix any outdated file references or procedures
-- Add new edge cases discovered
-
-**This is kaizen — each update round improves the next. The skill should be a living document
-that gets better with every use. Commit the skill update as the final commit of the round.**
+For a structural fix, search the tree for every affected caller or copy and verify the actual match.
+For a validator change, follow its diagnostic on the failing case and prove it leads to a passing result.
 
 ## Phase 12: Final Verification Gate (MANDATORY — The Only Acceptable End State)
 
@@ -857,15 +875,14 @@ due in this round, not the next:
 - nixpkgs revision (`flake.lock`): PostgreSQL minor, glibc, libraries
 - Git/tag/git-ref extensions from `check-updates.ts`
 - Companion images: compose pins (validate-enforced) and `deployments/`-only images
-- Tool images run by scripts (Phase 2.5)
+- Checkers (`scripts/nix/tools.ts`) and tool images run by scripts (Phase 2.5)
 - Bun runtime in `.tool-versions`
 - Bun package dependencies and `bun.lock`
 - GitHub Actions SHA pins, reusable workflow refs, and stale prose comments
 - Hardcoded test/doc version strings for every changed image-facing dependency
 - Generated files and `CHANGELOG.md` when any image-facing source changed
 
-After ALL other phases — including CHANGELOG, skill update commit, and every other commit — run
-the full comprehensive test suite one final time:
+After all candidate and guidance commits, run the full suite once on the committed inputs:
 
 ```bash
 bun run test:all
@@ -873,7 +890,7 @@ bun run test:all
 
 **This is a gate, not a formality.** Rules:
 
-- ✅ **If it passes**: Update round is **COMPLETE**. Repository is in a known-good state.
+- ✅ **If it passes**: Finish the required extended memory check when Phase 8 calls for it, then reclaim artifacts in Phase 13.
 - ❌ **If it fails**: DO NOT stop. DO NOT declare work done. Fix the issue, commit the fix,
   and re-run `bun run test:all` from the top of Phase 12. Repeat until clean.
 
@@ -886,7 +903,7 @@ verifying the image is actually correct at runtime.
 `bun run test:all` passing clean with zero failures on the committed code.
 
 ```
-test:all → pass → DONE
+test:all → pass → required extended memory check → cleanup
 test:all → fail → fix → commit fix → test:all (loop)
 ```
 
@@ -956,7 +973,7 @@ bun run test:all
 | Extension | Tag Format | Example |
 |-----------|------------|---------|
 | **pg_repack** | `ver_X.Y.Z` | `ver_1.5.3` |
-| **pgaudit** | `X.Y` (PG major) | `18.0` |
+| **pgaudit** | `X.Y` (X = PG major; entry sets `pgMajorTags`) | `18.0` |
 | **set_user** | `RELX_Y_Z` | `REL4_2_0` |
 | **pgbackrest** | `release/X.Y.Z` | `release/2.57.0` |
 | **wal2json** | `wal2json_X_Y` | `wal2json_2_6` |

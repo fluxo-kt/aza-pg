@@ -17,7 +17,8 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { reclaimDanglingAzaImages } from "../docker/cleanup-artifacts";
-import { native, nixCommand, nixPlatform } from "./nix";
+import { native, nixSystem, spawnNix } from "./nix";
+import { TOOL_NAMES } from "./tools";
 
 const flagValue = (flag: string) => {
   const i = Bun.argv.indexOf(flag);
@@ -31,14 +32,9 @@ if (retag === "" || push === "" || (retag && push) || (push && !native)) {
   );
   process.exit(64);
 }
-const system = nixPlatform.endsWith("arm64") ? "aarch64-linux" : "x86_64-linux";
-const build = Bun.spawn(
-  nixCommand(["nix", "build", `.#packages.${system}.image`, "--no-link", "--print-out-paths"]),
-  {
-    cwd: path.resolve(import.meta.dir, "../.."),
-    stdout: "pipe",
-    stderr: "inherit",
-  }
+const build = spawnNix(
+  ["nix", "build", `.#packages.${nixSystem}.image`, "--no-link", "--print-out-paths"],
+  { stdout: "pipe" }
 );
 const [built, buildExit] = await Promise.all([new Response(build.stdout).text(), build.exited]);
 const streamScript = built.trim();
@@ -67,19 +63,9 @@ if (push) {
     '"$0" | skopeo --dest-compress-format zstd --dest-compress-level 19 docker-archive:/dev/stdin "oci:$1:image" &&',
     'skopeo --format oci --dest-compress-format zstd --dest-force-compress-format --digestfile "$2" "oci:$1:image" "docker://$3"',
   ].join("\n");
-  const copy = Bun.spawn(
-    nixCommand([
-      "bash",
-      "-o",
-      "pipefail",
-      "-c",
-      script,
-      streamScript,
-      `${scratch}/oci`,
-      digestFile,
-      push,
-    ]),
-    { cwd: path.resolve(import.meta.dir, "../.."), stdout: "ignore", stderr: "inherit" }
+  const copy = spawnNix(
+    ["bash", "-o", "pipefail", "-c", script, streamScript, `${scratch}/oci`, digestFile, push],
+    { stdout: "ignore" }
   );
   const copyExit = await copy.exited;
   const digest = copyExit === 0 ? (await Bun.file(digestFile).text()).trim() : "";
@@ -94,19 +80,9 @@ if (push) {
   // publish.yml indexes and signs the image.
   const pushed = `docker://${push.replace(/:[^/:]*$/, "")}@${digest}`;
   const inspect = async (flag: string) => {
-    const p = Bun.spawn(
-      nixCommand([
-        "nix",
-        "run",
-        "--inputs-from",
-        ".",
-        "nixpkgs#skopeo",
-        "--",
-        "inspect",
-        flag,
-        pushed,
-      ]),
-      { cwd: path.resolve(import.meta.dir, "../.."), stdout: "pipe", stderr: "inherit" }
+    const p = spawnNix(
+      ["nix", "run", "--inputs-from", ".", "nixpkgs#skopeo", "--", "inspect", flag, pushed],
+      { stdout: "pipe" }
     );
     const [out, code] = await Promise.all([new Response(p.stdout).text(), p.exited]);
     if (code !== 0) throw new Error(`skopeo inspect ${flag} ${pushed} failed (exit ${code})`);
@@ -139,7 +115,9 @@ if (push) {
 }
 
 // The stream script is self-contained (its interpreter and inputs are store paths): it runs wherever the store is.
-const stream = Bun.spawn(nixCommand([streamScript]), { stdout: "pipe", stderr: "inherit" });
+const stream = spawnNix([streamScript], {
+  stdout: "pipe",
+});
 // The stream's pipe stays open in this process, so a reader that dies leaves the stream blocked on a full pipe for
 // ever instead of failing; kill it so the failure surfaces.
 const stopStreamOnFailure = async (reader: { exited: Promise<number> }) => {
@@ -177,8 +155,9 @@ console.error(`Reclaimed ${await reclaimDanglingAzaImages()}`);
 // each build replaces the roots in GC_ROOTS with this image and the flake's inputs, then collects the rest.
 // keep-outputs (nix.ts) plus Nix's default keep-derivations make the image root keep every build input, so an
 // unchanged rebuild stays cached; flake inputs (nixpkgs' source) are fetched at evaluation, outside any derivation,
-// and need roots of their own or every build downloads them again. Replacing the whole directory drops the previous
-// build's roots. A native store is the host's (CI runners are discarded anyway): collecting it would delete the
+// and need roots of their own or every build downloads them again. The checkers scripts run (vulnix, scripts/nix/tools.ts)
+// are rooted too: collecting them would make the next lint or scan fetch or rebuild them (yamllint builds from
+// source). Replacing the whole directory drops the previous build's roots. A native store is the host's (CI runners are discarded anyway): collecting it would delete the
 // host's own paths.
 const GC_ROOTS = "/nix/var/nix/gcroots/aza-pg";
 const REROOT_AND_COLLECT =
@@ -187,10 +166,7 @@ type FlakeNode = { path: string; inputs?: Record<string, FlakeNode> };
 const inputPaths = (node: FlakeNode): string[] =>
   Object.values(node.inputs ?? {}).flatMap((input) => [input.path, ...inputPaths(input)]);
 if (!native) {
-  const archive = Bun.spawn(nixCommand(["nix", "flake", "archive", "--json"]), {
-    stdout: "pipe",
-    stderr: "inherit",
-  });
+  const archive = spawnNix(["nix", "flake", "archive", "--json"], { stdout: "pipe" });
   const [archived, archiveExit] = await Promise.all([
     new Response(archive.stdout).text(),
     archive.exited,
@@ -199,8 +175,30 @@ if (!native) {
     console.error(`nix flake archive failed (exit ${archiveExit}); see the log above.`);
     process.exit(1);
   }
-  const roots = [streamScript, ...new Set(inputPaths(JSON.parse(archived) as FlakeNode))];
-  const gc = Bun.spawn(nixCommand(["sh", "-c", REROOT_AND_COLLECT, GC_ROOTS, ...roots]), {
+  const checkers = spawnNix(
+    [
+      "nix",
+      "build",
+      "--no-link",
+      "--print-out-paths",
+      ...["vulnix", ...TOOL_NAMES].map((o) => `.#packages.${nixSystem}.${o}`),
+    ],
+    { stdout: "pipe" }
+  );
+  const [checkerPaths, checkersExit] = await Promise.all([
+    new Response(checkers.stdout).text(),
+    checkers.exited,
+  ]);
+  if (checkersExit !== 0) {
+    console.error(`building the checkers failed (exit ${checkersExit}); see the log above.`);
+    process.exit(1);
+  }
+  const roots = [
+    streamScript,
+    ...checkerPaths.trim().split("\n"),
+    ...new Set(inputPaths(JSON.parse(archived) as FlakeNode)),
+  ];
+  const gc = spawnNix(["sh", "-c", REROOT_AND_COLLECT, GC_ROOTS, ...roots], {
     stdout: "pipe",
     stderr: "pipe",
   });

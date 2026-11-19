@@ -18,8 +18,10 @@
  */
 
 import { type } from "arktype";
-import { MANIFEST_ENTRIES } from "./manifest-data";
+import { MANIFEST_ENTRIES, MANIFEST_METADATA } from "./manifest-data";
 import type { ManifestEntry } from "./manifest-data";
+import { pinnedImages } from "../utils/stack-images";
+import { TOOLS, TOOL_NAMES, toolVersions } from "../nix/tools";
 
 interface UpdateInfo {
   name: string;
@@ -249,9 +251,23 @@ async function checkGitRefHead(
   return { head, error: null };
 }
 
+export function isSameReleaseLine(
+  currentTag: string,
+  candidateTag: string,
+  pgMajor?: number
+): boolean {
+  // Same tag family and, for an entry whose tags carry the PG major (`pgMajor` set, from the entry's
+  // `pgMajorTags`), the same first version number as that major. Prefix families alone cannot tell
+  // pgaudit's `18.1` from `19.0` (both bare numbers): without the major check the next PG major's
+  // release wins and the update for ours is never reported.
+  if (compareTagVersions(currentTag, candidateTag) === null) return false;
+  return pgMajor === undefined || parseTagVersion(candidateTag)?.segments[0] === pgMajor;
+}
+
 async function checkGitHubRelease(
   repository: string,
-  currentTag: string
+  currentTag: string,
+  pgMajor?: number
 ): Promise<{
   latest: string | null;
   url: string | null;
@@ -280,7 +296,7 @@ async function checkGitHubRelease(
     const comparableTags = tags
       .map((tag) => tag.name)
       .filter((tag) => canUseCandidateTag(currentTag, tag))
-      .filter((tag) => compareTagVersions(currentTag, tag) !== null);
+      .filter((tag) => isSameReleaseLine(currentTag, tag, pgMajor));
 
     if (comparableTags.length === 0) {
       return { latest: null, url: null };
@@ -323,7 +339,7 @@ async function checkGitHubRelease(
       .map((ref) => ref.replace("refs/tags/", ""))
       .filter((tag) => tag.length > 0)
       .filter((tag) => canUseCandidateTag(currentTag, tag))
-      .filter((tag) => compareTagVersions(currentTag, tag) !== null);
+      .filter((tag) => isSameReleaseLine(currentTag, tag, pgMajor));
 
     if (comparableTags.length === 0) {
       return { latest: null, url: null };
@@ -379,7 +395,7 @@ async function checkGitHubRelease(
     const data = (await response.json()) as GitHubRelease;
     // Some monorepos publish release tags for other packages. If tag family
     // differs, prefer a comparable git tag for this extension.
-    if (compareTagVersions(currentTag, data.tag_name) === null) {
+    if (!isSameReleaseLine(currentTag, data.tag_name, pgMajor)) {
       const tagsFallback = await fallbackToComparableTags();
       if (tagsFallback.latest !== null) {
         return {
@@ -413,9 +429,12 @@ async function checkGitHubRelease(
 }
 
 async function checkExtensionUpdates(
-  entry: Pick<ManifestEntry, "name" | "source" | "enabled">
+  entry: Pick<ManifestEntry, "name" | "source" | "enabled" | "nix">
 ): Promise<UpdateInfo | null> {
-  const { name, source, enabled = true } = entry;
+  const { name, source } = entry;
+  // An unshipped entry kept building (nix.buildUnshipped) is updated like a shipped one: its build runs every round,
+  // and letting it fall behind defeats keeping it ready to ship. So its update counts as work (exit 1).
+  const enabled = (entry.enabled ?? true) || entry.nix?.buildUnshipped === true;
 
   // Skip built-in extensions
   if (source.type === "builtin") {
@@ -450,7 +469,8 @@ async function checkExtensionUpdates(
   if (source.type === "git") {
     const { latest, url, usedTagsFallback, fallbackSource } = await checkGitHubRelease(
       source.repository,
-      source.tag
+      source.tag,
+      source.pgMajorTags ? Number.parseInt(MANIFEST_METADATA.pgVersion, 10) : undefined
     );
 
     if (latest === null) {
@@ -512,82 +532,95 @@ async function checkExtensionUpdates(
  * what the repository puts before the image tag: Grafana tags images 13.2.3 but releases v13.2.3, and comparing
  * the bare form picks up Grafana's old unprefixed tags instead.
  */
-const IMAGE_SOURCES: Record<
-  string,
-  { repository: string; tagPrefix?: string; tags?: "docker-hub" }
-> = {
-  // Local Nix: its tag must equal CI's (the nix_version in install-nix-action's install-nix.sh), see /update.
-  "nixos/nix": { repository: "https://github.com/NixOS/nix", tags: "docker-hub" },
-  "edoburu/pgbouncer": {
-    repository: "https://github.com/edoburu/docker-pgbouncer",
-    tags: "docker-hub",
-  },
-  "prometheuscommunity/pgbouncer-exporter": {
-    repository: "https://github.com/prometheus-community/pgbouncer_exporter",
-  },
-  "prometheuscommunity/postgres-exporter": {
-    repository: "https://github.com/prometheus-community/postgres_exporter",
-  },
-  "prom/prometheus": { repository: "https://github.com/prometheus/prometheus" },
-  "grafana/grafana": { repository: "https://github.com/grafana/grafana", tagPrefix: "v" },
-  "rhysd/actionlint": { repository: "https://github.com/rhysd/actionlint", tagPrefix: "v" },
-  "aquasecurity/trivy": { repository: "https://github.com/aquasecurity/trivy", tagPrefix: "v" },
-  // Hosted on GitLab with no GitHub releases: the registry's tags are the only version list.
-  "pipelinecomponents/yamllint": {
-    repository: "https://gitlab.com/pipeline-components/yamllint",
-    tags: "docker-hub",
-  },
-};
+const IMAGE_SOURCES: Record<string, { repository: string; tagPrefix?: string; tags?: "registry" }> =
+  {
+    // Local Nix: its tag must equal CI's (the nix_version in install-nix-action's install-nix.sh), see /update.
+    "nixos/nix": { repository: "https://github.com/NixOS/nix", tags: "registry" },
+    "oven/bun": { repository: "https://github.com/oven-sh/bun", tags: "registry" },
+    // CloudNativePG rebuilds each PgBouncer release on patched Debian about weekly, as a new timestamped tag
+    // (1.26.1-<UTC stamp>-trixie): only the registry's tags show those rebuilds, the GitHub releases do not.
+    "cloudnative-pg/pgbouncer": {
+      repository: "https://github.com/cloudnative-pg/pgbouncer-containers",
+      tags: "registry",
+    },
+    "prometheuscommunity/pgbouncer-exporter": {
+      repository: "https://github.com/prometheus-community/pgbouncer_exporter",
+    },
+    "prometheuscommunity/postgres-exporter": {
+      repository: "https://github.com/prometheus-community/postgres_exporter",
+    },
+    "prom/prometheus": { repository: "https://github.com/prometheus/prometheus" },
+    "grafana/grafana": { repository: "https://github.com/grafana/grafana", tagPrefix: "v" },
+  };
+
+const RegistryTagList = type({ tags: "string[] | null" });
+const RegistryToken = type({ "token?": "string", "access_token?": "string" });
 
 /**
- * Every image reference in tracked files under stacks/ and deployments/ (compose files and the compose snippets
- * in their READMEs), one entry per repo:tag: an `image: repo:tag` line, or a compose default
- * `${…IMAGE:-repo:tag@sha256:…}`, which the stacks write on the line after `image:`. aza-pg's own image, published
- * or built locally, is skipped: the stacks follow its floating major tag on purpose.
+ * Every tag of `host/repo`, read through the OCI distribution API (`GET /v2/<repo>/tags/list`), which Docker Hub,
+ * GHCR and Quay all serve behind the same anonymous Bearer handshake: a 401 names the token realm in
+ * WWW-Authenticate. One reader covers every registry, so moving a companion to another registry needs no new code.
+ * Returns an error string instead of a partial list: a truncated enumeration would report a stale pin as current.
  */
-async function pinnedImages(): Promise<Array<{ repo: string; tag: string; files: string[] }>> {
-  // scripts/ and .github/ pin the tool images the checks run (actionlint, trivy) as repo:tag@sha256:…
-  // literals (tag for this check, digest for integrity); without them here those pins went stale unseen.
-  const files = (await Bun.$`git ls-files -- stacks deployments scripts .github`.quiet().text())
-    .split("\n")
-    .filter(Boolean);
-  const images = new Map<string, { repo: string; tag: string; files: string[] }>();
-  for (const file of files) {
-    const tool = file.startsWith("scripts/") || file.startsWith(".github/");
-    for (const line of (await Bun.file(file).text()).split("\n")) {
-      // The tag is optional in both patterns: a reference without one (`repo@sha256:…`, or a compose
-      // `image: repo` that floats on latest) names no version to compare, so it is kept with tag ""
-      // and reported as uncheckable instead of matching nothing and going stale without any row.
-      const m = tool
-        ? /\b([a-z0-9][a-z0-9._-]*\/[a-z0-9._-]+)(?::([A-Za-z0-9._-]+))?@sha256:[0-9a-f]{64}/.exec(
-            line
-          )
-        : /(?:^\s*image:\s*|\$\{[A-Z0-9_]*IMAGE:-)([a-z0-9][a-z0-9./_-]*)(?::([A-Za-z0-9._-]+))?/.exec(
-            line
-          );
-      if (!m) continue;
-      const tag = m[2] ?? "";
-      const repo = m[1]!.replace(/^(docker\.io|quay\.io|ghcr\.io)\//, "");
-      if (repo === "fluxo-kt/aza-pg" || repo === "aza-pg") continue;
-      const key = `${repo}:${tag}`;
-      const known = images.get(key) ?? { repo, tag, files: [] };
-      if (!known.files.includes(file)) known.files.push(file);
-      images.set(key, known);
+async function registryTags(host: string, repo: string): Promise<string[] | string> {
+  const api = host === "docker.io" ? "registry-1.docker.io" : host;
+  const name = host === "docker.io" && !repo.includes("/") ? `library/${repo}` : repo;
+  const get = (url: string, token?: string) =>
+    fetch(url, {
+      signal: AbortSignal.timeout(15_000),
+      headers: token === undefined ? {} : { Authorization: `Bearer ${token}` },
+    });
+  let url = `https://${api}/v2/${name}/tags/list?n=1000`;
+  let token: string | undefined;
+  const tags: string[] = [];
+  try {
+    for (let page = 1; page <= 20; page++) {
+      let response = await get(url, token);
+      if (response.status === 401 && token === undefined) {
+        const challenge = response.headers.get("www-authenticate") ?? "";
+        const field = (k: string) => new RegExp(`${k}="([^"]*)"`).exec(challenge)?.[1];
+        const realm = field("realm");
+        if (realm === undefined) return `no token realm in 401 challenge: ${challenge}`;
+        const tokenUrl = new URL(realm);
+        const service = field("service");
+        if (service !== undefined) tokenUrl.searchParams.set("service", service);
+        tokenUrl.searchParams.set("scope", field("scope") ?? `repository:${name}:pull`);
+        const t = RegistryToken(await (await get(tokenUrl.href)).json());
+        if (t instanceof type.errors) return `token response: ${t.summary}`;
+        token = t.token ?? t.access_token;
+        if (token === undefined) return "token response carried no token";
+        response = await get(url, token);
+      }
+      if (!response.ok) return `registry returned HTTP ${response.status}`;
+      const data = RegistryTagList(await response.json());
+      if (data instanceof type.errors) return data.summary;
+      tags.push(...(data.tags ?? []));
+      // Distribution-spec pagination: a Link header names the next page, relative to the registry.
+      const next = /<([^>]+)>;\s*rel="next"/.exec(response.headers.get("link") ?? "")?.[1];
+      if (next === undefined) return tags;
+      url = new URL(next, `https://${api}`).href;
     }
+    return "registry exceeded 20 pages of tags; inspect the catalog before raising the bound";
+  } catch (error) {
+    return String(error);
   }
-  return [...images.values()];
 }
 
-const DockerHubTagPage = type({
-  next: "string | null",
-  results: type({ name: "string" }).array(),
-});
-
-async function checkDockerHubImage(repo: string, current: string): Promise<UpdateInfo> {
-  // Registry publication and wrapper releases are independent; only published image tags establish
-  // what operators can pull. Bound requests and refuse partial enumeration rather than report it current.
-  const source = `https://hub.docker.com/v2/repositories/${repo}/tags`;
-  const base = { name: repo, current, source, sourceType: "git" as const, enabled: true };
+async function checkRegistryImage(
+  host: string,
+  repo: string,
+  current: string,
+  repository: string
+): Promise<UpdateInfo> {
+  // Registry publication and wrapper releases are independent; only published image tags establish what operators
+  // can pull, and a rebuild that patches the base without a new component version appears only as a new tag.
+  const base = {
+    name: repo,
+    current,
+    source: `${host}/${repo}`,
+    sourceType: "git" as const,
+    enabled: true,
+  };
   const unavailable = (reason: string): UpdateInfo => ({
     ...base,
     latest: null,
@@ -595,47 +628,26 @@ async function checkDockerHubImage(repo: string, current: string): Promise<Updat
     releaseUrl: null,
     notes: `Could not check published image tags: ${reason}`,
   });
+  const tags = await registryTags(host, repo);
+  if (typeof tags === "string") return unavailable(tags);
   let latest: string | null = null;
-  let pageUrl = `${source}?page_size=100`;
-  const registryOrigin = new URL(source).origin;
-  try {
-    for (let page = 1; page <= 10; page++) {
-      const response = await fetch(pageUrl, {
-        signal: AbortSignal.timeout(15_000),
-      });
-      if (!response.ok) return unavailable(`registry returned HTTP ${response.status}`);
-      const data = DockerHubTagPage(await response.json());
-      if (data instanceof type.errors) return unavailable(data.summary);
-      for (const { name } of data.results) {
-        if (
-          !hasSameTagShape(current, name) ||
-          !canUseCandidateTag(current, name) ||
-          compareTagVersions(current, name) === null
-        )
-          continue;
-        if (latest === null || (compareTagVersions(latest, name) ?? 0) > 0) latest = name;
-      }
-      if (data.next === null) {
-        if (latest === null) return unavailable(`no tags comparable with ${current}`);
-        return {
-          ...base,
-          latest,
-          updateAvailable: (compareTagVersions(current, latest) ?? 0) > 0,
-          releaseUrl: `https://hub.docker.com/r/${repo}/tags?name=${encodeURIComponent(latest)}`,
-          notes: "Latest compatible published image tag; verify the bundled binary separately",
-        };
-      }
-      const nextPage = new URL(data.next, source);
-      if (nextPage.origin !== registryOrigin)
-        return unavailable("pagination left the registry origin");
-      pageUrl = nextPage.href;
-    }
-    return unavailable(
-      "registry exceeded 1,000 tags; inspect the catalog before raising the bound"
-    );
-  } catch (error) {
-    return unavailable(String(error));
+  for (const name of tags) {
+    if (
+      !hasSameTagShape(current, name) ||
+      !canUseCandidateTag(current, name) ||
+      compareTagVersions(current, name) === null
+    )
+      continue;
+    if (latest === null || (compareTagVersions(latest, name) ?? 0) > 0) latest = name;
   }
+  if (latest === null) return unavailable(`no tags comparable with ${current}`);
+  return {
+    ...base,
+    latest,
+    updateAvailable: (compareTagVersions(current, latest) ?? 0) > 0,
+    releaseUrl: repository,
+    notes: "Latest compatible published image tag; verify the bundled binary separately",
+  };
 }
 
 function printTable(updates: UpdateInfo[]) {
@@ -765,7 +777,8 @@ async function main() {
     }
   }
 
-  for (const image of await pinnedImages()) {
+  const tracked = (await Bun.$`git ls-files`.quiet().text()).split("\n").filter(Boolean);
+  for (const image of await pinnedImages(tracked)) {
     const upstream = IMAGE_SOURCES[image.repo];
     const pinnedIn = `pinned in ${image.files.join(", ")}`;
     if (image.tag === "") {
@@ -798,8 +811,13 @@ async function main() {
       });
       continue;
     }
-    if (upstream.tags === "docker-hub") {
-      const update = await checkDockerHubImage(image.repo, image.tag);
+    if (upstream.tags === "registry") {
+      const update = await checkRegistryImage(
+        image.host,
+        image.repo,
+        image.tag,
+        upstream.repository
+      );
       results.push({ ...update, files: image.files, notes: `${update.notes} (${pinnedIn})` });
       continue;
     }
@@ -816,6 +834,34 @@ async function main() {
         files: image.files,
         notes: `${update.notes} (${pinnedIn})`,
       });
+  }
+
+  // The checkers come from flake.nix (scripts/nix/tools.ts), so their versions follow nixpkgs, which can trail an
+  // upstream release; an outdated row means bump nixpkgs or override the output in flake.nix.
+  const versions = await toolVersions();
+  for (const tool of TOOL_NAMES) {
+    const { repository, tagPrefix } = TOOLS[tool];
+    if (typeof versions === "string") {
+      results.push({
+        name: tool,
+        current: "(unknown)",
+        latest: null,
+        updateAvailable: false,
+        source: "flake.nix",
+        sourceType: "git",
+        releaseUrl: null,
+        notes: `Could not read the flake's tool versions: ${versions}`,
+        enabled: true,
+      });
+      continue;
+    }
+    const update = await checkExtensionUpdates({
+      name: tool,
+      source: { type: "git", repository, tag: `${tagPrefix}${versions[tool]}` },
+      enabled: true,
+    });
+    if (update)
+      results.push({ ...update, current: versions[tool], notes: `${update.notes} (flake.nix)` });
   }
 
   if (args.format === "json") {

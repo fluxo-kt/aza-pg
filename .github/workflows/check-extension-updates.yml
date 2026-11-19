@@ -19,6 +19,12 @@ jobs:
       - name: Set up Bun and dependencies
         uses: ./.github/actions/setup-bun
 
+      # check-updates.ts reads the checkers' versions from the flake (reason in setup-nix).
+      - name: Set up Nix
+        uses: ./.github/actions/setup-nix
+        with:
+          restore-store: "false"
+
       # No continue-on-error: a broken check must turn this job red, so the report step says "check failed" instead
       # of reading an empty result as "up to date".
       - name: Check for extension updates

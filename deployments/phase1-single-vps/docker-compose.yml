@@ -44,27 +44,19 @@ services:
 
   # PgBouncer - Connection Pooling
   pgbouncer:
-    # Keep the stack's wrapper image so its authentication and healthcheck behavior stay aligned.
-    image: edoburu/pgbouncer:v1.26.1-p0@sha256:488422e38cff912895d0d65d8963fcd306e6ac589a724398b6eb8e294e94d624
+    # The stack's image (stacks/primary/compose.yml says why CloudNativePG's). It reads /etc/pgbouncer/pgbouncer.ini,
+    # rendered by Compose from the `pgbouncer.ini` config at the end of this file.
+    image: ghcr.io/cloudnative-pg/pgbouncer:1.26.1-202611121015-trixie@sha256:6c91fd7383b8b098bc0c3b71dba4e98bd568c0d301b9fc66027fbc23259c6a7d
     container_name: pgbouncer
     restart: unless-stopped
+    # uid 70 owns pgbouncer/userlist.txt (setup.sh, mode 600); the image's own user (998) could not read it.
+    user: "70:70"
     environment:
-      DB_HOST: postgres
-      DB_PORT: 5432
-      DB_NAME: ${POSTGRES_DB:-main}
-      # No DB_PASSWORD: with one, the image appends a credential to userlist.txt, which is mounted read-only. Logins
-      # to PostgreSQL reuse each client's SCRAM secret from userlist.txt.
-      DB_USER: ${POSTGRES_USER:-postgres}
-      LISTEN_PORT: 6432
-      POOL_MODE: ${PGBOUNCER_POOL_MODE:-transaction}
-      DEFAULT_POOL_SIZE: ${PGBOUNCER_DEFAULT_POOL_SIZE:-25}
-      MAX_CLIENT_CONN: ${PGBOUNCER_MAX_CLIENT_CONN:-2000}
-      AUTH_TYPE: scram-sha-256
-      AUTH_FILE: /etc/pgbouncer/userlist.txt
-      STATS_USERS: ${POSTGRES_USER:-postgres}
-      IGNORE_STARTUP_PARAMETERS: extra_float_digits
       # For the healthcheck's psql only: PgBouncer authenticates every client with scram-sha-256
       PGPASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD not set}
+    configs:
+      - source: pgbouncer.ini
+        target: /etc/pgbouncer/pgbouncer.ini
     volumes:
       - ./pgbouncer/userlist.txt:/etc/pgbouncer/userlist.txt:ro
     networks:
@@ -101,15 +93,16 @@ services:
 
   # Prometheus PostgreSQL Exporter
   postgres-exporter:
-    image: prometheuscommunity/postgres-exporter:v0.20.1@sha256:ac5ec343104fae0e2d84a27bb8d69b38430a11910c5382cad85d478d2bab713e
+    image: prometheuscommunity/postgres-exporter:v0.21.1@sha256:3b8e05a84282cd1199ad2fb6c66f362738bf4c68c1547d8f4226a34a7dd6d8d7
     container_name: postgres-exporter
     restart: unless-stopped
+    # Flags, not PG_EXPORTER_* env vars: 0.21 deprecates those (startup warning) and 0.22 removes them.
+    command:
+      ["--auto-discover-databases", "--extend.query-path=/etc/postgres_exporter/queries.yaml"]
     environment:
       DATA_SOURCE_NAME: >-
         postgresql://${MONITORING_USER:-monitoring}:${MONITORING_PASSWORD:?MONITORING_PASSWORD not
         set}@postgres:5432/${POSTGRES_DB:-main}?sslmode=disable
-      PG_EXPORTER_AUTO_DISCOVER_DATABASES: "true"
-      PG_EXPORTER_EXTEND_QUERY_PATH: "/etc/postgres_exporter/queries.yaml"
     volumes:
       - ./prometheus/postgres_exporter_queries.yaml:/etc/postgres_exporter/queries.yaml:ro
     networks:
@@ -149,7 +142,7 @@ services:
 
   # Prometheus - Metrics Collection
   prometheus:
-    image: prom/prometheus:v3.15.1@sha256:fa3302279710be2f21a8301ec17a8b4f2301fd829bd113839b3b6b02b6f191a2
+    image: prom/prometheus:v3.16.0@sha256:e04987641b57704f408e31f6373ba4138ecf27cb4a165d24aabb6c38fddd0f06
     container_name: prometheus
     restart: unless-stopped
     command:
@@ -177,7 +170,7 @@ services:
 
   # Grafana - Visualization
   grafana:
-    image: grafana/grafana:13.3.0@sha256:488984b716c0862639f91a698adbe2862677a5a07bad42da5f03f3030883b205
+    image: grafana/grafana:13.3.1@sha256:0615ec4fbd4072004b7d86b46ded63013a74b7d6eb1119273dd89e8fa25c13cf
     container_name: grafana
     restart: unless-stopped
     environment:
@@ -201,6 +194,27 @@ services:
         limits:
           cpus: "0.25"
           memory: 512M
+
+configs:
+  # Compose interpolates ${…} in inline content (Compose 2.23.1+), so the .env knobs reach PgBouncer without a
+  # generator script. No password here: logins reuse each client's SCRAM secret from userlist.txt.
+  pgbouncer.ini:
+    content: |
+      [databases]
+      ${POSTGRES_DB:-main} = host=postgres port=5432 auth_user=${POSTGRES_USER:-postgres}
+
+      [pgbouncer]
+      listen_addr = 0.0.0.0
+      listen_port = 6432
+      unix_socket_dir =
+      auth_type = scram-sha-256
+      auth_file = /etc/pgbouncer/userlist.txt
+      pool_mode = ${PGBOUNCER_POOL_MODE:-transaction}
+      max_client_conn = ${PGBOUNCER_MAX_CLIENT_CONN:-2000}
+      default_pool_size = ${PGBOUNCER_DEFAULT_POOL_SIZE:-25}
+      ignore_startup_parameters = extra_float_digits
+      admin_users = ${POSTGRES_USER:-postgres}
+      stats_users = ${POSTGRES_USER:-postgres}
 
 networks:
   aza-pg-network:

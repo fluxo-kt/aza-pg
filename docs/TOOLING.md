@@ -244,6 +244,16 @@ A newly-published `warn`-level CVE in a transitive (even dev) dep makes the non-
 **Why**: Required for the Rust (pgrx) extensions (e.g. pg_jsonschema, wrappers); nixpkgs provides the toolchain
 **Status**: ✅ LOCKED - Build-time only, not in runtime image
 
+### Image security scanners
+
+Keep compiler bootstraps off the workflow lint path. When a patched Go release is ahead of nixpkgs, build the checkers from source with Go's checksum-pinned Linux distribution. Drop the override once nixpkgs supplies the patched compiler.
+
+Run Trivy through `bun scripts/security/trivy.ts <image> [--gate] [flags]`. The wrapper uses the flake's Trivy output and shares its gate flags with `security:scan`. Use Trivy v0.69.3 or later. GitHub release binaries can disappear, actions can select their own version, and upstream scanner images add a distro whose fixes depend on the publisher. Run actionlint and yamllint from their flake outputs through `scripts/nix/tools.ts` for the same build in CI and locally.
+
+The Trivy gate blocks fixable HIGH and CRITICAL findings and scan failures. Trivy reads language packages in the Nix image. Use `scripts/security/vulnix-gate.ts` for the C libraries before pushing a release. Upgrade affected packages. Add an entry to `scripts/security/vulnix-whitelist.toml` only for a proven inapplicable or accepted finding. Record the evidence and include an expiration for accepted findings.
+
+Use `bun run security:scan [REF]` to scan the released image and pinned tools against current feeds. It defaults to `origin/release`. For a local candidate, build it and pass `bun run security:scan HEAD aza-pg:pg18`. Repair scan failures before interpreting exposure. Keep static ignores out of the Trivy scan because they can hide later fixable regressions.
+
 ---
 
 ## 📝 Documentation

@@ -1,6 +1,6 @@
 # Roadmap
 
-Known defects and missing work, most severe first. Each entry says why it matters and what fixing it takes. **Needs a decision** marks an entry that waits on a maintainer choice, not on effort. Remove an entry in the commit that fixes it.
+Known defects and missing work, most severe first. Each entry says why it matters and what fixing it takes. **Needs a decision** marks an entry that waits on a maintainer choice, not on effort. Remove an entry in the commit that fixes it. Only work outside the current task belongs here: work a task needs or uncovers (an `/update` round's bumps, migrations, tests) is finished in that task, never parked here.
 
 ## High
 
@@ -29,15 +29,27 @@ PostgreSQL's `postmaster.pid` check compares PIDs, which cannot see a server in 
 
 `nix/image.nix` omits `StopSignal`; the published Nix image reports no value, while the retained Debian image reports `SIGINT`. Preserve that shutdown contract in the Nix configuration rather than requiring every consumer to override it. Verify clean stop with an open client and committed-data recovery before release. Karakuri's review timeout does not establish this omission as its cause.
 
+### Docs say prepared statements fail through PgBouncer; the pinned PgBouncer supports them
+
+`README.md` (Limitations; "Why PgBouncer transaction mode?") says transaction mode allows "No prepared statements", and `QUICK_START.md` and `deployments/phase1-single-vps/scripts/setup.sh` give clients `?pgbouncer=true`, Prisma's flag that turns client prepared statements off. The stacks pin `ghcr.io/cloudnative-pg/pgbouncer` (PgBouncer 1.26.1). PgBouncer tracks protocol-level (Parse/Bind) prepared statements in transaction mode since 1.21 and enables it by default since 1.24.0 (`max_prepared_statements = 200`; pgbouncer.org config and changelog, read 2026-11-04); SQL-level `PREPARE`/`EXECUTE` is still forwarded untracked. `pgbouncer.ini.template` does not set the value, so the effective value comes from the image's defaults — unobserved. Why it matters: every query sent unprepared through the pooler is parsed and planned on each call. Fix: read `SHOW CONFIG` for `max_prepared_statements` in the running primary stack, prove a driver's named prepared statement survives a pooled transaction switching backends, then correct both claims and the client advice (which `pgbouncer=true` effects Prisma still needs is unverified).
+
 ### The `pg_upgrade` path needs an image holding both majors
 
 Option A in `docs/UPGRADING.md` needs the old and new PostgreSQL binaries, and every extension built for both, in one image; none is built. Needed before the next major upgrade.
 
 ## Low
 
+### Report an unavailable image size check as skipped
+
+With no `aza-pg:pg18` image present, `validate:all` prints that size regression was skipped but counts it as passed and reports zero skipped checks. Propagate the missing-image result through the existing validation summary so command success does not imply size coverage.
+
 ### Auto-config leaves memory unused below 2 GB
 
 The memory fit charges a busy session about 11 MB at `work_mem` 1 MB; `test-memory-fit --all` measured about 8.4 MB, and peak anon + shmem stayed near 55% of a 1 GB limit (36 connections). 53 busy sessions at 1 GB were OOM-killed, so the safe count lies between. Calibrate `BUSY_SESSION_MB` and `MEMORY_HEADROOM_PERCENT` from repeated runs at 1 and 1.5 GB (variance, not one run), keeping zero OOM kills; dirty temp-file pages also need room.
+
+### Explain memory fitting in generated release configuration
+
+`scripts/generate-release-notes.ts` presents fixed workload connection counts and describes only RAM-tier reductions, although the released entrypoint also lowers them to fit its shared connection/query-memory budget. The v18.6-202610312251 notes therefore list `mixed` as 120 connections while their own change section gives 36 at 1 GB. Label these as workload targets, explain the additional memory fit, and expose `POSTGRES_ACTIVE_CONNECTIONS_PERCENT` and `-c`/`ALTER SYSTEM` precedence through the existing README auto-config reference; avoid copying its formulas into the generator.
 
 ### Match SBOM verification to the documented signer
 
@@ -49,7 +61,7 @@ The published OCI index description says "36 extensions", while `docs/.generated
 
 ### Unmeasured speed: `-O3` per component, Rust CPU baseline, slow suites
 
-Speed waits for correctness. The server at `-O3` measured no faster (reason at `flake.nix`'s -O comment); extension `-O3` candidates still need a measurement. Rust profiles need nothing: pg_jsonschema, timescaledb_toolkit and vectorscale release with fat LTO and `codegen-units=1`, wrappers (network-bound) with 16 units. Rust code still targets the generic CPU; adding the baseline must keep each crate's own `.cargo/config` rustflags (vectorscale's `+avx2,+fma`), which an env `RUSTFLAGS` replaces, and needs a speed measurement to justify the rebuild. Several Docker suites run past 30 s (backup-restore, pgbouncer-healthcheck and pgflow-upgrade longest), mostly container and stack start-up.
+Speed waits for correctness. The server at `-O3` measured no faster (reason at `flake.nix`'s -O comment); extension `-O3` candidates still need a measurement. Rust profiles need nothing: pg_jsonschema, timescaledb_toolkit and vectorscale release with fat LTO and `codegen-units=1` (wrappers, unshipped until an FDW is chosen, with 16 units: network-bound). Rust code still targets the generic CPU; adding the baseline must keep each crate's own `.cargo/config` rustflags (vectorscale's `+avx2,+fma`), which an env `RUSTFLAGS` replaces, and needs a speed measurement to justify the rebuild. Several Docker suites run past 30 s (backup-restore, pgbouncer-healthcheck and pgflow-upgrade longest), mostly container and stack start-up.
 
 ### A replica on an unsupported CPU dies without the named error
 

@@ -15,7 +15,7 @@
     # publish.yml's SBOM generator, at a release tag and with its own lock: nixpkgs' sbomnix breaks whenever one of
     # its many Python dependencies moves (typepy 2.0 broke it), and upstream tests only its own lock. Build-only:
     # nothing it brings enters the image. /update bumps the tag to the latest release.
-    sbomnix.url = "github:tiiuae/sbomnix/v1.9.0";
+    sbomnix.url = "github:tiiuae/sbomnix/v1.10.0";
   };
 
   outputs = { nixpkgs, ... }@inputs:
@@ -131,9 +131,21 @@
             meta = (o.meta or { }) // { inherit (postgresql.meta) license; };
             postBuild = (o.postBuild or "") + "\nrm $out/share/man\n";
           });
+          # Entries with nix.buildUnshipped stay out of the image but are built by the same recipe (/update builds
+          # this output), so shipping one later finds it current instead of broken by months of nixpkgs changes.
+          unshippedExtensions = import ./nix/extensions.nix {
+            inherit pkgs postgresql inputs hardeningEnable stripUnneeded targetCpu;
+            inherit (pkgs) lib;
+            manifest = manifest // {
+              entries = map (e: e // { enabled = true; })
+                (builtins.filter (e: !(e.enabled or true) && (e.nix.buildUnshipped or false)) manifest.entries);
+            };
+          };
         in
         rec {
           inherit extensions;
+          unshipped = pkgs.linkFarm "aza-pg-unshipped-extensions"
+            (pkgs.lib.mapAttrsToList (name: path: { inherit name path; }) unshippedExtensions);
           postgresql = server;
           # A script that streams the image tarball: scripts/nix/build-image.ts pipes it into `docker load`.
           image = import ./nix/image.nix {
@@ -158,9 +170,50 @@
               })
             ];
           });
+          # The checkers scripts run (scripts/nix/tools.ts), never shipped. Built here rather than pulled as upstream
+          # images: those images bundle a distro (Alpine git, an old Go) whose fixable CVEs only upstream can rebuild
+          # away, while these follow flake.lock, so every nixpkgs bump refreshes them. check-updates.ts compares each
+          # version with its upstream release.
+          # Rebuild the checkers with the Go release that fixes CVE-2026-97054.
+          # Go's release compiler keeps its source bootstrap off the cold workflow lint path.
+          # Drop the override once nixpkgs ships Go 1.27.4 or later.
+          inherit (let
+            go = assert nixpkgs.lib.versionOlder pkgs.go_1_27.version "1.27.4";
+              pkgs.stdenvNoCC.mkDerivation (final: {
+                pname = "go-checker-compiler";
+                version = "1.27.4";
+                src = pkgs.fetchurl {
+                  url = "https://go.dev/dl/go${final.version}.linux-${pkgs.stdenv.hostPlatform.go.GOARCH}.tar.gz";
+                  sha256 = {
+                    aarch64-linux = "3392582988a273a87ab5043ee1b2c9c17a2c3c00580bf9326c47a2e0aaaeac92";
+                    x86_64-linux = "7226736c2339719cda28fbf3a54d71aa63bcefe376e98cef00034268dab24840";
+                  }.${system};
+                };
+                dontBuild = true;
+                dontFixup = true;
+                installPhase = ''mkdir -p "$out"; cp -a . "$out/"'';
+                passthru.CGO_ENABLED = 1;
+              });
+            buildGoModule = pkgs.buildGo127Module.override { inherit go; };
+          in {
+            actionlint = pkgs.actionlint.override { inherit buildGoModule; };
+            trivy = pkgs.trivy.override { buildGo127Module = buildGoModule; };
+          }) actionlint trivy;
+          # nixpkgs still packages 1.37.1 (NixOS/nixpkgs#515973). The assert fails once nixpkgs reaches 1.38.0: drop
+          # the override then, or it would pin an old release.
+          yamllint = assert nixpkgs.lib.versionOlder pkgs.yamllint.version "1.38.0";
+            pkgs.yamllint.overridePythonAttrs (old: rec {
+              version = "1.38.0";
+              src = pkgs.fetchFromGitHub {
+                owner = "adrienverge";
+                repo = "yamllint";
+                tag = "v${version}";
+                hash = "sha256-4H8tbn2TRzTGIXmP9Hnmc93rGSLsWh5A5R9KAIz0mKM=";
+              };
+            });
         };
     in
     {
-      packages = nixpkgs.lib.genAttrs systems (s: let r = perSystem s; in { inherit (r) postgresql image contents vulnix; } // r.extensions);
+      packages = nixpkgs.lib.genAttrs systems (s: let r = perSystem s; in { inherit (r) postgresql image contents vulnix unshipped actionlint trivy yamllint; } // r.extensions);
     };
 }

@@ -15,9 +15,15 @@
  */
 export const MANIFEST_METADATA = {
   /** PostgreSQL version (e.g., "18.1") */
-  pgVersion: "18.6",
-  /** Multi-arch digest of oven/bun:<.tool-versions bun>-debian, the pg_net test's echo server; re-resolve on every Bun bump. */
-  bunImageSha: "sha256:93d5032fe06d163427822dc1598f420363759bb18155c9cc90eb1be05a64a19e",
+  pgVersion: "18.7",
+  /**
+   * The pg_net test's echo server: oven/bun:<.tool-versions bun>-alpine at its multi-arch digest. Alpine avoids the
+   * Debian image's vulnerable zlib package (CVE-2026-85091). The tag is kept beside
+   * the digest so bun-image-pin.test.ts can fail when a Bun bump leaves it behind (the digest alone wins in Docker, so
+   * a stale one runs the old Bun silently). Re-resolve: `docker buildx imagetools inspect oven/bun:<version>-alpine`.
+   */
+  bunImage:
+    "oven/bun:1.4.5-alpine@sha256:da816670775f4c2b4e990b6b1847cf5540dcdc721a42033dd331ce7a88ba6a3b",
   /**
    * glibc locales the image ships (UTF-8), so a session can `SET lc_monetary|lc_numeric|lc_time = '<name>.utf8'`.
    * PostgreSQL reads these from glibc, never from ICU, for to_char's L/D/G/TM patterns and the money type. New
@@ -75,7 +81,15 @@ export const MANIFEST_METADATA = {
 
 export type SourceSpec =
   | { type: "builtin" }
-  | { type: "git"; repository: string; tag: string }
+  | {
+      type: "git";
+      repository: string;
+      tag: string;
+      // Upstream keeps one branch per PostgreSQL major and tags it with that major (pgaudit 18.1 vs 19.0).
+      // Set it so check-updates.ts offers only tags of MANIFEST_METADATA.pgVersion's major: otherwise the
+      // newest tag belongs to the next PG major and hides the real update on ours.
+      pgMajorTags?: true;
+    }
   | { type: "git-ref"; repository: string; ref: string };
 
 export type BuildKind =
@@ -174,6 +188,11 @@ export interface ManifestEntry {
     mesonFlags?: string[];
     bin?: string[];
     postInstall?: string;
+    /**
+     * Keep building the entry while `enabled: false` (flake output `unshipped`, built by /update): a capability we
+     * may ship later stays current and buildable instead of rotting until someone needs it.
+     */
+    buildUnshipped?: boolean;
   };
   enabled?: boolean;
   disabledReason?: string;
@@ -189,6 +208,13 @@ export interface ManifestEntry {
    */
   docsUrl?: string;
 }
+
+/**
+ * Foreign data wrappers the image bundles: Cargo features of wrappers/Cargo.toml (e.g. "stripe_fdw", "s3_fdw").
+ * wrappers without one is only an empty stats table, nothing a user can query, so with this list empty the entry is
+ * not shipped (but still built, nix.buildUnshipped); adding a feature here ships it with no other change.
+ */
+const WRAPPERS_FDWS: string[] = [];
 
 export const MANIFEST_ENTRIES: ManifestEntry[] = [
   {
@@ -249,7 +275,8 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     source: {
       type: "git",
       repository: "https://github.com/pgaudit/pgaudit.git",
-      tag: "18.0",
+      tag: "18.1",
+      pgMajorTags: true,
     },
     build: { type: "pgxs" },
     runtime: {
@@ -355,7 +382,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     source: {
       type: "git",
       repository: "https://github.com/HypoPG/hypopg.git",
-      tag: "1.4.4",
+      tag: "1.4.5",
     },
     build: { type: "pgxs" },
     runtime: {
@@ -396,7 +423,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     source: {
       type: "git",
       repository: "https://github.com/okbob/plpgsql_check.git",
-      tag: "v2.10.16",
+      tag: "v2.11.0",
     },
     build: { type: "pgxs" },
     runtime: {
@@ -442,7 +469,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     source: {
       type: "git",
       repository: "https://github.com/supabase/supautils.git",
-      tag: "v4.0.0",
+      tag: "v4.0.1",
     },
     build: { type: "pgxs" },
     runtime: {
@@ -504,7 +531,15 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
   {
     name: "wrappers",
     license: "Apache-2.0",
-    nix: { inputs: ["openssl", "pkg-config"] },
+    // Build inputs only: nixpkgs' cargoSetupHook makes the aws-lc-sys and zstd-sys build scripts demand system
+    // libraries, and Cargo compiles those crates (wrappers depends on rustls unconditionally) even with no FDW chosen,
+    // when nothing links them (the .so then references only glibc and gcc's runtime).
+    nix: { inputs: ["openssl", "pkg-config", "aws-lc", "zstd"], buildUnshipped: true },
+    ...(WRAPPERS_FDWS.length === 0 && {
+      enabled: false,
+      disabledReason:
+        "No foreign data wrapper is chosen (WRAPPERS_FDWS is empty): without one the extension offers nothing to query.",
+    }),
     displayName: "supabase-wrappers",
     kind: "extension",
     category: "integration",
@@ -516,7 +551,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     },
     build: {
       type: "cargo-pgrx",
-      features: ["pg18"],
+      features: ["pg18", ...WRAPPERS_FDWS],
       noDefaultFeatures: true,
       subdir: "wrappers",
       // Cargo.lock moved by `cargo update -p rustls@0.23.37 --precise 0.23.46` at the pinned commit: rustls 0.23.46,
@@ -729,7 +764,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     source: {
       type: "git",
       repository: "https://github.com/tembo-io/pgmq.git",
-      tag: "v1.13.1",
+      tag: "v1.13.2",
     },
     build: { type: "pgxs", subdir: "pgmq-extension" },
     runtime: {
@@ -836,7 +871,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     source: {
       type: "git",
       repository: "https://github.com/percona/pg_stat_monitor.git",
-      tag: "2.4.0",
+      tag: "2.4.1",
     },
     soFileName: "pg_stat_monitor.so",
     build: { type: "pgxs" },
@@ -885,7 +920,10 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     source: {
       type: "git",
       repository: "https://github.com/timescale/timescaledb.git",
-      tag: "2.31.0",
+      tag: "2.32.1",
+    },
+    build: {
+      type: "timescaledb",
     },
     runtime: {
       sharedPreload: true,
@@ -902,19 +940,20 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     name: "timescaledb_toolkit",
     nix: { package: "timescaledb_toolkit" },
     kind: "extension",
-    soFileName: "timescaledb_toolkit-1.26.0.so",
+    soFileName: "timescaledb_toolkit-1.28.0.so",
     category: "timeseries",
     description: "Analytical hyperfunctions and sketches extending TimescaleDB.",
     source: {
       type: "git",
       repository: "https://github.com/timescale/timescaledb-toolkit.git",
-      tag: "1.26.0",
+      tag: "1.28.0",
     },
     build: {
       type: "cargo-pgrx",
-      // Cargo.lock moved with `cargo update -p <crate> --precise <version>` at the pinned commit: hashbrown 0.15.1
-      // (GHSA-wwq9-3cpr-mm53, HIGH) and rand 0.8.8 (GHSA-cq8v-f236-94qc). Regenerate the same way on a bump; drop it
-      // once a release locks these; a stale one fails the build.
+      // Cargo.lock moved with `cargo update -p <crate> --precise <version>` at the pinned commit: rand 0.8.8
+      // (GHSA-cq8v-f236-94qc); upstream's own lock already has a fixed hashbrown (GHSA-wwq9-3cpr-mm53). Regenerate the
+      // same way on a bump, keeping only bumps upstream still lacks; drop it once a release locks these; a stale one
+      // fails the build.
       patches: ["timescaledb_toolkit-cargo-lock.patch"],
     },
     dependencies: ["timescaledb"],
@@ -957,7 +996,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     source: {
       type: "git",
       repository: "https://github.com/pgpartman/pg_partman.git",
-      tag: "v5.5.0",
+      tag: "v5.5.1",
     },
     build: { type: "pgxs" },
     runtime: {
@@ -1059,7 +1098,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     source: {
       type: "git",
       repository: "https://github.com/pgbackrest/pgbackrest.git",
-      tag: "release/2.60.0",
+      tag: "release/2.60.1",
     },
     runtime: {
       sharedPreload: false,
@@ -1083,7 +1122,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     source: {
       type: "git",
       repository: "https://github.com/pgaudit/set_user.git",
-      tag: "REL4_2_0",
+      tag: "REL4_3_0",
     },
     build: { type: "pgxs" },
     runtime: {

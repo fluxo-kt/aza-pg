@@ -39,7 +39,13 @@ Rules for code under `scripts/`. Root `AGENTS.md` applies too.
 
 **psql Session Isolation**: Docker suites run SQL only through `psql()`/`sqlOk()` (`scripts/utils/psql.ts`; options pick user, database, host, port, env), never a local `docker exec … psql` wrapper. Each call spawns a new `docker exec ... psql` process — `SET` statements do NOT persist between calls. `SET enable_seqscan = OFF` and the `SELECT` it affects MUST go in one call (one string, or an array: its `-c` statements share one session).
 
-**Postgres Entrypoint Readiness**: `pg_isready` can pass during the official image's temporary initdb server, right before entrypoint shutdown/restart. Fresh-container smoke tests MUST wait for `PostgreSQL init process complete; ready for start up.` in logs, then re-check `pg_isready` + `SELECT 1` against the final server.
+**Postgres Entrypoint Readiness**: Use `waitForPostgres({ container })` from `utils/docker.ts` for fresh and reused data directories, including published images. It waits for the current start's initialization marker and final server message, then executes `SELECT 1`. A socket readiness probe can reach the temporary initdb server, and a published image may have no Docker health check. When testing the health check itself, inspect Docker health explicitly.
+
+**Disposable resources**: Register each resource as soon as it is created. Clean up whatever exists after a partial start, then verify those exact resources are gone. An absent later resource must never stop cleanup of an earlier one.
+
+**Extension size probes**: Take one inventory from the candidate's `pg_config --pkglibdir` and follow library symlinks to measure the shipped files. Fail an unreadable or empty inventory. A size warning needs a measured file.
+
+**Subprocess verdicts**: Read exit meanings from the tool and the flags passed. Before mapping nonzero codes, exercise a completed adverse result and an execution failure through the real entry point. If they share a code, give completed findings a distinct code at the tool boundary and preserve the caller's public contract. Never infer a completed check from an error or a missing report.
 
 **`DROP TABLE x CASCADE` keeps functions**: it drops the table's triggers, indexes, constraints and sequences, but NOT the functions its triggers call (a function can serve many tables). Drop every function a check creates explicitly (as `testPlpgsqlCheck` does), or it stays until the container is removed.
 

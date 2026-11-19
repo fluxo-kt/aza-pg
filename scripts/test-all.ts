@@ -31,6 +31,7 @@ import {
   TEST_SCOPE_ENV,
 } from "./utils/docker";
 import { DEFAULT_TEST_IMAGE } from "./test/image-resolver";
+import { staleImageReason } from "./nix/image-inputs";
 
 export const GROUPS = ["extensions", "security", "stacks", "features", "regression"] as const;
 export type Group = (typeof GROUPS)[number];
@@ -46,6 +47,8 @@ export const SUITES: Suite[] = [
   { path: "scripts/docker/test-image.ts", group: "extensions" },
   { path: "scripts/test/test-extension-versions.ts", group: "extensions" },
   { path: "scripts/test/test-timescaledb-tsl.ts", group: "extensions" },
+  { path: "scripts/test/test-pg-partman-bgw.ts", group: "extensions" },
+  { path: "scripts/test/test-healthcheck-init.ts", group: "features" },
   { path: "scripts/test/test-pgmq-functional.ts", group: "extensions" },
   { path: "scripts/test/test-supautils-functional.ts", group: "extensions" },
   { path: "scripts/test/test-pg-net-functional.ts", group: "extensions" },
@@ -321,6 +324,11 @@ async function main(): Promise<void> {
     `Image ${image}; groups ${groups.join(", ")}; ${queue.length} suites, ${workers} at a time`
   );
   await ensureImageAvailable(image);
+  const stale = await staleImageReason(image);
+  if (stale !== null) {
+    console.error(stale);
+    process.exit(1);
+  }
   const orphans = await sweepOrphanedTestResources();
   if (orphans.found.length > 0)
     console.log(`Removed what killed earlier test runs left: ${orphans.found.join(", ")}`);

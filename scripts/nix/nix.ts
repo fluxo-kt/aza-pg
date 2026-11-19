@@ -3,7 +3,8 @@
  * Runs one Nix command against the repo flake: `bun scripts/nix/nix.ts <nix args…>` (e.g. `build .#image`).
  *
  * nixCommand is the one place deciding where Nix runs, so local builds and CI share every other line:
- * - natively on a Linux host with nix on PATH (CI runners), in its own sandbox;
+ * - natively on a Linux host with nix on PATH, in its own sandbox: every CI job that reaches this file installs Nix
+ *   (`.github/actions/setup-nix`), and nixCommand refuses the container under CI=true, naming that step;
  * - otherwise (the Mac has no Linux Nix) in nixos/nix with the repo mounted at /src. One store volume per
  *   architecture keeps built paths between runs; a volume first filled by the other architecture would hide them.
  *   The platform is the host's (an arm64 Mac builds the arm64 image); NIX_PLATFORM=linux/amd64 builds amd64 under
@@ -23,10 +24,58 @@ const FLAGS = "experimental-features = nix-command flakes\nkeep-outputs = true\n
 export const native = process.platform === "linux" && Bun.which("nix") !== null;
 export const nixPlatform =
   Bun.env.NIX_PLATFORM ?? (process.arch === "arm64" ? "linux/arm64" : "linux/amd64");
+/** The flake's system name for nixPlatform: `.#packages.${nixSystem}.<output>`. */
+export const nixSystem = nixPlatform.endsWith("arm64") ? "aarch64-linux" : "x86_64-linux";
 
-/** argv that runs `command` (a nix invocation, or a store path such as the image's stream script) where the store is. */
-export function nixCommand(command: string[], container = `aza-pg-nix-${process.pid}`): string[] {
+// Nix resolves github: inputs through GitHub's API, whose anonymous limit (60 requests an hour per IP) one update
+// round's other lookups exhaust; `flake update` then fails with HTTP 403. The container authenticates with
+// GITHUB_TOKEN or the local `gh` login. Read once per process: build-image.ts runs several containers.
+let githubToken: string | null | undefined;
+function readGithubToken(): string | null {
+  if (githubToken !== undefined) return githubToken;
+  const gh = Bun.env.GITHUB_TOKEN
+    ? null
+    : Bun.spawnSync(["gh", "auth", "token"], { stderr: "ignore" });
+  githubToken =
+    Bun.env.GITHUB_TOKEN || (gh?.exitCode === 0 ? gh.stdout.toString().trim() : "") || null;
+  return githubToken;
+}
+
+/**
+ * Environment every nixCommand argv must be spawned with (spawnNix does). The
+ * container gets NIX_CONFIG by name (`-e NIX_CONFIG`) so the token never sits in a command line `ps` shows; Bun.spawn
+ * passes children the process's startup environment unless `env` is given, so setting Bun.env would not reach it.
+ */
+function nixEnv(): Record<string, string | undefined> {
+  if (native) return Bun.env;
+  const token = readGithubToken();
+  const auth = token ? `\naccess-tokens = github.com=${token}` : "";
+  return {
+    ...Bun.env,
+    NIX_CONFIG: `filter-syscalls = false\nsandbox = true\nsandbox-fallback = false\n${FLAGS}${auth}`,
+  };
+}
+
+/**
+ * argv that runs `command` (a nix invocation, or a store path such as the image's stream script) where the store is.
+ * `dockerArgs` reach only the container (e.g. the Docker socket a scanner needs); natively the host already has them.
+ */
+export function nixCommand(
+  command: string[],
+  container = `aza-pg-nix-${process.pid}`,
+  dockerArgs: string[] = []
+): string[] {
   if (native) return ["env", `NIX_CONFIG=${FLAGS}`, ...command];
+  // The container exists for hosts that cannot run Linux Nix (a Mac). On a CI runner it starts from an empty store
+  // every run (image pull, store copy, tool fetch: 3-4x slower jobs) and met two CI-only failures a Mac never shows
+  // (repo ownership, a race between parallel first mounts), so CI must install Nix instead.
+  if (Bun.env.CI === "true") {
+    console.error(
+      `nix.ts: no Nix on this CI runner, so "${command.join(" ")}" would run in a cold nixos/nix container. Add to the job, before this step:\n` +
+        `  - uses: ./.github/actions/setup-nix\n    with:\n      restore-store: "false"   # omit when the job builds the image`
+    );
+    process.exit(2);
+  }
   const arch = nixPlatform.replace("linux/", "");
   return [
     "docker",
@@ -40,7 +89,7 @@ export function nixCommand(command: string[], container = `aza-pg-nix-${process.
     "--platform",
     nixPlatform,
     "-e",
-    `NIX_CONFIG=filter-syscalls = false\nsandbox = true\nsandbox-fallback = false\n${FLAGS}`,
+    "NIX_CONFIG",
     "-v",
     `aza-pg-nix-${arch}:/nix`,
     // builtins.fetchGit (every source in nix/extensions.nix) caches its clones here, outside the store; without the
@@ -52,11 +101,73 @@ export function nixCommand(command: string[], container = `aza-pg-nix-${process.
     `${path.resolve(import.meta.dir, "../..")}:/src`,
     "-w",
     "/src",
+    "-v",
+    `${path.resolve(import.meta.dir, "container.gitconfig")}:/etc/gitconfig:ro`,
+    ...dockerArgs,
     // CI's Nix: the tag is the nix_version that setup-nix's cachix/install-nix-action pin installs (its
     // install-nix.sh), so a local build runs the same Nix. Bump both together.
-    "nixos/nix:2.35.4@sha256:f159a58f390677f41e8e900a74b6e2f9c7f27b364122ae6acf7a652ce6c551c0",
+    "nixos/nix:2.35.6@sha256:b49cb33f3a7e5cf3933ad8774529de0e3807ec5cf54987aa7ccdfb49f2fc55ed",
     ...command,
   ];
+}
+
+let storeReady = native;
+
+/**
+ * Docker fills an empty named volume from the image on first mount, and two containers mounting it at once both copy:
+ * the losers fail ("mkdir …/store: file exists", or exit 127 on a half-copied store; validate:all starts two checker
+ * processes together, so a host's first run hits it). So each process first runs one blocking container under a name shared by
+ * all processes: Docker gives a name to one container only, which makes it a lock. A process refused the name
+ * ("Conflict") tries again until its own run succeeds, which happens only after the holder is gone (`--rm`) and so
+ * the volume is filled: Docker copies only into an empty volume. The retry cannot block on the holder instead: during
+ * the copy its name is taken while `docker wait` and `inspect` cannot see it yet.
+ * An existing store volume skips all this (20 ms instead of a 0.3–0.6 s container per process). That leaves one
+ * race: a process starting after another's first-ever fill began, before it ended, sees the volume and mounts it
+ * half-copied; it fails once with Docker's error and a rerun succeeds. A "filled" marker would close it at the cost
+ * of a third volume that goes stale whenever someone deletes the store.
+ */
+function ensureStore() {
+  const arch = nixPlatform.replace("linux/", "");
+  const volume = ["docker", "volume", "inspect", `aza-pg-nix-${arch}`];
+  storeReady ||= Bun.spawnSync(volume, { stdout: "ignore", stderr: "ignore" }).exitCode === 0;
+  const lock = `aza-pg-nix-${arch}-init`;
+  while (!storeReady) {
+    const run = Bun.spawnSync(nixCommand(["true"], lock), { stdout: "ignore", stderr: "pipe" });
+    storeReady = run.exitCode === 0;
+    if (storeReady) return;
+    const err = run.stderr.toString();
+    // Any other failure is the next Nix run's to report; this only orders the first fill.
+    if (!err.includes("Conflict")) return void process.stderr.write(err);
+    Bun.sleepSync(200);
+  }
+}
+
+let spawns = 0;
+
+/**
+ * Spawns `command` (a nix invocation, or a store path) with the cwd and environment nixCommand needs: the only way
+ * scripts start Nix, so none can forget NIX_CONFIG (flakes would be off, the GitHub token missing). Each spawn gets
+ * its own container name: one process may run several at once. `dockerArgs` as for nixCommand.
+ */
+export function spawnNix(
+  command: string[],
+  options: {
+    dockerArgs?: string[];
+    stdout?: "inherit" | "pipe" | "ignore";
+    stderr?: "inherit" | "pipe" | "ignore";
+  } = {}
+) {
+  ensureStore();
+  return Bun.spawn(
+    nixCommand(command, `aza-pg-nix-${process.pid}-${spawns++}`, options.dockerArgs),
+    {
+      cwd: path.resolve(import.meta.dir, "../.."),
+      env: nixEnv(),
+      stdin: "ignore",
+      stdout: options.stdout ?? "inherit",
+      stderr: options.stderr ?? "inherit",
+    }
+  );
 }
 
 if (import.meta.main) {
@@ -68,8 +179,10 @@ if (import.meta.main) {
     process.exit(64);
   }
   const container = `aza-pg-nix-${process.pid}`;
+  ensureStore();
   const proc = Bun.spawn(nixCommand(["nix", ...args], container), {
     cwd: path.resolve(import.meta.dir, "../.."),
+    env: nixEnv(),
     stdin: "inherit",
     stdout: "inherit",
     stderr: "inherit",

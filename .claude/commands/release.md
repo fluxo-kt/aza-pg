@@ -49,7 +49,7 @@ Not on `release`: the agent cannot switch branches, so ask Art to run `! git che
 
 Run every item of `/update`'s "Pre-Flight: Detect Available Updates" and "Pre-Flight: Additional Checks" now, on `dev`, and record one line per item: what it found, or "current". Results from an earlier session or day do not count: nixpkgs, Docker Hub, GitHub releases and npm change daily, and an update held back by the minimum release age becomes due when the age passes. The `check-updates` gate alone misses companion images, Bun packages and runtime, Actions pins and the nixpkgs revision in `flake.lock`. Anything due ⇒ ABORT the release and run `/update` on `dev` first.
 
-You are on `release`, whose manifest is the last release's, so run the file-reading checks on dev's tree in a scratch copy: `git archive dev | tar -x -C "$d"` into a `mktemp -d`, symlink `node_modules` in, and `git init` there (`check-updates.ts` calls git and exits on "not a git repository").
+Run file-reading checks on the pinned squash tip. Extract its Git archive into an empty scratch directory, run `git init` and stage the extracted files there before linking `node_modules`. The extension checker needs Git, and the Nix flake only sees files tracked by Git.
 
 ---
 
@@ -100,7 +100,7 @@ git show refs/heads/dev:CHANGELOG.md
 5. **Cross-validation**: Every version change MUST match `git diff $ANCHOR..refs/heads/dev -- scripts/extensions/manifest-data.ts`
 6. **No phantoms**: Don't claim fixes for things not broken in the last released version
 7. **`[Unreleased]` holds only this release.** Each release commit carries its own dated section (Phase 4.4), so everything under `[Unreleased]` on dev is new since the newest `## [v…]` heading.
-8. **Re-measure every number** in `[Unreleased]` (image size, store paths, MB added) on the image being released: each was measured when its entry was written, and any later closure change makes it false in a section that freezes at release. Read sizes as bytes (`docker image inspect -f '{{.Size}}'`) ÷ 1048576: `docker images` divides by 1000, which `Size Units` cannot catch.
+8. **Re-measure every number** in `[Unreleased]` (image size, store paths, MB added) on the image being released: each was measured when its entry was written, and any later closure change makes it false in a section that freezes at release. Quote image sizes exactly as `docker images` prints them (decimal MB), never converted to 1024-based units: an operator checking with the same tool must see the same number.
 
 Write down the specific CHANGELOG edits needed. You will apply them in Phase 4.4 AFTER the squash.
 

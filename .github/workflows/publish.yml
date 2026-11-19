@@ -106,6 +106,12 @@ jobs:
           echo "This is non-critical - workflow will continue"
           echo "Orphaned tags may require manual cleanup"
 
+      # validate:all runs actionlint and yamllint, flake outputs (reason in setup-nix).
+      - name: Set up Nix
+        uses: ./.github/actions/setup-nix
+        with:
+          restore-store: "false"
+
       - name: Validate manifest and full checks
         run: bun run validate:all
 
@@ -488,6 +494,9 @@ jobs:
     runs-on: ubuntu-26.04
     needs: [prep, merge, test-complete]
     timeout-minutes: 8
+    env:
+      # Registry-relative: a job's env cannot read the env context; steps prefix the workflow's $REGISTRY.
+      SCAN_REF: "${{ needs.prep.outputs.testing_image_name }}@${{ needs.merge.outputs.image_digest }}"
 
     steps:
       - name: Checkout repository
@@ -508,6 +517,20 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Setup Bun
+        uses: ./.github/actions/setup-bun
+
+      # Trivy is a flake output (reason in setup-nix).
+      - name: Set up Nix
+        uses: ./.github/actions/setup-nix
+        with:
+          restore-store: "false"
+
+      # The testing package is private: pulled with the runner's login, Trivy reads it from the daemon and never
+      # holds registry credentials (scripts/security/trivy.ts).
+      - name: Pull image for scanning
+        run: docker pull "$REGISTRY/$SCAN_REF"
+
       - name: Cache Trivy vulnerability database
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -526,35 +549,20 @@ jobs:
           accept-filenames: /docker-entrypoint-initdb.d
 
       - name: Security scan (SARIF for GitHub Security)
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         continue-on-error: true # SARIF upload is informational; blocking gate is the next step
-        env:
-          TRIVY_CACHE_DIR: .trivy-cache
-        with:
-          image-ref: "${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}@${{ needs.merge.outputs.image_digest }}"
-          format: "sarif"
-          output: "trivy-results.sarif"
-          # Only CVEs a rebuild or update can fix: findings with no fix fill the Security tab with
-          # alerts nobody can act on. All severities stay (trivy-action ignores `severity` for SARIF anyway unless
-          # limit-severities-for-sarif is set), so a fixable MEDIUM still shows up as update work.
-          ignore-unfixed: "true"
+        # Only CVEs a rebuild or update can fix: findings with no fix fill the Security tab with alerts nobody can act
+        # on. All severities stay, so a fixable MEDIUM still shows up as update work.
+        run: bun scripts/security/trivy.ts "$REGISTRY/$SCAN_REF" --quiet --format sarif --output trivy-results.sarif --ignore-unfixed
 
       - name: Upload Trivy results to GitHub Security tab
-        uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
         if: always() && hashFiles('trivy-results.sarif') != ''
         with:
           sarif_file: "trivy-results.sarif"
 
       - name: Security scan (blocking on failures)
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-        env:
-          TRIVY_CACHE_DIR: .trivy-cache
-        with:
-          image-ref: "${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}@${{ needs.merge.outputs.image_digest }}"
-          format: "table"
-          severity: "CRITICAL,HIGH"
-          ignore-unfixed: "true"
-          exit-code: "1" # Fail on fixable CRITICAL/HIGH vulnerabilities
+        # The same scanner and flags as `bun run security:scan` (GATE_FLAGS in scripts/security/trivy.ts).
+        run: bun scripts/security/trivy.ts "$REGISTRY/$SCAN_REF" --gate
 
       - name: Capture security scan diagnostics on failure
         if: failure()
@@ -566,22 +574,12 @@ jobs:
 
           # Capture full Trivy scan output (all severities)
           echo "=== Trivy Full Scan (All Severities) ===" | tee ${{ runner.temp }}/scan-diagnostics/trivy-full.txt
-          docker run --rm \
-            -v ${{ github.workspace }}/.trivy-cache:/root/.cache/trivy \
-            ghcr.io/aquasecurity/trivy:0.76.1@sha256:790fd66d1697395d8693d1acaa1ea702406a20f109b6fc7bac8db623eca6c06c image \
-            --format table \
-            --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL \
-            "${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}@${{ needs.merge.outputs.image_digest }}" \
+          bun scripts/security/trivy.ts "$REGISTRY/$SCAN_REF" --format table \
             2>&1 | tee -a ${{ runner.temp }}/scan-diagnostics/trivy-full.txt || true
 
           # Capture Trivy scan in JSON format for detailed analysis
           echo "=== Trivy JSON Output ===" | tee ${{ runner.temp }}/scan-diagnostics/trivy-results.json
-          docker run --rm \
-            -v ${{ github.workspace }}/.trivy-cache:/root/.cache/trivy \
-            ghcr.io/aquasecurity/trivy:0.76.1@sha256:790fd66d1697395d8693d1acaa1ea702406a20f109b6fc7bac8db623eca6c06c image \
-            --format json \
-            --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL \
-            "${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}@${{ needs.merge.outputs.image_digest }}" \
+          bun scripts/security/trivy.ts "$REGISTRY/$SCAN_REF" --format json \
             2>&1 | tee -a ${{ runner.temp }}/scan-diagnostics/trivy-results.json || true
 
           # Capture image metadata
@@ -648,7 +646,7 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install Cosign
-        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.3
         with:
           cosign-release: "v3.0.4"
 
@@ -1105,7 +1103,7 @@ jobs:
         uses: ./.github/actions/setup-buildx
 
       - name: Install Cosign
-        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.3
         with:
           cosign-release: "v3.0.4"
 

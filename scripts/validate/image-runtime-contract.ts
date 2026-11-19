@@ -15,6 +15,9 @@
  *      Naming it as the legacy path inside backticks stays legal.
  *   4. An `entrypoint:` override starts with tini: it replaces the image's whole Entrypoint, tini included, and the
  *      postmaster as PID 1 resets every session when an orphaned process dies by a signal.
+ *   5. At most one service per compose file (overrides merged) runs our image: the PostgreSQL one. A second is a
+ *      companion (pooler, exporter) moved onto our image, which AGENTS.md "Nothing ships…" forbids; counting
+ *      services catches it however its entrypoint or wrapper script is named.
  * Compose override files (compose.<name>.yml beside a compose.yml) are merged onto that base, so rule 1 judges the
  * base only. The stacks are also booted by their suites; this check is the only detector for everything else.
  *
@@ -28,6 +31,8 @@ type Service = {
   entrypoint?: string | string[];
 };
 const problems: string[] = [];
+// Rule 5: the services running our image, per base compose file with its overrides merged by service name.
+const ownServices = new Map<string, Set<string>>();
 // Assembled so this file does not contain the literal it forbids.
 const LEGACY = ["/var/lib/postgresql", "data"].join("/");
 
@@ -62,6 +67,8 @@ for (const file of composeFiles) {
     (await Bun.file(file.replace(/compose\.[^/]+\.ya?ml$/, "compose.yml")).exists());
   for (const [name, svc] of Object.entries(services)) {
     if (!svc.image?.includes("aza-pg")) continue;
+    const base = isOverride ? file.replace(/compose\.[^/]+\.ya?ml$/, "compose.yml") : file;
+    ownServices.set(base, (ownServices.get(base) ?? new Set()).add(name));
     const where = `${file} (service ${name})`;
     const e = env(svc);
     if (!isOverride && Object.keys(services).length > 1) {
@@ -91,6 +98,14 @@ for (const file of composeFiles) {
     }
   }
 }
+
+// A file running PostgreSQL once runs our image in one service; a second one is a companion moved onto our image,
+// whatever its entrypoint script is named.
+for (const [file, names] of ownServices)
+  if (names.size > 1)
+    problems.push(
+      `${file}: services ${[...names].join(", ")} all run the aza-pg image — only the PostgreSQL service may. Run each companion (pooler, exporter) from its own upstream image; adding a program to our image is Art's decision, never a fix for a companion's CVEs (AGENTS.md "Nothing ships…", "CVE effort follows what we release")`
+    );
 
 // Rule 3: the legacy path used as a path. Legal only as a mention: wrapped in backticks, or at the start of a line
 // (the entrypoint's quoted error output). Anything else — `:` mount, `=` assignment, a file under it, a command

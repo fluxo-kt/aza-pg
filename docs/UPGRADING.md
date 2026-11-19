@@ -156,15 +156,9 @@ bun scripts/test/wait-for-postgres.ts
 bun scripts/tools/restore-postgres.ts backup-pg18.sql.gz postgres
 ```
 
-#### Step 6: Update Extension Versions
+#### Step 6: Extension Versions
 
-```sql
--- After successful upgrade, update extensions
-ALTER EXTENSION vector UPDATE;
-ALTER EXTENSION pg_cron UPDATE;
-ALTER EXTENSION pgaudit UPDATE;
-ALTER EXTENSION pg_stat_statements UPDATE;
-```
+Nothing to run: the first start on a new image updates every extension created in each database to the version the image ships, before clients connect (see "Major Extension Updates" below).
 
 #### Step 7: Verify and Optimize
 
@@ -181,18 +175,10 @@ SELECT * FROM pg_stat_replication;
 
 ## Updating the Image (Same PostgreSQL Major)
 
-A newer image starts on your existing data volume, but extension upgrades inside existing databases are yours to run. The `Breaking` and `Security` entries of every release you skip over in [CHANGELOG.md](../CHANGELOG.md) name the steps that release needs, some of them before the switch; do those first.
+A newer image starts on your existing data volume and brings the extensions inside existing databases up to its versions itself ([Extension Updates](#extension-updates)). The `Breaking` and `Security` entries of every release you skip over in [CHANGELOG.md](../CHANGELOG.md) name the steps that release needs, some of them before the switch; do those first.
 
 1. Back up the databases and the pgsodium root key (see [Prerequisites](#prerequisites)): `pg_dump` does not include the key.
-2. After the new container starts, list in each database the extensions older than the version the image ships:
-
-   ```sql
-   SELECT e.extname, e.extversion, a.default_version
-   FROM pg_extension e JOIN pg_available_extensions a ON a.name = e.extname
-   WHERE e.extversion <> a.default_version;
-   ```
-
-   Run `ALTER EXTENSION <name> UPDATE;` for each, unless the CHANGELOG says an extension ships no upgrade path (then it names the replacement step). TimescaleDB is not in that list: the image ships only its own TimescaleDB library, so at the first start after an image upgrade the entrypoint updates it in every database before accepting connections, and stops naming the database if an update fails.
+2. Start the new container. Before it accepts connections, it updates every extension created in each database to the version the image ships (see [Extension Updates](#extension-updates)); if one cannot be updated, the server does not start and the log names the database and the step to take.
 
    **When the image changes glibc, that first start also rebuilds indexes, which can take a while.** A glibc version can change how libc collations such as `en_US.utf8` (the default of every cluster created before the builtin collation) sort, which leaves text indexes built under the old one silently missing rows. Between glibc versions measured to sort `en_US.utf8` the same (Debian's 2.41 and the Nix image's 2.44 are), the entrypoint only records the new version. For any other change it rebuilds, in each database, every index that orders or filters by such a collation, then records the new version. Clients cannot connect until it is done; the log names each database and its rebuilt index count. Time it on a copy of a large database before upgrading production. Two things cannot be rebuilt and stop the container, which names them: range partitioning on such a text column (rows may now belong in another partition: move them, e.g. detach the partitions and re-insert their rows), and a `CHECK` that compares text with `<`, `<=`, `>` or `>=` (rows may now fail it: fix them, then drop and re-add the constraint). Then start the container again.
 
@@ -242,26 +228,7 @@ docker compose exec postgres psql -U postgres -c "\dx vector"
 
 ### Major Extension Updates (Breaking Changes)
 
-Some extension updates require manual migration:
-
-```sql
--- Example: pgvector 0.7.x → 0.8.x (hypothetical breaking change)
-
--- 1. Backup affected tables
-CREATE TABLE embeddings_backup AS SELECT * FROM embeddings;
-
--- 2. Update extension
-ALTER EXTENSION vector UPDATE TO '0.8.0';
-
--- 3. Migrate data (if needed)
--- Consult extension changelog for migration steps
-
--- 4. Verify
-SELECT COUNT(*) FROM embeddings;
-
--- 5. Drop backup after verification
-DROP TABLE embeddings_backup;
-```
+The first start on a new image runs `ALTER EXTENSION … UPDATE` for every extension created in each database whose version the image changed, before clients connect; extensions nobody created are left alone. An extension upstream ships without an update path is dropped and recreated in the same schema, unless it owns tables (then the container stops and names the export, recreate and restore steps) or other objects depend on it (PostgreSQL's error names them). An extension the new image no longer ships is dropped when its own tables hold no rows; if they hold rows, the container stops and names the table to export first. If any update fails, the server does not start and the log names the database and the error; fix the cause and start again, since every step is retried. Read the CHANGELOG before upgrading: an upstream release can still need action before its update can run.
 
 ## Breaking Changes
 

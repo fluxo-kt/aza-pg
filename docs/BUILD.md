@@ -357,7 +357,7 @@ bun run validate:all
 bun run lint                      # Check only (alias for validate)
 bun run format                    # Check + auto-fix (alias for validate:fix)
 bun scripts/extensions/validate-manifest.ts  # Manifest validation
-bun scripts/ci/lint-yaml-tracked.ts  # YAML files (pinned yamllint image; .yamllint, .yamllint-workflows)
+bun scripts/ci/lint-yaml-tracked.ts  # YAML files (yamllint from flake.nix; .yamllint, .yamllint-workflows)
 ```
 
 ShellCheck (every tracked `*.sh`) runs inside `bun run validate:all`; it is the reference invocation.

@@ -424,7 +424,7 @@ Requires `pg_upgrade` or dump/restore. See [UPGRADING.md](UPGRADING.md).
 
 ### Extensions
 
-Extensions ship inside the image: pull a newer image tag (minor-version steps above), then run `ALTER EXTENSION <name> UPDATE;` in each database that uses an updated extension. See [UPGRADING.md](UPGRADING.md#extension-updates).
+Extensions ship inside the image: pull a newer image tag (minor-version steps above), and its first start updates the extensions created in each database before clients connect. See [UPGRADING.md](UPGRADING.md#extension-updates).
 
 ## Performance Tuning
 

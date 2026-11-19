@@ -28,12 +28,16 @@ EXPECTED_EXTENSIONS=("pg_cron:pg_cron" "pg_net:pg_net" "pg_stat_monitor:pg_stat_
 # Tier 0: Initialization Finished
 # On a new data directory the official entrypoint runs initdb and the init scripts against a temporary server that
 # accepts socket connections and queries, then stops it and starts the final one by replacing itself with it (exec).
-# So while a process still runs docker-entrypoint.sh, the server answering is not one dependents can use yet. The
-# bracket keeps the pattern from matching grep's own command line.
-if grep -qsa '/docker-entrypoint[.]sh' /proc/[0-9]*/cmdline; then
-    echo "FAIL: initialization still running (docker-entrypoint.sh has not started the final server)" >&2
-    exit 1
-fi
+# The auto-config shell sources upstream; tini retains the wrapper's name even after exec postgres.
+# Inspect shell processes only, so the supervisor's arguments cannot keep a ready server unhealthy.
+for command in /proc/[0-9]*/cmdline; do
+    IFS= read -r -d "" interpreter < "$command" || continue
+    case "$interpreter" in bash|*/bash|sh|*/sh) ;; *) continue ;; esac
+    if grep -qsaE '/docker-(auto-config-)?entrypoint[.]sh' "$command"; then
+        echo "FAIL: initialization still running (entrypoint has not started the final server)" >&2
+        exit 1
+    fi
+done
 
 # Tier 1: Connection Test
 if ! pg_isready --timeout=3 >/dev/null 2>&1; then

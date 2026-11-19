@@ -14,8 +14,8 @@
  *     --catalog-enabled=36 \
  *     --output=release-notes.md \
  *     [--package-version-id=585941799] \
- *     [--compressed-size="247.79 MB"] \
- *     [--uncompressed-size="894.07 MB"] \
+ *     [--compressed-size="248MB"] \
+ *     [--uncompressed-size="894MB"] \
  *     [--layer-count=36]
  *
  * Arguments:
@@ -25,8 +25,8 @@
  *   --catalog-enabled     Number of enabled extensions
  *   --output              Output markdown file path
  *   --package-version-id  (Optional) GHCR package version ID for package link
- *   --compressed-size     (Optional) Compressed image size (e.g., "247.79 MB")
- *   --uncompressed-size   (Optional) Uncompressed image size (e.g., "894.07 MB")
+ *   --compressed-size     (Optional) Compressed image size (e.g., "248MB")
+ *   --uncompressed-size   (Optional) Uncompressed image size (e.g., "894MB")
  *   --layer-count         (Optional) Number of image layers
  */
 
@@ -57,8 +57,8 @@ interface Args {
   catalogEnabled: number;
   output: string;
   packageVersionId?: number; // Optional for backward compatibility
-  compressedSize?: string; // Optional: formatted compressed size (e.g., "247.79 MB")
-  uncompressedSize?: string; // Optional: formatted uncompressed size (e.g., "894.07 MB")
+  compressedSize?: string; // Optional: formatted compressed size (e.g., "248MB")
+  uncompressedSize?: string; // Optional: formatted uncompressed size (e.g., "894MB")
   layerCount?: number; // Optional: number of layers
 }
 
@@ -163,8 +163,8 @@ function parseArgs(): Args | null {
     console.error("    --catalog-enabled=36 \\");
     console.error("    --output=release-notes.md \\");
     console.error("    [--package-version-id=585941799]  # Optional: GHCR package version ID");
-    console.error("    [--compressed-size='247.79 MB']   # Optional: Compressed image size");
-    console.error("    [--uncompressed-size='894.07 MB'] # Optional: Uncompressed image size");
+    console.error("    [--compressed-size='248MB']   # Optional: Compressed image size");
+    console.error("    [--uncompressed-size='894MB'] # Optional: Uncompressed image size");
     console.error("    [--layer-count=36]                # Optional: Number of layers");
     return null;
   }

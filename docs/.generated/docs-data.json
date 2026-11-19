@@ -1,12 +1,12 @@
 {
   "catalog": {
     "total": 39,
-    "enabled": 36,
-    "disabled": 3
+    "enabled": 35,
+    "disabled": 4
   },
   "byKind": {
     "builtin": 6,
-    "extension": 26,
+    "extension": 25,
     "tool": 4
   },
   "builtins": [
@@ -42,12 +42,11 @@
     "timescaledb",
     "timescaledb_toolkit",
     "vector",
-    "vectorscale",
-    "wrappers"
+    "vectorscale"
   ],
   "tools": ["pg_plan_filter", "pg_safeupdate", "pgbackrest", "wal2json"],
   "disabled": {
-    "extensions": ["pgq", "pgrouting", "postgis"],
+    "extensions": ["pgq", "pgrouting", "postgis", "wrappers"],
     "tools": []
   },
   "preloaded": {
@@ -83,7 +82,7 @@
     "observability": ["auto_explain", "pg_stat_monitor", "pg_stat_statements"],
     "indexing": ["btree_gin", "btree_gist"],
     "analytics": ["hll"],
-    "integration": ["http", "pg_net", "wrappers"],
+    "integration": ["http", "pg_net"],
     "performance": ["hypopg", "index_advisor"],
     "operations": ["pg_cron", "pgbackrest"],
     "utilities": ["pg_hashids"],

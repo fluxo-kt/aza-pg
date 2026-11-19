@@ -23,6 +23,7 @@ export const SourceSpecSchema = type({
     type: "'git'",
     repository: "string",
     tag: "string",
+    "pgMajorTags?": "true",
   })
   .or({
     type: "'git-ref'",
@@ -127,6 +128,7 @@ export const ManifestEntrySchema = type({
     "mesonFlags?": "string[]",
     "bin?": "string[]",
     "postInstall?": "string",
+    "buildUnshipped?": "boolean",
   },
   "enabled?": "boolean",
 });

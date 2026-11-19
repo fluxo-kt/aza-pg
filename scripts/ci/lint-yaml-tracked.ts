@@ -10,14 +10,10 @@
 import path from "node:path";
 import { getErrorMessage } from "../utils/errors";
 import { error, info, section, success } from "../utils/logger";
+import { runTool } from "../nix/tools";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "../..");
 const WORKFLOW_PREFIX = ".github/workflows/";
-// Pipeline Components publishes current yamllint releases; cytopia/yamllint stopped at yamllint 1.32.
-// Tag plus digest lets check-updates report the pin; the tag versions the wrapper, so after a bump
-// confirm the bundled linter with `--entrypoint yamllint <image> --version`.
-const YAMLLINT_IMAGE =
-  "pipelinecomponents/yamllint:0.35.27@sha256:f7f7b4f8824839e33690a880dbe20944128b0dc9c55522a0b92a29b3a905cecf";
 const RELAXED_LINE_LENGTH_FILES = new Set([
   "deployments/phase1-single-vps/prometheus/postgres_exporter_queries.yaml",
 ]);
@@ -61,30 +57,8 @@ async function listTrackedYamlFiles(): Promise<string[]> {
 async function runYamllint(configPath: string, files: string[]): Promise<void> {
   if (files.length === 0) return;
 
-  const command = [
-    "docker",
-    "run",
-    "--rm",
-    "-v",
-    `${REPO_ROOT}:/work:ro`,
-    "-w",
-    "/work",
-    // The image's own entrypoint is a wrapper script; call the linter directly.
-    "--entrypoint",
-    "yamllint",
-    YAMLLINT_IMAGE,
-    "-c",
-    configPath,
-    ...files,
-  ];
-
-  const proc = Bun.spawn(command, {
-    cwd: REPO_ROOT,
-    stdout: "inherit",
-    stderr: "inherit",
-  });
-
-  const exitCode = await proc.exited;
+  // yamllint is flake.nix's output (scripts/nix/tools.ts); it runs from the repo root, so paths stay repo-relative.
+  const exitCode = await runTool("yamllint", ["-c", configPath, ...files]).exited;
   if (exitCode !== 0) {
     throw new Error(`yamllint failed with exit code ${exitCode} (config: ${configPath})`);
   }
@@ -110,9 +84,9 @@ async function main(): Promise<void> {
     `Linting ${trackedYaml.length} tracked YAML files (${strictFiles.length} strict, ${workflowFiles.length} workflows, ${relaxedLineLengthFiles.length} relaxed-line-length)`
   );
 
-  await runYamllint("/work/.yamllint", strictFiles);
-  await runYamllint("/work/.yamllint-workflows", relaxedLineLengthFiles);
-  await runYamllint("/work/.yamllint-workflows", workflowFiles);
+  await runYamllint(".yamllint", strictFiles);
+  await runYamllint(".yamllint-workflows", relaxedLineLengthFiles);
+  await runYamllint(".yamllint-workflows", workflowFiles);
 
   success("All tracked YAML files passed lint checks");
 }

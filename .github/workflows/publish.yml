@@ -106,6 +106,12 @@ jobs:
           echo "This is non-critical - workflow will continue"
           echo "Orphaned tags may require manual cleanup"
 
+      # validate:all runs actionlint and yamllint, flake outputs (reason in setup-nix).
+      - name: Set up Nix
+        uses: ./.github/actions/setup-nix
+        with:
+          restore-store: "false"
+
       - name: Validate manifest and full checks
         run: bun run validate:all
 
@@ -513,6 +519,12 @@ jobs:
 
       - name: Setup Bun
         uses: ./.github/actions/setup-bun
+
+      # Trivy is a flake output (reason in setup-nix).
+      - name: Set up Nix
+        uses: ./.github/actions/setup-nix
+        with:
+          restore-store: "false"
 
       # The testing package is private: pulled with the runner's login, Trivy reads it from the daemon and never
       # holds registry credentials (scripts/security/trivy.ts).

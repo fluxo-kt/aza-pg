@@ -78,6 +78,12 @@ jobs:
       - name: Set up Bun and dependencies
         uses: ./.github/actions/setup-bun
 
+      # actionlint is a flake output; native Nix avoids a cold nixos/nix container (reason in setup-nix).
+      - name: Set up Nix
+        uses: ./.github/actions/setup-nix
+        with:
+          restore-store: "false"
+
       # Same check `bun run validate:all` runs (Workflow Expressions), so the pin cannot drift.
       - name: Lint workflows (actionlint + shellcheck)
         run: bun scripts/ci/lint-workflows.ts
@@ -99,6 +105,12 @@ jobs:
 
       - name: Set up Bun and dependencies
         uses: ./.github/actions/setup-bun
+
+      # validate:all runs actionlint and yamllint, flake outputs (reason in setup-nix).
+      - name: Set up Nix
+        uses: ./.github/actions/setup-nix
+        with:
+          restore-store: "false"
 
       - name: Run full validation
         run: bun run validate:all

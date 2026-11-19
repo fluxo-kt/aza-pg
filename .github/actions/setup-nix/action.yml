@@ -6,6 +6,15 @@ author: "fluxo-kt"
 # compiling them takes far longer than restoring them. The key covers every build input the flake reads, so a hit
 # holds this exact build; on a miss the nearest older store is restored and only changed derivations rebuild.
 # One cache per runner architecture, shared by ci.yml and publish.yml, which build the same derivations.
+#
+# A job that only runs the checkers (scripts/nix/tools.ts) installs Nix with restore-store: "false". Without Nix on
+# the runner, nix.ts runs every Nix call in a nixos/nix container whose store volume starts empty on each runner:
+# that pulled the image and copied its store every run and tripled the lint and validate jobs. Their tools are in
+# cache.nixos.org, so the image's multi-GB store would cost more to restore than they cost to fetch.
+inputs:
+  restore-store:
+    description: "Restore the Nix store cache (needed only by jobs that build the image)"
+    default: "true"
 
 runs:
   using: "composite"
@@ -18,6 +27,7 @@ runs:
           keep-outputs = true
 
     - name: Restore the Nix store
+      if: inputs.restore-store == 'true'
       uses: nix-community/cache-nix-action@7df957e333c1e5da7721f60227dbba6d06080569 # v7.0.2
       with:
         primary-key: nix-store-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('flake.lock', 'flake.nix', 'nix/**', 'docker/postgres/**', 'scripts/extensions/manifest-data.ts') }}

@@ -16,8 +16,13 @@
 export const MANIFEST_METADATA = {
   /** PostgreSQL version (e.g., "18.1") */
   pgVersion: "18.7",
-  /** Multi-arch digest of oven/bun:<.tool-versions bun>-debian, the pg_net test's echo server; re-resolve on every Bun bump. */
-  bunImageSha: "sha256:93d5032fe06d163427822dc1598f420363759bb18155c9cc90eb1be05a64a19e",
+  /**
+   * The pg_net test's echo server: oven/bun:<.tool-versions bun>-debian at its multi-arch digest. The tag is kept beside
+   * the digest so bun-image-pin.test.ts can fail when a Bun bump leaves it behind (the digest alone wins in Docker, so
+   * a stale one runs the old Bun silently). Re-resolve: `docker buildx imagetools inspect oven/bun:<version>-debian`.
+   */
+  bunImage:
+    "oven/bun:1.4.5-debian@sha256:3dddea58e1f8f2240eca906b023fedb944f9a8352515a35309fd0c879fe00aaa",
   /**
    * glibc locales the image ships (UTF-8), so a session can `SET lc_monetary|lc_numeric|lc_time = '<name>.utf8'`.
    * PostgreSQL reads these from glibc, never from ICU, for to_char's L/D/G/TM patterns and the money type. New

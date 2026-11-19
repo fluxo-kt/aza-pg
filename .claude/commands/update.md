@@ -183,10 +183,11 @@ gh release view --repo oven-sh/bun --json tagName --jq .tagName  # e.g. "bun-v1.
 # NOTE: `bun upgrade` has no --dry-run flag — it upgrades immediately; do NOT run it
 ```
 
-If a new stable runtime is available, update `.tool-versions` manually:
-```bash
-# Edit .tool-versions: bump bun X.Y.Z to latest stable
-```
+If a new stable runtime is available, move every declaration of it together: `.tool-versions` (`bun X.Y.Z`),
+`package.json` `engines.bun` (`>=X.Y.Z`), and `MANIFEST_METADATA.bunImage` (the pg_net echo server,
+`oven/bun:X.Y.Z-debian@<digest>` from `docker buildx imagetools inspect`; `bun-image-pin.test.ts` fails until it
+matches). Then `bun run generate`. Other Bun projects under `/opt/apps` move to the same version (global CLAUDE.md
+runtime alignment); remove superseded installs no running process uses (`ps -axo command | grep installs/bun/`).
 
 Note: `@types/bun` may lag the runtime release. That is expected.
 Keep `.tool-versions` and `@types/bun` approximately in sync but they need not be identical.

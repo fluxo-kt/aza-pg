@@ -5,7 +5,7 @@
  * libcurl, still lets CREATE EXTENSION and net.http_* calls succeed — only a collected response
  * proves the request went out.
  *
- * The endpoint is a tiny Bun echo server in the Bun image the manifest already pins (bunImageSha), on a
+ * The endpoint is a tiny Bun echo server in the Bun image the manifest already pins (bunImage), on a
  * run-scoped Docker network: no internet, and nothing assumed about what the image under test contains.
  *
  * Usage: bun scripts/test/test-pg-net-functional.ts [image] [--image=TAG]
@@ -26,7 +26,7 @@ const image = resolveImageTag();
 const network = generateUniqueProjectName("aza-pg-net");
 const db = generateUniqueContainerName("aza-pg-net-db");
 const echo = generateUniqueContainerName("aza-pg-net-echo");
-const BUN_IMAGE = `oven/bun@${MANIFEST_METADATA.bunImageSha}`;
+const BUN_IMAGE = MANIFEST_METADATA.bunImage;
 
 /**
  * Answers every request with plain-text lines: method, request target, the x-aza-test header and

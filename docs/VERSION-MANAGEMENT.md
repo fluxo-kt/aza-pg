@@ -8,13 +8,13 @@ This guide is for **updating version declarations** in the source code. For runt
 
 ## Where Versions Live
 
-| What                                       | File                                  | Field                                         |
-| ------------------------------------------ | ------------------------------------- | --------------------------------------------- |
-| nixpkgs (PostgreSQL, glibc, every library) | `flake.lock`                          | `nodes.nixpkgs.locked.rev`                    |
-| PostgreSQL version label                   | `manifest-data.ts`                    | `MANIFEST_METADATA.pgVersion`                 |
-| Extension and tool sources                 | `manifest-data.ts`                    | Entry's `source.tag` or `source.ref`          |
-| cargo-pgrx releases nixpkgs lacks          | `flake.nix` + `flake.lock`            | `pgrx-<version>` inputs                       |
-| Bun                                        | `.tool-versions` + `manifest-data.ts` | `bun X.Y.Z` + `MANIFEST_METADATA.bunImageSha` |
+| What                                       | File                                  | Field                                      |
+| ------------------------------------------ | ------------------------------------- | ------------------------------------------ |
+| nixpkgs (PostgreSQL, glibc, every library) | `flake.lock`                          | `nodes.nixpkgs.locked.rev`                 |
+| PostgreSQL version label                   | `manifest-data.ts`                    | `MANIFEST_METADATA.pgVersion`              |
+| Extension and tool sources                 | `manifest-data.ts`                    | Entry's `source.tag` or `source.ref`       |
+| cargo-pgrx releases nixpkgs lacks          | `flake.nix` + `flake.lock`            | `pgrx-<version>` inputs                    |
+| Bun                                        | `.tool-versions` + `manifest-data.ts` | `bun X.Y.Z` + `MANIFEST_METADATA.bunImage` |
 
 `scripts/extensions/manifest-data.ts` is the single source for extension versions. `bun run generate` writes `docker/postgres/extensions.manifest.json` from it, resolving each tag to a commit once (the generated file is the lock), and `nix/extensions.nix` builds every entry from that commit. Any copy of manifest data drifts unnoticed, so generators, validators and the Nix build read the manifest, never a side table.
 

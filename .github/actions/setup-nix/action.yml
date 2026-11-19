@@ -30,7 +30,9 @@ runs:
       if: inputs.restore-store == 'true'
       uses: nix-community/cache-nix-action@7df957e333c1e5da7721f60227dbba6d06080569 # v7.0.2
       with:
-        primary-key: nix-store-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('flake.lock', 'flake.nix', 'nix/**', 'docker/postgres/**', 'scripts/extensions/manifest-data.ts') }}
-        restore-prefixes-first-match: nix-store-${{ runner.os }}-${{ runner.arch }}-
+        # Nix 2.35 rejects some output checks when only some sibling outputs are restored. Isolate the
+        # existing partial stores without disabling checks or deleting caches. See NixOS/nix#16485.
+        primary-key: nix-store-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('flake.lock', 'flake.nix', 'nix/**', 'docker/postgres/**', 'scripts/extensions/manifest-data.ts') }}
+        restore-prefixes-first-match: nix-store-v2-${{ runner.os }}-${{ runner.arch }}-
         # Bounds the saved store: build-only paths of older runs go first, so the cache stays within the repo quota.
         gc-max-store-size-linux: 6G

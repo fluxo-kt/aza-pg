@@ -421,7 +421,7 @@ command grep -B 30 "dependencies:.*EXTENSION_NAME" scripts/extensions/manifest-d
 # Test after update
 bun run generate
 bun run build  # Fails if ABI incompatible
-bun run test:all  # Verify runtime compatibility
+# Verify affected runtime behavior in Phase 8 and run the committed gate in Phase 12.
 ```
 
 **Common dependency chains:**
@@ -681,13 +681,10 @@ bun run validate:all
 
 Use affected checks for each focused commit, then run `validate:all` for the completed shell and YAML changes. It catches ShellCheck and yamllint defects that fast validation misses. Commit before long verification; a failed gate gets a follow-up repair commit.
 
-## Phase 8: Build & Test (Intermediate Check)
+## Phase 8: Gather Image and Upgrade Evidence
 
-```bash
-# Build, validate:all, then every registered suite against the new image (exit 1 on any failure)
-bun run test:all
-# Already built? Only the suites: bun run test
-```
+Use the Phase 3 build for security scanning and image comparisons. Run a targeted suite only when its
+result can change an update decision. Run the complete suite once on the final committed inputs in Phase 12.
 
 A build and the suites take long, so prepare what does not read their output BEFORE starting them, and do
 the rest while they run, never idle-waiting: every edit the run reads lands first (AGENTS.md CRITICAL
@@ -701,10 +698,10 @@ for i in ghcr.io/fluxo-kt/aza-pg:18 aza-pg:pg18; do docker run --rm --entrypoint
 diff "$t/ghcr.io_fluxo-kt_aza-pg_18" "$t/aza-pg_pg18"   # $t from mktemp -d
 ```
 
-When PostgreSQL, nixpkgs or any extension moved, run `bun scripts/test/test-memory-fit.ts --all` after `test:all` (never beside it): per-session memory may have grown, and the routine lane checks only 1 GB. An overrun means re-measuring the memory constants in the entrypoint (`SESSION_BASE_MB`, `SHARED_OVERHEAD_MB`, …), never raising a limit.
-
-**IMPORTANT**: This is an intermediate check — NOT the final gate. Phases 9–11 add more commits
-(CHANGELOG, skill update). **Phase 12 is the mandatory final gate** after all commits are done.
+When PostgreSQL, nixpkgs or any extension moved, run `bun scripts/test/test-memory-fit.ts --all` after
+the Phase 12 suite. Per-session memory may have grown, and the routine lane checks only 1 GB. An overrun
+means re-measuring the memory constants in the entrypoint (`SESSION_BASE_MB`, `SHARED_OVERHEAD_MB`, …),
+never raising a limit.
 
 **Multi-arch verification**: Image builds for both amd64 and arm64 are verified in GitHub Actions after the user pushes changes. Agents should ensure local tests pass before committing.
 

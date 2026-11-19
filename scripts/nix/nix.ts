@@ -3,7 +3,8 @@
  * Runs one Nix command against the repo flake: `bun scripts/nix/nix.ts <nix args…>` (e.g. `build .#image`).
  *
  * nixCommand is the one place deciding where Nix runs, so local builds and CI share every other line:
- * - natively on a Linux host with nix on PATH (CI runners), in its own sandbox;
+ * - natively on a Linux host with nix on PATH, in its own sandbox: every CI job that reaches this file installs Nix
+ *   (`.github/actions/setup-nix`), and nixCommand refuses the container under CI=true, naming that step;
  * - otherwise (the Mac has no Linux Nix) in nixos/nix with the repo mounted at /src. One store volume per
  *   architecture keeps built paths between runs; a volume first filled by the other architecture would hide them.
  *   The platform is the host's (an arm64 Mac builds the arm64 image); NIX_PLATFORM=linux/amd64 builds amd64 under
@@ -65,6 +66,16 @@ export function nixCommand(
   dockerArgs: string[] = []
 ): string[] {
   if (native) return ["env", `NIX_CONFIG=${FLAGS}`, ...command];
+  // The container exists for hosts that cannot run Linux Nix (a Mac). On a CI runner it starts from an empty store
+  // every run (image pull, store copy, tool fetch: 3-4x slower jobs) and met two CI-only failures a Mac never shows
+  // (repo ownership, a race between parallel first mounts), so CI must install Nix instead.
+  if (Bun.env.CI === "true") {
+    console.error(
+      `nix.ts: no Nix on this CI runner, so "${command.join(" ")}" would run in a cold nixos/nix container. Add to the job, before this step:\n` +
+        `  - uses: ./.github/actions/setup-nix\n    with:\n      restore-store: "false"   # omit when the job builds the image`
+    );
+    process.exit(2);
+  }
   const arch = nixPlatform.replace("linux/", "");
   return [
     "docker",
@@ -105,7 +116,7 @@ let storeReady = native;
 /**
  * Docker fills an empty named volume from the image on first mount, and two containers mounting it at once both copy:
  * the losers fail ("mkdir …/store: file exists", or exit 127 on a half-copied store; validate:all starts two checker
- * processes together on a fresh runner). So each process first runs one blocking container under a name shared by
+ * processes together, so a host's first run hits it). So each process first runs one blocking container under a name shared by
  * all processes: Docker gives a name to one container only, which makes it a lock. A process refused the name
  * ("Conflict") tries again until its own run succeeds, which happens only after the holder is gone (`--rm`) and so
  * the volume is filled: Docker copies only into an empty volume. The retry cannot block on the holder instead: during

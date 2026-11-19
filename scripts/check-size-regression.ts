@@ -160,58 +160,43 @@ export function selectSharedObjectSize(
  * Get .so file size from Docker image.
  * Returns size in MB, or null if the file is not found.
  */
-async function getSoSize(
-  imageName: string,
-  extensionName: string,
-  manifestSoFileName?: string
-): Promise<number | null> {
-  try {
-    // PostgreSQL extension libraries are always in $pkglibdir = /usr/lib/postgresql/N/lib/
-    // /usr/share/ (FHS architecture-independent data) never contains .so files
-    const pgVersion = Bun.env.PG_VERSION ?? "18";
-    const proc = Bun.spawn(
-      [
-        "docker",
-        "run",
-        "--rm",
-        imageName,
-        "find",
-        `/usr/lib/postgresql/${pgVersion}/lib`,
-        "-maxdepth",
-        "1",
-        "-type",
-        "f",
-        "-name",
-        "*.so",
-        "-printf",
-        "%f\t%s\n",
-      ],
-      {
-        stdout: "pipe",
-        stderr: "ignore",
-      }
-    );
-    // Read stdout concurrently with exit — sequential reads risk deadlock
-    const [exitCode, output] = await Promise.all([proc.exited, new Response(proc.stdout).text()]);
-    if (exitCode === 0) {
-      const files = output
-        .trim()
-        .split("\n")
-        .filter(Boolean)
-        .map((line) => {
-          const [name, size] = line.split("\t");
-          return {
-            name: name ?? "",
-            sizeBytes: Number(size),
-          };
-        })
-        .filter((file) => file.name !== "" && Number.isFinite(file.sizeBytes));
-      return selectSharedObjectSize(files, extensionName, manifestSoFileName);
+async function readSharedObjects(imageName: string): Promise<SharedObjectFile[]> {
+  const proc = Bun.spawn(
+    [
+      "docker",
+      "run",
+      "--rm",
+      "--entrypoint",
+      "sh",
+      imageName,
+      "-ec",
+      // The Nix image links extensions into pkglibdir. Measure the targets, not the links.
+      'libdir=$(pg_config --pkglibdir); find -L "$libdir" -maxdepth 1 -type f -name "*.so" -printf "%f\\t%s\\n"',
+    ],
+    {
+      stdout: "pipe",
+      stderr: "inherit",
     }
-    return null;
-  } catch {
-    return null;
+  );
+  // Read stdout concurrently with exit — sequential reads risk deadlock
+  const [exitCode, output] = await Promise.all([proc.exited, new Response(proc.stdout).text()]);
+  if (exitCode !== 0 || !output.trim()) {
+    throw new Error(
+      `Cannot inventory PostgreSQL shared libraries in ${imageName} (exit ${exitCode})`
+    );
   }
+  return output
+    .trim()
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => {
+      const [name, size] = line.split("\t");
+      return {
+        name: name ?? "",
+        sizeBytes: Number(size),
+      };
+    })
+    .filter((file) => file.name !== "" && Number.isFinite(file.sizeBytes));
 }
 
 /**
@@ -267,18 +252,6 @@ export function classifySize(
       message: `${extensionName}: ${size.toFixed(2)}MB (above baseline max ${baseline.max.toFixed(2)}MB but within ${maxIncreasePercent}% tolerance — update baseline if this is the new normal)`,
     };
   }
-}
-
-/**
- * Check size regression for an extension
- */
-async function checkExtensionSize(
-  imageName: string,
-  extension: ResolvedEntry,
-  baseline: SizeBaseline
-): Promise<SizeCheckResult> {
-  const size = await getSoSize(imageName, extension.name, extension.soFileName);
-  return classifySize(extension.name, size, baseline);
 }
 
 async function main() {
@@ -347,6 +320,7 @@ async function main() {
   info(`Checking ${extensionsToCheck.length} large extensions...`);
   console.log("");
 
+  const files = await readSharedObjects(imageName);
   const results: SizeCheckResult[] = [];
 
   for (const extension of extensionsToCheck) {
@@ -354,7 +328,8 @@ async function main() {
     if (!baseline) {
       continue; // Shouldn't happen, but satisfy TypeScript
     }
-    const result = await checkExtensionSize(imageName, extension, baseline);
+    const size = selectSharedObjectSize(files, extension.name, extension.soFileName);
+    const result = classifySize(extension.name, size, baseline);
     results.push(result);
 
     if (!result.passed || result.warn) {

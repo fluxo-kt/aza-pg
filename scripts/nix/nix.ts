@@ -100,6 +100,30 @@ export function nixCommand(
   ];
 }
 
+let storeReady = native;
+
+/**
+ * Docker fills an empty named volume from the image on first mount, and two containers mounting it at once both copy:
+ * the losers fail ("mkdir …/store: file exists", or exit 127 on a half-copied store; validate:all starts two checker
+ * processes together on a fresh runner). So each process first runs one blocking container under a name shared by
+ * all processes: Docker gives a name to one container only, which makes it a lock. A process refused the name
+ * ("Conflict") tries again until its own run succeeds, which happens only after the holder is gone (`--rm`) and so
+ * the volume is filled: Docker copies only into an empty volume. The retry cannot block on the holder instead: during
+ * the copy its name is taken while `docker wait` and `inspect` cannot see it yet.
+ */
+function ensureStore() {
+  const lock = `aza-pg-nix-${nixPlatform.replace("linux/", "")}-init`;
+  while (!storeReady) {
+    const run = Bun.spawnSync(nixCommand(["true"], lock), { stdout: "ignore", stderr: "pipe" });
+    storeReady = run.exitCode === 0;
+    if (storeReady) return;
+    const err = run.stderr.toString();
+    // Any other failure is the next Nix run's to report; this only orders the first fill.
+    if (!err.includes("Conflict")) return void process.stderr.write(err);
+    Bun.sleepSync(200);
+  }
+}
+
 let spawns = 0;
 
 /**
@@ -115,6 +139,7 @@ export function spawnNix(
     stderr?: "inherit" | "pipe" | "ignore";
   } = {}
 ) {
+  ensureStore();
   return Bun.spawn(
     nixCommand(command, `aza-pg-nix-${process.pid}-${spawns++}`, options.dockerArgs),
     {
@@ -136,6 +161,7 @@ if (import.meta.main) {
     process.exit(64);
   }
   const container = `aza-pg-nix-${process.pid}`;
+  ensureStore();
   const proc = Bun.spawn(nixCommand(["nix", ...args], container), {
     cwd: path.resolve(import.meta.dir, "../.."),
     env: nixEnv(),

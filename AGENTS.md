@@ -1,8 +1,8 @@
-# aza-pg: Production PostgreSQL with Auto-Config — AI Agent Guide (NO LOGS HERE! NO BS, ONLY FUTURE-PROOF VALUE!)
+# aza-pg agent guide
 
 **PG 18 container**: Auto-tuned config, comprehensive extensions, SHA-pinned dependencies, Bun/TS-first tooling, Compose-only deployment, digest-based releases.
 
-Before an update round, read [.claude/commands/update.md](.claude/commands/update.md) and complete its full update matrix; one clean dependency surface does not close the round.
+Before an update, read [.claude/commands/update.md](.claude/commands/update.md) and close its full matrix. Fix missing, wrong or hidden guidance BEFORE the affected work. Put the trigger, act, reason and proof where the next agent needs them.
 
 • **Bun-First**: All scripts use Bun TypeScript. Prefer Bun APIs to usuals from Node.js when possible and reasonable. See Development Standards below. **But NO Bun in the final images**. And DO NOT USE bunx, `bun x`, npm, npx, pnpm, pnpx, yarn or corepack — NEVER!! (`.claude/settings.json` denies each; run a `package.json` script or `./node_modules/.bin/<tool>` instead)
 • **TS-First**: YAML workflows are orchestration only — all logic, verification, and diagnostics belong in TypeScript scripts that can be tested locally. Nix files (`flake.nix`, `nix/`) build what the manifest declares and stay as simple as possible — logic and nuances belong in TypeScript scripts.
@@ -10,6 +10,8 @@ Before an update round, read [.claude/commands/update.md](.claude/commands/updat
 ## CRITICAL RULES
 
 - **Run affected local checks before each focused commit; commit before long verification, then repair any failure in a follow-up commit. Finish every edit a long run reads (build inputs, entrypoint, suites) BEFORE starting it: an edit landing after the start voids that run and costs another full round. Complete the full update procedure's committed-code gate before presenting the update.**
+- **Run the full committed gate.** Before that, name the failure each probe can distinguish and what each result changes. Reuse evidence for the same inputs and decision.
+- **Report the revision or artifact tested.** Distinguish completed checks, failed checks and gaps. A tool failure leaves the underlying state unknown.
 - **DOUBLE CHECK & CONFIRM ALL TESTS AND VERIFICATIONS ARE COMPLETE AND SUCCESSFUL BEFORE PUSHING**
 
 ## Invariants
@@ -190,9 +192,9 @@ Enable/disable: Edit `scripts/extensions/manifest-data.ts` → `bun run generate
 
 **Extensions**: Modules=preload-only (auto_explain) | Tools=no CREATE EXTENSION | Standard extensions=CREATE EXTENSION flow
 
-**CI Workflow Resilience**: Informational steps (SARIF upload, diagnostics) MUST have `continue-on-error: true` — tool infrastructure failures must never block releases. The actual security gate is a separate independent blocking step with `exit-code: 1`. Same pattern for any step that is "nice-to-have" vs "must-pass".
+**CI Workflow Resilience**: Informational steps such as SARIF upload and diagnostics MUST use `continue-on-error: true`. Keep the security gate separate and blocking on both findings and scan failures. A failed informational step cannot stand in for the gate.
 
-**Security Scanner Resilience**: Run Trivy only through `bun scripts/security/trivy.ts <image> [--gate] [flags]` — locally, in workflows, in scripts. It runs flake.nix's `trivy` output with the gate flags, so the release gate and `security:scan` cannot drift apart; never `uses: aquasecurity/trivy-action` (it installs its own default version) and never a second runner (a Trivy image, a release binary). Never download Trivy's GitHub release binaries: they can disappear (an attacker deleted v0.27–v0.69.1), while a build pinned by flake.lock cannot vanish or change. Upstream's image is no substitute: it bundles Alpine git with fixable HIGH CVEs. Keep v0.69.3 or later. The checkers (actionlint, yamllint, Trivy) are all flake outputs run through `scripts/nix/tools.ts`, never upstream images: a tool image carries a distro whose fixable CVEs only upstream can rebuild away. Blocking gates (`--gate`) fail on fixable CRITICAL/HIGH findings (`--ignore-unfixed`). Trivy reads no package database in a Nix image, so it covers language packages only (Rust crates, bundled JS), never the C libraries. The C libraries are gated by `scripts/security/vulnix-gate.ts` (publish.yml, before the push): fix a hit by upgrading; list only a not-affected or accepted one in `vulnix-whitelist.toml`, with evidence (and `until` when accepted). `bun run security:scan [REF]` (default `origin/release`, what operators run) re-checks every surface against today's feeds: vulnix and Trivy on the released image; before a release, `security:scan HEAD aza-pg:pg18` points Trivy at the local build instead. Avoid static CVE ignores; they hide future fixable regressions.
+**Security scanners**: Use the [pinned scanner entry points](docs/TOOLING.md#image-security-scanners) when scanning or changing CI. Trivy covers language packages in the Nix image. Vulnix gates its C libraries. Use both on the candidate before release.
 
 **SHA Pin Accuracy**: SHA pins go stale silently — run `actions-up` (see `/update` skill) to refresh both the SHA and the `# vX.Y.Z` tag on each `uses:` line. Also audit for version references in prose comments elsewhere in workflow files (`command grep -rn "@v[0-9]" .github/workflows/ .github/actions/ | command grep "#"`). Verify manually: `git ls-remote https://github.com/REPO.git refs/tags/TAG`.
 
@@ -265,10 +267,4 @@ The changelog covers operator-visible changes to the release Docker image and sh
 
 ## Maintaining This File
 
-**Principles** (this doc appears in EVERY AI conversation):
-
-- **Token efficiency**: Use abbrs (TS, PG, GH, env), strip filler, dense formatting
-- **Self-sufficient**: Out-of-context agents must understand without external docs
-- **Imperative voice**: Commands, not descriptions ("Edit X" not "You should edit X")
-- **No bloat**: Every line must earn its tokens — if removing doesn't lose value, remove it
-- **Update, don't expand**: Replace outdated info; don't add sections for temporary issues
+Write short commands a cold reader can act on. Keep common rules here, folder rules in the nearest AGENTS.md and rare procedures behind a link triggered by the task. Replace stale guidance. Keep history in Git.

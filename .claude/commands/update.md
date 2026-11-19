@@ -335,6 +335,8 @@ name, so also read the security pages of PostgreSQL, OpenSSL and glibc for the s
 After `bun run build` and before (never beside) `test:all`, `bun run security:scan HEAD aza-pg:pg18` runs both scanners on what this round will release:
 vulnix on HEAD's closure, Trivy on the local image (Rust crates, bundled JS). Without the image argument Trivy scans
 the last release, not HEAD.
+Read every surface's verdict. Repair and retry a `SCAN FAILED` result before deciding exposure.
+Only a completed scan can support a finding or a clean result.
 
 ```bash
 bun scripts/nix/nix.ts flake update nixpkgs
@@ -447,12 +449,13 @@ A bump can stop the build with `Patch <file> no longer applies`: refresh the dif
 **Identify**: every entry that is not `kind: "builtin"`
 - `command grep -B 5 'build:' scripts/extensions/manifest-data.ts | command grep 'name:'`
 
-Update ONLY `source.tag`:
+Change `source.tag` in the manifest entry. Update its build patches or installed library name only
+when the new source or image proves those facts changed. Keep them on that entry so consumers regenerate together.
 
 ```typescript
 {
   name: "extension_name",
-  source: { type: "git", tag: "vX.Y.Z" },         // ← Only this field
+  source: { type: "git", tag: "vX.Y.Z" },
 }
 ```
 
@@ -852,53 +855,15 @@ what would they find?" Find it yourself first.
 Commit with `git commit --only -m "…" -- <every file of the change>`: a bare `git commit` takes the
 whole index, including renames and files another agent staged.
 
-## Phase 11: Retrospective & Skill Self-Update (MANDATORY)
+## Phase 11: Repair Guidance That Failed
 
-After every update round, perform a mandatory self-reflection before closing out the work:
+When the round exposes a guidance defect, fix the instruction the next agent sees before repeating
+the affected work. Put reusable rules in the nearest auto-loaded AGENTS.md and keep update-specific
+steps where they run in this procedure. A rule must name the trigger, required act, and evidence
+that closes it. Keep the reason at the decision. Add a check only if it detects the failure itself.
 
-1. **What was missed in pre-flight?** Items caught mid-implementation instead of upfront
-2. **What was assumed without verification?** Version strings, API signatures, URLs, compatibility
-3. **What hardcoded values broke tests?** Document the pattern for future detection
-4. **What files were unexpectedly required?** A change that needs edits in several files to stay
-   consistent means a fact is stored twice — move it onto the manifest entry instead of syncing copies
-5. **What upstream API was different from expected?** (e.g., pgmq topic API uses `bind_topic`,
-   not `create_topic`/`subscribe` — always verify from actual source before writing tests)
-6. **Were all tooling version files kept in sync?** `.tool-versions` (Bun runtime), `package.json`
-   (@types/bun). These are updated separately — `bun update` does NOT touch `.tool-versions`.
-7. **Were validator error messages and fix instructions actually correct?** When editing any
-   validator script, verify that following its own fix instructions would resolve the error it
-   reports.
-8. **Were stale prose version comments audited?** `actions-up` updates `uses:` line comments
-   automatically — the risk is prose comments *elsewhere* in the file. See Phase 2.5 MANDATORY
-   section for the exact grep command and what to look for.
-8a. **Were branch-pinned reusable workflow refs checked?** Run Phase 2.5's branch-reference search and inspect `actions-up`'s skips; obtain every replacement SHA through that tool.
-9. **Was `flake.lock` bumped (or shown current)?** It carries every C library's security fixes; a clean extension list
-   says nothing about them.
-10. **Was extension update detection quality-checked?** If `check-updates.ts` output looked noisy,
-    verify each candidate is same-family + monotonic (not prerelease/downgrade) and confirm fallback
-    paths were exercised when GitHub API was rate-limited.
-11. **Was changelog gating enforced?** If any image-affecting files changed, verify `CHANGELOG.md`
-    was updated in the same round with user-facing entries (or explicitly document why no user-facing
-    impact exists).
-12. **Are changelog claims evidence-backed?** Cross-check each changelog statement against actual
-    upstream diff evidence (release notes, compare output, commit/file diffs). Remove any claim that
-    cannot be tied to concrete upstream changes.
-13. **Were all bug fixes systematically verified with a full-codebase grep?** A targeted fix (e.g.,
-    fixing `.env()` calls in the files that visibly failed) is not the same as verifying the entire
-    codebase. After any structural fix pattern, run a grep across ALL relevant files to confirm zero
-    remaining violations before declaring done. Latent bugs in gracefully-degrading code paths
-    (try/catch → warning, optional fallback branches) pass tests silently until they hit edge cases.
-    Run the validate check or a direct grep: `bun run validate` now includes "Subprocess Env Safety"
-    for the `.env()` pattern specifically.
-
-Then update THIS SKILL FILE (`.claude/commands/update.md`) with concrete improvements:
-- Add checks that would have caught missed items
-- Strengthen wording where guidance was too weak
-- Fix any outdated file references or procedures
-- Add new edge cases discovered
-
-**This is kaizen — each update round improves the next. The skill should be a living document
-that gets better with every use. Commit the skill update as the final commit of the round.**
+For a structural fix, search the tree for every affected caller or copy and verify the actual match.
+For a validator change, follow its diagnostic on the failing case and prove it leads to a passing result.
 
 ## Phase 12: Final Verification Gate (MANDATORY — The Only Acceptable End State)
 
@@ -917,8 +882,7 @@ due in this round, not the next:
 - Hardcoded test/doc version strings for every changed image-facing dependency
 - Generated files and `CHANGELOG.md` when any image-facing source changed
 
-After ALL other phases — including CHANGELOG, skill update commit, and every other commit — run
-the full comprehensive test suite one final time:
+After all candidate and guidance commits, run the full suite once on the committed inputs:
 
 ```bash
 bun run test:all
@@ -926,7 +890,7 @@ bun run test:all
 
 **This is a gate, not a formality.** Rules:
 
-- ✅ **If it passes**: Update round is **COMPLETE**. Repository is in a known-good state.
+- ✅ **If it passes**: Finish the required extended memory check when Phase 8 calls for it, then reclaim artifacts in Phase 13.
 - ❌ **If it fails**: DO NOT stop. DO NOT declare work done. Fix the issue, commit the fix,
   and re-run `bun run test:all` from the top of Phase 12. Repeat until clean.
 
@@ -939,7 +903,7 @@ verifying the image is actually correct at runtime.
 `bun run test:all` passing clean with zero failures on the committed code.
 
 ```
-test:all → pass → DONE
+test:all → pass → required extended memory check → cleanup
 test:all → fail → fix → commit fix → test:all (loop)
 ```
 

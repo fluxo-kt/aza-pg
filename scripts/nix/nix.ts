@@ -110,9 +110,16 @@ let storeReady = native;
  * ("Conflict") tries again until its own run succeeds, which happens only after the holder is gone (`--rm`) and so
  * the volume is filled: Docker copies only into an empty volume. The retry cannot block on the holder instead: during
  * the copy its name is taken while `docker wait` and `inspect` cannot see it yet.
+ * An existing store volume skips all this (20 ms instead of a 0.3–0.6 s container per process). That leaves one
+ * race: a process starting after another's first-ever fill began, before it ended, sees the volume and mounts it
+ * half-copied; it fails once with Docker's error and a rerun succeeds. A "filled" marker would close it at the cost
+ * of a third volume that goes stale whenever someone deletes the store.
  */
 function ensureStore() {
-  const lock = `aza-pg-nix-${nixPlatform.replace("linux/", "")}-init`;
+  const arch = nixPlatform.replace("linux/", "");
+  const volume = ["docker", "volume", "inspect", `aza-pg-nix-${arch}`];
+  storeReady ||= Bun.spawnSync(volume, { stdout: "ignore", stderr: "ignore" }).exitCode === 0;
+  const lock = `aza-pg-nix-${arch}-init`;
   while (!storeReady) {
     const run = Bun.spawnSync(nixCommand(["true"], lock), { stdout: "ignore", stderr: "pipe" });
     storeReady = run.exitCode === 0;

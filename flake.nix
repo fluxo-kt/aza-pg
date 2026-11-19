@@ -174,7 +174,22 @@
           # images: those images bundle a distro (Alpine git, an old Go) whose fixable CVEs only upstream can rebuild
           # away, while these follow flake.lock, so every nixpkgs bump refreshes them. check-updates.ts compares each
           # version with its upstream release.
-          inherit (pkgs) actionlint trivy;
+          # Rebuild the checkers with the Go release that fixes CVE-2026-97054.
+          # Drop the override once nixpkgs ships Go 1.27.4 or later.
+          inherit (let
+            go = assert nixpkgs.lib.versionOlder pkgs.go_1_27.version "1.27.4";
+              pkgs.go_1_27.overrideAttrs {
+                version = "1.27.4";
+                src = pkgs.fetchurl {
+                  url = "https://go.dev/dl/go1.27.4.src.tar.gz";
+                  hash = "sha256-c8+4VxrsDAEXdofbhxY9Rqog6XeWcncokaoXZU2aYJk=";
+                };
+              };
+            buildGoModule = pkgs.buildGo127Module.override { inherit go; };
+          in {
+            actionlint = pkgs.actionlint.override { inherit buildGoModule; };
+            trivy = pkgs.trivy.override { buildGo127Module = buildGoModule; };
+          }) actionlint trivy;
           # nixpkgs still packages 1.37.1 (NixOS/nixpkgs#515973). The assert fails once nixpkgs reaches 1.38.0: drop
           # the override then, or it would pin an old release.
           yamllint = assert nixpkgs.lib.versionOlder pkgs.yamllint.version "1.38.0";

@@ -80,8 +80,10 @@ Check:
 
 4. **Companion images** — every container image the repo runs or tells operators to run (not in manifest!).
    `check-updates.ts` (item 1) already reports each image pinned in `stacks/` and `deployments/` against its
-   upstream releases, naming the files that pin it. A row "could not check … IMAGE_SOURCES" is a new image:
-   add its GitHub repository to `IMAGE_SOURCES` in that script. Docs copying a companion pin are held to it by
+   upstream releases, naming the files that pin it. Read every image row, including script and workflow pins
+   such as test fixtures. For a missing `IMAGE_SOURCES` entry, add its upstream repository and use registry
+   tags when published image tags differ from release tags. Re-run the checker and require a resolved tag
+   for that image. Docs copying a companion pin are held to it by
    `validate`'s Companion Image Pins. The stack suites pull the stacks' images, but nothing pulls an image
    only `deployments/` uses: check each still resolves (`docker buildx imagetools inspect <ref>`). Update
    procedure: Phase 5.6. Being current is not being patched: `bun run security:scan` scans every pinned companion

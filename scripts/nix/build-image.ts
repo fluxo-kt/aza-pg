@@ -43,6 +43,20 @@ if (buildExit !== 0 || !streamScript.startsWith("/nix/store/")) {
   process.exit(buildExit || 1);
 }
 
+if (native && Bun.env.GITHUB_ACTIONS === "true" && Bun.env.RUNNER_TEMP) {
+  // The cache action prunes the store at job exit. Root only the server so keep-outputs retains
+  // its sibling outputs without pinning the whole image build graph (NixOS/nix#16485).
+  const root = spawnNix([
+    "nix",
+    "build",
+    `.#packages.${nixSystem}.postgresql-server`,
+    "--out-link",
+    path.join(Bun.env.RUNNER_TEMP, "aza-pg-postgresql-server"),
+  ]);
+  const rootExit = await root.exited;
+  if (rootExit !== 0) process.exit(rootExit);
+}
+
 if (push) {
   const scratch = await mkdtemp(path.join(Bun.env.RUNNER_TEMP ?? tmpdir(), "aza-pg-push-"));
   const digestFile = path.join(scratch, "digest");

@@ -239,6 +239,8 @@ A newly-published `warn`-level CVE in a transitive (even dev) dep makes the non-
 **Why**: Builds the image from `flake.nix`: every extension from its pinned commit, the closure holding only what ships (`dockerTools.streamLayeredImage`)
 **Status**: ✅ LOCKED
 
+Keep a GC root for the PostgreSQL server until CI saves its Nix store. With `keep-outputs`, the root preserves sibling outputs as a group. Restoring only part of the group can make Nix reject a valid output check while rebuilding the missing parts.
+
 ### Cargo/Rust (for extension compilation)
 
 **Why**: Required for the Rust (pgrx) extensions (e.g. pg_jsonschema, wrappers); nixpkgs provides the toolchain

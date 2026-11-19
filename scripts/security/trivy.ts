@@ -23,13 +23,18 @@ import { runTool } from "../nix/tools";
  * The release gate, `--gate` on the command line: fixable CRITICAL/HIGH fails. An unfixed CVE has no action, and a
  * fixable MEDIUM is /update work, not a release blocker. publish.yml and security:scan both use it.
  */
+// Trivy itself exits 1 on fatal errors. Reserve a different code for completed scans with findings.
+const FINDINGS_EXIT = 10;
+export const trivyGateStatus = (code: number): 0 | 1 | 2 =>
+  code === 0 ? 0 : code === FINDINGS_EXIT ? 1 : 2;
+
 export const GATE_FLAGS = [
   "--quiet",
   "--severity",
   "CRITICAL,HIGH",
   "--ignore-unfixed",
   "--exit-code",
-  "1",
+  String(FINDINGS_EXIT),
 ];
 
 // A Nix `*-source` store path is an unpacked source tree (nixos/nix carries all of nixpkgs): its Cargo.lock and
@@ -74,7 +79,7 @@ export async function collect(proc: Bun.Subprocess) {
 /**
  * Scans the runtime closures of `outputs` (flake outputs of `flake`, e.g. the checkers) with the gate flags, for
  * language packages: Go binaries' modules and Python distributions. Their C libraries are vulnix's (vulnix-gate.ts),
- * which Trivy cannot see in a Nix store. Returns Trivy's exit code (2 when the build fails) and the combined output.
+ * which Trivy cannot see in a Nix store. Returns 0 for clean, 1 for findings, or 2 for failure.
  */
 export async function scanClosure(
   flake: string,
@@ -108,7 +113,7 @@ export async function scanClosure(
       { stdout: "pipe", stderr: "pipe" }
     )
   );
-  return { code: scan.code, output: scan.out + scan.err };
+  return { code: trivyGateStatus(scan.code), output: scan.out + scan.err };
 }
 
 if (import.meta.main) {
@@ -118,5 +123,6 @@ if (import.meta.main) {
     process.exit(2);
   }
   const expanded = flags.flatMap((f) => (f === "--gate" ? GATE_FLAGS : [f]));
-  process.exit(await scanImage(image, expanded).exited);
+  const code = await scanImage(image, expanded).exited;
+  process.exit(flags.includes("--gate") ? trivyGateStatus(code) : code);
 }

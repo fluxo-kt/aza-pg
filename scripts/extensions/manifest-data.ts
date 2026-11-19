@@ -17,12 +17,13 @@ export const MANIFEST_METADATA = {
   /** PostgreSQL version (e.g., "18.1") */
   pgVersion: "18.7",
   /**
-   * The pg_net test's echo server: oven/bun:<.tool-versions bun>-debian at its multi-arch digest. The tag is kept beside
+   * The pg_net test's echo server: oven/bun:<.tool-versions bun>-alpine at its multi-arch digest. Alpine avoids the
+   * Debian image's vulnerable zlib package (CVE-2026-85091). The tag is kept beside
    * the digest so bun-image-pin.test.ts can fail when a Bun bump leaves it behind (the digest alone wins in Docker, so
-   * a stale one runs the old Bun silently). Re-resolve: `docker buildx imagetools inspect oven/bun:<version>-debian`.
+   * a stale one runs the old Bun silently). Re-resolve: `docker buildx imagetools inspect oven/bun:<version>-alpine`.
    */
   bunImage:
-    "oven/bun:1.4.5-debian@sha256:3dddea58e1f8f2240eca906b023fedb944f9a8352515a35309fd0c879fe00aaa",
+    "oven/bun:1.4.5-alpine@sha256:da816670775f4c2b4e990b6b1847cf5540dcdc721a42033dd331ce7a88ba6a3b",
   /**
    * glibc locales the image ships (UTF-8), so a session can `SET lc_monetary|lc_numeric|lc_time = '<name>.utf8'`.
    * PostgreSQL reads these from glibc, never from ICU, for to_char's L/D/G/TM patterns and the money type. New

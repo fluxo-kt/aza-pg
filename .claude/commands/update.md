@@ -187,7 +187,7 @@ gh release view --repo oven-sh/bun --json tagName --jq .tagName  # e.g. "bun-v1.
 
 If a new stable runtime is available, move every declaration of it together: `.tool-versions` (`bun X.Y.Z`),
 `package.json` `engines.bun` (`>=X.Y.Z`), and `MANIFEST_METADATA.bunImage` (the pg_net echo server,
-`oven/bun:X.Y.Z-debian@<digest>` from `docker buildx imagetools inspect`; `bun-image-pin.test.ts` fails until it
+`oven/bun:X.Y.Z-alpine@<digest>` from `docker buildx imagetools inspect`; `bun-image-pin.test.ts` fails until it
 matches). Then `bun run generate`. Other Bun projects under `/opt/apps` move to the same version (global CLAUDE.md
 runtime alignment); remove superseded installs no running process uses (`ps -axo command | grep installs/bun/`).
 

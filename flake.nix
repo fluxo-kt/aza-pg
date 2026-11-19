@@ -175,16 +175,25 @@
           # away, while these follow flake.lock, so every nixpkgs bump refreshes them. check-updates.ts compares each
           # version with its upstream release.
           # Rebuild the checkers with the Go release that fixes CVE-2026-97054.
+          # Go's release compiler keeps its source bootstrap off the cold workflow lint path.
           # Drop the override once nixpkgs ships Go 1.27.4 or later.
           inherit (let
             go = assert nixpkgs.lib.versionOlder pkgs.go_1_27.version "1.27.4";
-              pkgs.go_1_27.overrideAttrs {
+              pkgs.stdenvNoCC.mkDerivation (final: {
+                pname = "go-checker-compiler";
                 version = "1.27.4";
                 src = pkgs.fetchurl {
-                  url = "https://go.dev/dl/go1.27.4.src.tar.gz";
-                  hash = "sha256-c8+4VxrsDAEXdofbhxY9Rqog6XeWcncokaoXZU2aYJk=";
+                  url = "https://go.dev/dl/go${final.version}.linux-${pkgs.stdenv.hostPlatform.go.GOARCH}.tar.gz";
+                  sha256 = {
+                    aarch64-linux = "3392582988a273a87ab5043ee1b2c9c17a2c3c00580bf9326c47a2e0aaaeac92";
+                    x86_64-linux = "7226736c2339719cda28fbf3a54d71aa63bcefe376e98cef00034268dab24840";
+                  }.${system};
                 };
-              };
+                dontBuild = true;
+                dontFixup = true;
+                installPhase = ''mkdir -p "$out"; cp -a . "$out/"'';
+                passthru.CGO_ENABLED = 1;
+              });
             buildGoModule = pkgs.buildGo127Module.override { inherit go; };
           in {
             actionlint = pkgs.actionlint.override { inherit buildGoModule; };

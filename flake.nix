@@ -142,7 +142,10 @@
             };
           };
         in
-        rec {
+        {
+          # CI roots the unwrapped derivation before pruning its cache to keep the split outputs together.
+          postgresql-server = postgresql;
+        } // rec {
           inherit extensions;
           unshipped = pkgs.linkFarm "aza-pg-unshipped-extensions"
             (pkgs.lib.mapAttrsToList (name: path: { inherit name path; }) unshippedExtensions);
@@ -214,6 +217,6 @@
         };
     in
     {
-      packages = nixpkgs.lib.genAttrs systems (s: let r = perSystem s; in { inherit (r) postgresql image contents vulnix unshipped actionlint trivy yamllint; } // r.extensions);
+      packages = nixpkgs.lib.genAttrs systems (s: let r = perSystem s; in { inherit (r) postgresql postgresql-server image contents vulnix unshipped actionlint trivy yamllint; } // r.extensions);
     };
 }

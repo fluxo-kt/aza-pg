@@ -919,14 +919,10 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     source: {
       type: "git",
       repository: "https://github.com/timescale/timescaledb.git",
-      tag: "2.32.0",
+      tag: "2.32.1",
     },
     build: {
       type: "timescaledb",
-      // Upstream e89c98f (#11015, due in 2.32.1): PostgreSQL 18.7's PortalDrop() refuses a portal still in
-      // PORTAL_NEW, which job_execute() left its scheduler portal in, so every scheduler-run job failed. Drop this
-      // once the tag carries the fix.
-      patches: ["timescaledb-portal-drop-pg18.7.patch"],
     },
     runtime: {
       sharedPreload: true,
@@ -943,13 +939,13 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     name: "timescaledb_toolkit",
     nix: { package: "timescaledb_toolkit" },
     kind: "extension",
-    soFileName: "timescaledb_toolkit-1.26.0.so",
+    soFileName: "timescaledb_toolkit-1.28.0.so",
     category: "timeseries",
     description: "Analytical hyperfunctions and sketches extending TimescaleDB.",
     source: {
       type: "git",
       repository: "https://github.com/timescale/timescaledb-toolkit.git",
-      tag: "1.27.0+p2",
+      tag: "1.28.0",
     },
     build: {
       type: "cargo-pgrx",

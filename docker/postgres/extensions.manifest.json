@@ -898,14 +898,11 @@
       "source": {
         "type": "git",
         "repository": "https://github.com/timescale/timescaledb.git",
-        "tag": "2.32.0",
-        "commit": "b0474c32504c54edb44a23d33dc8a783745600cd"
+        "tag": "2.32.1",
+        "commit": "692795d0cf7126e816d1f30b323f24b1473d82e9"
       },
       "build": {
-        "type": "timescaledb",
-        "patches": [
-          "timescaledb-portal-drop-pg18.7.patch"
-        ]
+        "type": "timescaledb"
       },
       "runtime": {
         "sharedPreload": true,
@@ -924,14 +921,14 @@
         "package": "timescaledb_toolkit"
       },
       "kind": "extension",
-      "soFileName": "timescaledb_toolkit-1.26.0.so",
+      "soFileName": "timescaledb_toolkit-1.28.0.so",
       "category": "timeseries",
       "description": "Analytical hyperfunctions and sketches extending TimescaleDB.",
       "source": {
         "type": "git",
         "repository": "https://github.com/timescale/timescaledb-toolkit.git",
-        "tag": "1.27.0+p2",
-        "commit": "bef872ee684670e2f9a545e114890ddd5dcaf997"
+        "tag": "1.28.0",
+        "commit": "4f3c7b1bb9ac244f6498d97bd98642c5c9619ab9"
       },
       "build": {
         "type": "cargo-pgrx",

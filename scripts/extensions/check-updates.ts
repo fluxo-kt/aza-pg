@@ -536,6 +536,7 @@ const IMAGE_SOURCES: Record<string, { repository: string; tagPrefix?: string; ta
   {
     // Local Nix: its tag must equal CI's (the nix_version in install-nix-action's install-nix.sh), see /update.
     "nixos/nix": { repository: "https://github.com/NixOS/nix", tags: "registry" },
+    "oven/bun": { repository: "https://github.com/oven-sh/bun", tags: "registry" },
     // CloudNativePG rebuilds each PgBouncer release on patched Debian about weekly, as a new timestamped tag
     // (1.26.1-<UTC stamp>-trixie): only the registry's tags show those rebuilds, the GitHub releases do not.
     "cloudnative-pg/pgbouncer": {

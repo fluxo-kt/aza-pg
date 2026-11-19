@@ -69,7 +69,7 @@ jobs:
   lint-workflows:
     name: Lint Workflows
     runs-on: ubuntu-26.04
-    timeout-minutes: 4
+    timeout-minutes: 2
 
     steps:
       - name: Checkout repository

@@ -92,6 +92,13 @@ export function nixCommand(
     "NIX_CONFIG",
     "-v",
     `aza-pg-nix-${arch}:/nix`,
+    // Nix 2.35 unpacks and compiles every derivation under /nix/var/nix/builds (build-dir unset), which here is the
+    // store volume on the Mac's SSD. Measured: 1 GB of build scratch wrote 3.0 GB to the Docker VM's disk there and
+    // 12 MB on this tmpfs, and the build ran faster; Nix runs in this container wrote ~20 GB each. Scratch is deleted
+    // when each build ends, so RAM is all it needs. No size: Linux gives tmpfs half the VM's memory, and an overflow
+    // fails the build with ENOSPC instead of corrupting anything. `exec` because builds run what they compile.
+    "--tmpfs",
+    "/nix/var/nix/builds:rw,exec",
     // builtins.fetchGit (every source in nix/extensions.nix) caches its clones here, outside the store; without the
     // volume each run re-clones every extension repository before evaluation can finish.
     "-v",

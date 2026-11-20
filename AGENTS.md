@@ -227,6 +227,8 @@ Verify release-note claims against the artifact that owns them: manifest and ima
 
 **Entry rules** (`[Unreleased]` is read by someone upgrading from the last release):
 
+- Start a changed bundled component's bullet with its bold manifest name, such as `**pgmq 1.13.1 → 1.13.2**`. For a display name, put the exact manifest name in parentheses before the version, such as `**Vault (supabase_vault) …**`. A mention elsewhere does not document the component's own change.
+
 - One entry per component: `<name> <version in the last release> → <current>`. Read the old version from the tag (`git show <tag>:docker/postgres/extensions.manifest.json`), never from changelog text. A second bump before release edits that entry. A patch-only change (a lockfile bump for a CVE) moves no version and still needs its entry; `Changelog Coverage` in `validate` refuses any component whose pinned commit or patches changed since the last release and whose manifest name `[Unreleased]` lacks
 - A dated `## [<tag>]` section is what shipped: never edit it
 - Every claim comes from the component's own release notes for exactly that range; a feature from an earlier release is not news. Name the concrete fix, never "bug fixes". Completeness too: go through EVERY item of that range's notes (changes, deprecations, breaking, fixes) and decide per item whether it reaches what we ship (settings we pass, metrics and labels, defaults, behaviour under our config); name each one that does. Writing from the headline items alone omits exactly the changes an operator trips over

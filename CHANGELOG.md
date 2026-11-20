@@ -10,6 +10,8 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
 
 ## [Unreleased]
 
+## [v18.7-202611192045] - 2026-11-19
+
 ### Breaking
 
 - **PostgreSQL 18.6 → 18.7: do not roll back to an older image after running DDL on this one.** 18.7 versions composite values and records the version in `pg_attribute.attoptions` (`pg_attver`); a server older than 18.7 reading data written after DDL here can raise errors, and a `pg_dump` from this image restores only into 18.7 or later. Take a backup before upgrading if you may need to go back. If you use PostgreSQL's own incremental backups (`pg_basebackup --incremental`), take a new full backup after upgrading: 18.7 found several ways existing incremental backups could be corrupt (pgBackRest's backups are not affected).
@@ -27,6 +29,10 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
 
 - **Grafana 13.3.0 → 13.3.1** (`deployments/phase1-single-vps`): fixes CVE-2026-102589, CVE-2026-107509, CVE-2026-110992, CVE-2026-111024, CVE-2026-13721 and CVE-2026-14242.
 
+### Fixed
+
+- Health checks wait for the final PostgreSQL server. They reject the temporary server that runs during database initialization and let the final server become healthy.
+
 ### Changed
 
 - **Every extension is updated automatically** at the first start after an image upgrade (was TimescaleDB only): each extension created in a database is brought to the version the image ships before clients connect, so no `ALTER EXTENSION … UPDATE` is left to run by hand. An extension upstream ships without an update path is dropped and recreated in the same schema, which resets grants on its functions; one that owns tables, or that other objects depend on, stops the container with the fix named instead. A failed update stops the container naming the database.
@@ -40,10 +46,6 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
 - **pgBackRest 2.60.0 → 2.60.1**: fixes `annotate` saving `backup.info` to the default repository, block-incremental restore and file-handle reuse after a reconnect on SFTP, excessive memory use, and lowering a minimum TLS version set in the OpenSSL config.
 - **postgres-exporter 0.20.1 → 0.21.1** (all stacks and `deployments/phase1-single-vps`). Counters above 2^53 now wrap so single-unit changes stay exact; the first scrape after the upgrade reads such a counter as a reset, so `rate()`/`increase()` over that window can show one large false spike (alerts on rates of very large counters may fire once). Add `--no-wrap-large-counters` to the exporter's `command` to keep the old conversion. Other changes that reach these stacks: `pg_stat_replication_*` metrics gain a `pid` label; a collector failing part way through a scrape now drops all its metrics for that scrape (still reported by `pg_scrape_collector_success`); concurrent scrapes are capped at 40 (`--web.max-requests`, excess gets HTTP 503); new `pg_database_wraparound_age_datfrozenxid`/`_datminmxid` gauges replace the misnamed `_seconds` ones, which stay as deprecated aliases; `pg_stat_activity_autovacuum_*` metrics gain `datname` and `schemaname` labels; `--collection-timeout` now also cuts off slow custom queries from `queries.yaml`; with `--auto-discover-databases` (`deployments/phase1-single-vps`) the `stat_user_tables`, `statio_user_tables` and `statio_user_indexes` collectors now cover every database instead of the first, adding series per database, and `pg_statio_user_indexes_*` metrics gain a `datname` label. The `PG_EXPORTER_*` environment variables are deprecated upstream (removed in 0.22), so the stacks now pass the same settings as flags in `command`; a deployment that overrides the exporter's `command` must keep `--extend.query-path=/etc/postgres_exporter/queries.yaml`, or the custom metrics disappear.
 - **Prometheus 3.15.1 → 3.16.0** (`deployments/phase1-single-vps`): no change to this deployment's configuration; PromQL fixes wrong results of `==`, `!=`, `changes()` and `count_values` on native histograms inside `histogram_count()`/`histogram_sum()`/`histogram_avg()`.
-
-### Fixed
-
-- Health checks reject the temporary initialization server when the auto-config wrapper sources the upstream entrypoint. The check reads each process's first argument to exclude tini's retained entrypoint arguments, so the final server can become healthy normally.
 
 ### Removed
 

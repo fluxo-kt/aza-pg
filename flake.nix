@@ -163,15 +163,11 @@
           # itself is the stream script, whose closure adds the Python streamer that never ships.
           contents = image.conf;
           # The scanner: vulnix 1.12.5 fails its NVD update when NVD serves only the .json.zip feed; upstream PR 183
-          # falls back to it and keeps an older feed from replacing newer cached data. Drop the patch once nixpkgs'
-          # vulnix includes commit 4b14b4b.
+          # falls back to it and keeps an older feed from replacing newer cached data. Keep the exact upstream
+          # patch in Git so a cold build can run the CVE gate when GitHub's patch download is unavailable.
+          # Drop it once nixpkgs' vulnix includes commit 4b14b4b.
           vulnix = pkgs.vulnix.overrideAttrs (old: {
-            patches = (old.patches or [ ]) ++ [
-              (pkgs.fetchurl {
-                url = "https://github.com/nix-community/vulnix/commit/4b14b4bf3e627946a162ca8ae4a6b406c77a7aa2.patch";
-                hash = "sha256-pN1zFCvTMgHACC0DKkWu98qMu/GpB8ilKUvp5tjyG7Q=";
-              })
-            ];
+            patches = (old.patches or [ ]) ++ [ ./nix/patches/vulnix-nvd-feed.patch ];
           });
           # The checkers scripts run (scripts/nix/tools.ts), never shipped. Built here rather than pulled as upstream
           # images: those images bundle a distro (Alpine git, an old Go) whose fixable CVEs only upstream can rebuild

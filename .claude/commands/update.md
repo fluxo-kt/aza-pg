@@ -736,7 +736,7 @@ updated before proceeding to Phase 10/12. No exceptions.
 2. **Breaking changes**: Separate section with "action required" flag
 3. **Development (non-image) changes**: One line max, or omit if trivial
 
-Use the category order in AGENTS.md § Changelog. Keep Compose-only changes in the final `### Compose deployments` section.
+Use the placement and category order in AGENTS.md § Changelog.
 
 **Format**:
 

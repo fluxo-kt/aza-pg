@@ -76,13 +76,16 @@ const start = changelog.indexOf("## [Unreleased]");
 const imageNotes = changelog
   .slice(start, changelog.indexOf(baselineHeading, start))
   .split(/^## /m)
-  .map((section) => releaseNoteSections(section).image.toLowerCase());
+  .map((section) => releaseNoteSections(section).image)
+  .join("\n")
+  .toLowerCase();
 
 const missing: string[] = [];
 for (const name of new Set([...before.keys(), ...now.keys()])) {
+  // A component already named in the image notes cannot be missing coverage.
+  if (imageNotes.includes(name.toLowerCase())) continue;
   const changed = (await shipped(before.get(name), tag)) !== (await shipped(now.get(name), null));
-  if (changed && !imageNotes.some((section) => section.includes(name.toLowerCase())))
-    missing.push(name);
+  if (changed) missing.push(name);
 }
 
 if (missing.length > 0) {

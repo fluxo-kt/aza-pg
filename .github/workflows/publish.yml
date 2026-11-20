@@ -529,7 +529,12 @@ jobs:
       # The testing package is private: pulled with the runner's login, Trivy reads it from the daemon and never
       # holds registry credentials (scripts/security/trivy.ts).
       - name: Pull image for scanning
-        run: docker pull "$REGISTRY/$SCAN_REF"
+        run: |
+          set -euo pipefail
+          docker pull "$REGISTRY/$SCAN_REF"
+          # Dockle rejects the index digest when it opens the platform image from Docker.
+          # Tag the image Docker already verified against SCAN_REF so Dockle can scan it locally.
+          docker tag "$REGISTRY/$SCAN_REF" aza-pg-dockle:scan
 
       - name: Cache Trivy vulnerability database
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -542,7 +547,7 @@ jobs:
       - name: Best practices scan (Dockle)
         uses: erzz/dockle-action@e8a7c41f36f1236ca3282b298d425ffbfdb2e922 # v1.4.1
         with:
-          image: "${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}@${{ needs.merge.outputs.image_digest }}"
+          image: aza-pg-dockle:scan
           exit-code: "1"
           failure-threshold: WARN
           accept-keywords: key

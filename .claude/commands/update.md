@@ -623,7 +623,7 @@ docker buildx imagetools inspect ORG/REPO:TAG --format '{{json .Manifest.Digest}
    that a build lacks or spells differently, and an unknown flag only surfaces when the stack starts.
    Rename users of changed metrics (dashboards and queries in `deployments/`).
 2. Update the compose defaults; run `bun run validate` until the pin check is clean.
-3. CHANGELOG entry (operators see companion images); removed settings or renamed metrics go under Breaking.
+3. Record companion changes in the changelog's `### Compose deployments` section. Lead with any required action for removed settings or renamed metrics.
 4. Run the stack suites (`bun scripts/test-all.ts --group stacks`); each exporter's `/metrics` must show
    `pg_up 1` / `pgbouncer_up 1`.
    For shipped Prometheus/Grafana examples, also query the metrics through Prometheus and check Grafana's provisioned datasource: a healthy exporter does not prove scrape filters retain what its dashboard needs. Use disposable Compose state and remove it after the check.
@@ -736,7 +736,7 @@ updated before proceeding to Phase 10/12. No exceptions.
 2. **Breaking changes**: Separate section with "action required" flag
 3. **Development (non-image) changes**: One line max, or omit if trivial
 
-**Standard categories** (in impact order): `Breaking` | `Security` | `Fixed` | `Changed` | `Added` | `Deprecated` | `Removed` | `Development`. Do not invent categories beyond this set.
+Use the category order in AGENTS.md § Changelog. Keep Compose-only changes in the final `### Compose deployments` section.
 
 **Format**:
 

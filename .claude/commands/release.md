@@ -93,7 +93,7 @@ git show refs/heads/dev:CHANGELOG.md
 
 **Audit rules**:
 
-1. **Consumer-first ordering**: Accept the standard CHANGELOG categories: `Breaking`, `Security`, `Fixed`, `Changed`, `Added`, `Deprecated`, `Removed`, `Development`. Reorder by impact: Breaking first, then Security/Fixed, then Changed, Added, Deprecated, Removed, then Development last. Do NOT invent categories beyond this set.
+1. **Consumer-first ordering**: Follow AGENTS.md § Changelog. Move every Compose-only bullet to the final `### Compose deployments` section. Check the rendered release notes: an image-only upgrade must show none of those bullets under “What’s Changed”.
 2. **Net-delta only**: If X went v1→v2→v3 during dev, entry must say "v1→v3"
 3. **Cancellation**: Entries added then reverted = omit entirely
 4. **Development section**: MAX 3 brief lines, no per-file detail

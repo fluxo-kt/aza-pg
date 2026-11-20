@@ -214,7 +214,7 @@ Enable/disable: Edit `scripts/extensions/manifest-data.ts` → `bun run generate
 
 **File**: `CHANGELOG.md` — Keep a Changelog format, user-facing, integrated with GitHub releases
 
-The changelog covers operator-visible changes to the release Docker image and shipped Compose companion images.
+Put image changes in the standard categories. Put changes that require taking new Compose files, including companion pins and migration steps, under a final `### Compose deployments` heading. Name the affected stack or example. GitHub renders that section separately from “What’s Changed”, so an image-only upgrade does not appear to change Grafana or other services.
 **Audience**: Image consumers (ops, developers deploying aza-pg). NOT developers of aza-pg tooling.
 
 **Workflow**:
@@ -241,7 +241,7 @@ The changelog covers operator-visible changes to the release Docker image and sh
 - Agent commands (`.claude/commands/`), skills, test scripts — invisible to image consumers
 - Individual kaizen/audit passes, validate check improvements, internal refactors
 - CI infra fixes (timeouts, retry logic, credentials) — operators can't see these
-- Anything a user running `docker run` cannot observe or act on
+- Changes with no operator impact in either the image or the shipped Compose files
 
 **Development section rules** (when it's worth including at all):
 
@@ -250,7 +250,7 @@ The changelog covers operator-visible changes to the release Docker image and sh
 - NOT OK: "testPgStatStatements now executes a tracked query after reset..."
 - NOT OK: "Fixed ensureCleanDir to use node:fs instead of Bun shell rm..."
 
-**Categories**: Breaking | Security | Fixed | Changed | Added | Deprecated | Removed | Development
+**Categories**: Breaking | Security | Fixed | Changed | Added | Deprecated | Removed | Development | Compose deployments
 
 ## References
 

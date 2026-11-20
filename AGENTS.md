@@ -126,7 +126,7 @@ Enable/disable: Edit `scripts/extensions/manifest-data.ts` → `bun run generate
 
 **Detection**: POSTGRES_MEMORY → cgroup v2 → /proc/meminfo | CPU via `nproc`
 
-**Workload** (`POSTGRES_WORKLOAD_TYPE`): `mixed` (default, 120 conn) | `web` (200) | `oltp` (300) | `dw` (100)
+**Workload**: `POSTGRES_WORKLOAD_TYPE` selects a profile. The entrypoint sizes connections for the memory available. See README “Auto-Config”.
 
 **Storage** (`POSTGRES_STORAGE_TYPE`): `ssd` (default) | `hdd` | `san`
 
@@ -206,7 +206,7 @@ Enable/disable: Edit `scripts/extensions/manifest-data.ts` → `bun run generate
 
 **Annotated Tags Have TWO SHAs**: `git ls-remote ... refs/tags/vX.Y` returns the tag OBJECT SHA (not usable for `rev-parse HEAD`). Use `refs/tags/vX.Y^{}` (caret-brace) to get the peeled COMMIT SHA — this is what `HEAD` resolves to after `git clone --branch vX.Y`. Always verify with both: `git ls-remote URL 'refs/tags/TAG' 'refs/tags/TAG^{}'`.
 
-**BuildKit SBOM Shape**: `docker/build-push-action sbom:true` emits per-platform SBOMs as `unknown/unknown` OCI attestation manifests with `application/vnd.in-toto+json` SPDX layers. Do NOT verify with deprecated `cosign download sbom`; verify every runnable platform has a matching attestation manifest.
+**Release SBOM**: Verify SPDX attestations for each runnable platform with `scripts/release/verify-sbom.ts`. Read the publish workflow before describing how it builds, signs, or attaches them.
 
 **Bun OSV install gate**: `bun install` exits 1 when the `bunfig.toml` scanner finds a CVE, even in a transitive dev dependency. Fix it with a `package.json` `overrides` entry pinning a patched version; add an expiring `.bun-osv.json` ignore only when no patched version exists; never bypass the scanner by env. Read `docs/TOOLING.md#Bun OSV install gate` (full procedure, what `validate-bun-osv.ts` enforces) before changing an install site or bumping the scanner.
 
@@ -214,12 +214,13 @@ Enable/disable: Edit `scripts/extensions/manifest-data.ts` → `bun run generate
 
 **File**: `CHANGELOG.md` — Keep a Changelog format, user-facing, integrated with GitHub releases
 
-Put image changes in the standard categories. Put changes that require taking new Compose files, including companion pins and migration steps, under a final `### Compose deployments` heading. Name the affected stack or example. GitHub renders that section separately from “What’s Changed”, so an image-only upgrade does not appear to change Grafana or other services.
+Before writing or reviewing a release note, ask what the operator must update to see the change. Pull only the aza-pg image → use the image categories. Apply new Compose files → use the final `### Compose deployments` section and name the affected stack or example. If both ship a change, state each surface's impact and upgrade action in its own section.
+Verify release-note claims against the artifact that owns them: manifest and image for bundled components, Compose diff for companion services, entrypoint for runtime defaults, publish workflow for attestations. Preview the rendered notes before publishing.
 **Audience**: Image consumers (ops, developers deploying aza-pg). NOT developers of aza-pg tooling.
 
 **Workflow**:
 
-1. Track image-affecting changes in `[Unreleased]` section
+1. Track image and Compose changes in `[Unreleased]`, using the placement rule above
 2. Focus on: extension updates, nixpkgs (server, glibc, library) changes, breaking changes, security fixes
 3. The release commit dates itself: `/release` runs `bun scripts/release/date-changelog.ts`, which moves `[Unreleased]` under `## [v<pg>-<UTC timestamp>] - <date>`. publish.yml takes the tag name and the GitHub notes from that newest heading, so every branch shows the release dated the moment it ships and the anchor merge brings it to dev
 4. Non-image changes: 1-2 brief bullets max in `### Development` — omit if trivial

@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 /**
  * Every enabled manifest entry whose shipped code differs from the newest release must be named in
- * CHANGELOG.md's [Unreleased] (AGENTS.md "Changelog": one entry per component).
+ * the image notes in CHANGELOG.md's [Unreleased] (AGENTS.md "Changelog": one entry per component).
  *
  * Shipped code = the pinned source commit plus the content of every patch applied to it (build.patches).
  * Comparing versions alone is not enough: a patch-only change (a lockfile bump that clears a CVE) moves no
@@ -16,7 +16,7 @@
  */
 
 import { $ } from "bun";
-import { newestRelease } from "../release/changelog";
+import { newestRelease, releaseNoteSections } from "../release/changelog";
 
 type Entry = {
   name: string;
@@ -73,17 +73,21 @@ const byName = (entries: Entry[]) => new Map(entries.map((e) => [e.name, e]));
 const before = byName(JSON.parse(oldManifest.stdout.toString()).entries);
 const now = byName((await Bun.file(MANIFEST).json()).entries);
 const start = changelog.indexOf("## [Unreleased]");
-const unreleased = changelog.slice(start, changelog.indexOf(baselineHeading, start)).toLowerCase();
+const imageNotes = changelog
+  .slice(start, changelog.indexOf(baselineHeading, start))
+  .split(/^## /m)
+  .map((section) => releaseNoteSections(section).image.toLowerCase());
 
 const missing: string[] = [];
 for (const name of new Set([...before.keys(), ...now.keys()])) {
   const changed = (await shipped(before.get(name), tag)) !== (await shipped(now.get(name), null));
-  if (changed && !unreleased.includes(name.toLowerCase())) missing.push(name);
+  if (changed && !imageNotes.some((section) => section.includes(name.toLowerCase())))
+    missing.push(name);
 }
 
 if (missing.length > 0) {
   console.error(
-    `CHANGELOG.md does not name, in the sections after ${tag}: ${missing.join(", ")}.\n` +
+    `CHANGELOG.md does not name these components in the image notes after ${tag}: ${missing.join(", ")}.\n` +
       `Their shipped code (pinned commit or build.patches content) differs from release ${tag}, so an operator ` +
       `upgrading from it gets a change the changelog does not mention. Add one entry per component as AGENTS.md ` +
       `"Changelog" says: "<name> <version in ${tag}> → <current>" with the concrete fix from upstream's notes for ` +
@@ -92,4 +96,4 @@ if (missing.length > 0) {
   );
   process.exit(1);
 }
-console.log(`Every component changed since ${tag} is named in the changelog sections after it.`);
+console.log(`Every component changed since ${tag} is named in the image notes after it.`);

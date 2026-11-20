@@ -383,7 +383,7 @@ cosign verify-attestation \
   ghcr.io/fluxo-kt/aza-pg@sha256:<digest>
 ```
 
-**Verify BuildKit SBOM attestations:**
+**Verify the per-platform SPDX SBOM attestations:**
 
 ```bash
 bun scripts/release/verify-sbom.ts --image ghcr.io/fluxo-kt/aza-pg@sha256:<digest>

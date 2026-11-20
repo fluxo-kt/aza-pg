@@ -39,7 +39,7 @@ import {
   loadManifest,
   type Manifest,
 } from "./config-generator/manifest-loader";
-import { newestRelease } from "./release/changelog";
+import { newestRelease, releaseNoteSections } from "./release/changelog";
 import { warning } from "./utils/logger";
 
 const PROJECT_ROOT = join(import.meta.dir, "..");
@@ -638,12 +638,9 @@ function generateMarkdown(
   lines.push("");
 
   // Compose users need these upgrade notes, but pulling the database image cannot change companion services.
-  const changes = changelogContent ?? "";
-  const composeHeading = /^### Compose deployments$/m.exec(changes);
-  const imageChanges = changes.slice(0, composeHeading?.index).trim();
-  const composeChanges = composeHeading
-    ? changes.slice(composeHeading.index + composeHeading[0].length).trim()
-    : "";
+  const { image: imageChanges, compose: composeChanges } = releaseNoteSections(
+    changelogContent ?? ""
+  );
   if (imageChanges) {
     lines.push("## 📋 What's Changed");
     lines.push("");

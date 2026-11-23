@@ -41,6 +41,12 @@ export type ValidationCheck = {
   affects?: (path: string) => boolean;
 };
 
+// A check reading only files of these kinds, plus its own script (a checker change can change its verdict).
+const reads =
+  (script: string, ...kinds: RegExp[]) =>
+  (path: string): boolean =>
+    path === script || kinds.some((kind) => kind.test(path));
+
 const TYPESCRIPT_INPUT = (path: string): boolean =>
   /\.tsx?$/.test(path) ||
   /(^|\/)tsconfig[^/]*\.json$/.test(path) ||
@@ -265,6 +271,7 @@ async function validate(
       command: ["bun", "scripts/ci/validate-local-actions.ts"],
       description: "Validate local GitHub Action metadata and local action references",
       required: true,
+      affects: reads("scripts/ci/validate-local-actions.ts", /^\.github\//),
     },
     {
       name: "Script References",
@@ -384,6 +391,7 @@ async function validate(
         : ["bun", "scripts/check-sql.ts"],
       description: fixMode ? "Auto-formatting SQL files" : "SQL formatting and syntax validation",
       required: true,
+      affects: reads("scripts/check-sql.ts", /\.sql$/, /^\.sql-formatter\.json$/, /^bun\.lock$/),
     },
     // Unit tests: no Docker, catch logic bugs before CI.
     // Test files are auto-discovered via glob — no manual registration needed.

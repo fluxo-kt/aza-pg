@@ -15,7 +15,7 @@
 import { $ } from "bun";
 import { basename } from "node:path";
 import { GENERATED_FILES } from "./generated-files";
-import { error, info, success, warning } from "./utils/logger";
+import { error, info, warning } from "./utils/logger";
 
 /**
  * Staged regular files. Symlinks (mode 120000, e.g. this repo's `CLAUDE.md -> AGENTS.md`) are skipped: every fixer
@@ -63,12 +63,21 @@ async function withUnstagedChanges(files: string[]): Promise<string[]> {
   return out.trim().split("\n").filter(Boolean);
 }
 
+/** Path → staged blob id, from one `git ls-files -s -z` call (`<mode> <blob> <stage>\t<path>` records). */
+async function stagedBlobs(files: string[]): Promise<Map<string, string>> {
+  const records = (await $`git ls-files -s -z -- ${files}`.text()).split("\0").filter(Boolean);
+  return new Map(
+    records.map((record) => {
+      const [meta = "", path = ""] = record.split("\t");
+      return [path, meta.split(" ")[1] ?? ""];
+    })
+  );
+}
+
 /**
  * Main pre-commit logic
  */
 async function preCommit(): Promise<void> {
-  info("🔧 Pre-commit: Auto-fixing issues...");
-
   const stagedFiles = await getStagedFiles();
   if (stagedFiles.length === 0) {
     info("No staged files to check");
@@ -76,6 +85,7 @@ async function preCommit(): Promise<void> {
   }
 
   const filesToRestage: string[] = [];
+  const before = await stagedBlobs(stagedFiles);
   const manifestStaged = stagedFiles.includes("scripts/extensions/manifest-data.ts");
 
   // Checked before any fixer writes: afterwards every fixed file differs from its staged copy.
@@ -95,14 +105,10 @@ async function preCommit(): Promise<void> {
 
   // 1. Check if manifest-data.ts changed → auto-regenerate everything
   if (manifestStaged) {
-    info("📦 Manifest changed - auto-regenerating all artifacts...");
     try {
       await $`bun run generate`.quiet();
-      success("✅ Auto-regenerated all artifacts");
-
       // Stage all generated files (imported from generated-files.ts - single source of truth)
       await stageFiles([...GENERATED_FILES]);
-      info("📝 Auto-staged generated files");
     } catch (err) {
       error("❌ Failed to regenerate artifacts", err);
       throw err;
@@ -115,10 +121,8 @@ async function preCommit(): Promise<void> {
   );
 
   if (lintableFiles.length > 0) {
-    info("🔍 Auto-fixing linting issues...");
     try {
       await $`bun run oxlint:fix ${lintableFiles}`.quiet();
-      success("✅ Auto-fixed linting issues");
       filesToRestage.push(...lintableFiles);
     } catch (err) {
       // Oxlint --fix doesn't fail on unfixable issues, so this is a real error.
@@ -140,10 +144,8 @@ async function preCommit(): Promise<void> {
   );
 
   if (formattableFiles.length > 0) {
-    info("💅 Auto-formatting code...");
     try {
       await $`bun run prettier:write ${formattableFiles}`.quiet();
-      success("✅ Auto-formatted code");
       filesToRestage.push(...formattableFiles);
     } catch (err) {
       error("❌ Failed to format code", err);
@@ -155,10 +157,8 @@ async function preCommit(): Promise<void> {
   const sqlFiles = stagedFiles.filter((f) => f.endsWith(".sql"));
 
   if (sqlFiles.length > 0) {
-    info("🗄️  Auto-formatting SQL files...");
     try {
       await $`bun scripts/format-sql.ts --write ${sqlFiles}`.quiet();
-      success("✅ Auto-formatted SQL files");
       filesToRestage.push(...sqlFiles);
     } catch (err) {
       warning("⚠️  Some SQL files couldn't be auto-formatted", err);
@@ -168,23 +168,28 @@ async function preCommit(): Promise<void> {
   // 4. Re-stage all auto-fixed files
   if (filesToRestage.length > 0) {
     await stageFiles([...new Set(filesToRestage)]); // deduplicate
-    info("📝 Auto-staged fixed files");
   }
-
-  success("✅ Pre-commit auto-fixes complete!");
+  // The one success line: which committed files the hook changed, from staged blob ids, so it never claims a fix
+  // that did not happen (committers, agents especially, may not read the diff).
+  const after = await stagedBlobs(stagedFiles);
+  const fixed = stagedFiles.filter((f) => before.get(f) !== after.get(f));
+  if (fixed.length > 0) info(`hook fixed and staged: ${fixed.join(" ")}`);
 
   // The fast checks run on every commit so a failure stops here, not in CI after a push. They run after the fixes,
   // so nothing the hook can fix blocks the commit. They read the working tree, not the commit candidate: another
   // person's unfinished file can fail them, and a file missing from the commit can pass (CI's validate:all sees it).
   // shellcheck and yamllint stay in validate:all.
-  info("🧪 Running fast checks (bun run validate)...");
   // `--staged`: lint/format take only the staged files, and checks declaring `affects` run only when a staged path
   // can change their verdict (a git hook spends work only on what the commit carries).
-  const validate = Bun.spawn(["bun", "scripts/validate.ts", "--staged"], {
-    stdout: "inherit",
-    stderr: "inherit",
+  // Output is kept and shown only on failure: a hook that prints every passing check on every commit trains
+  // everyone to stop reading it. One pipe for both streams keeps the check's lines in order.
+  const validate = Bun.spawn(["sh", "-c", "exec bun scripts/validate.ts --staged 2>&1"], {
+    stdout: "pipe",
+    stderr: "ignore",
   });
-  if ((await validate.exited) !== 0) {
+  const [report, code] = await Promise.all([new Response(validate.stdout).text(), validate.exited]);
+  if (code !== 0) {
+    process.stderr.write(report);
     // Exit directly: a thrown Error makes Bun print this file's source around the throw, burying the check's output.
     error(
       "Commit blocked: `bun run validate` failed. Fix the check named above, then commit again."

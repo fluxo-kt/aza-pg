@@ -140,7 +140,7 @@ Enable/disable: Edit `scripts/extensions/manifest-data.ts` → `bun run generate
 
 **Linting**: oxlint (fast) + prettier + shellcheck + yamllint | TS strict mode
 
-**Hooks**: bun-git-hooks — pre-commit auto-fixes + regenerates if manifest changed, then runs `bun run validate`; a failing check blocks the commit
+**Hooks**: bun-git-hooks — pre-commit auto-fixes + regenerates if manifest changed, then runs `validate.ts --staged`: lint/format take the staged files, and a check declaring `affects` runs only when a staged path can change its verdict (declare it for every check whose inputs are listable). A failing check blocks the commit; success is silent
 
 **CI**: `ci.yml` (pushes, PRs) | `publish.yml` (releases: amd64+arm64 build, test gate, Cosign signing; a failed gate publishes nothing)
 
@@ -152,7 +152,7 @@ Enable/disable: Edit `scripts/extensions/manifest-data.ts` → `bun run generate
 - ❌ Hardcoded counts in docs → ✅ Reference `docs/.generated/docs-data.json`
 - ❌ KiB/MiB/GiB labels, or a size converted between 1000 and 1024 bases → ✅ our own sizes read KB/MB/GB and mean 1024-based units (`formatSize`, `scripts/utils/logger.ts`; `Size Units` in `validate` refuses IEC labels). Exception: public surfaces (changelog, release notes) quote a size a standard tool reports, Docker first of all (`docker images`, `docker system df`), exactly as it prints it (decimal), so an operator running that tool sees our number; scripts produce that form with `formatDockerSize`
 - ❌ Complex bash in YAML → ✅ Extract to TypeScript script
-- ❌ Skip validation → ✅ pre-commit runs `bun run validate`; run `bun run validate:all` (what CI runs) yourself when the change touches a `.sh` or YAML file: ShellCheck (info level) and yamllint run only there
+- ❌ Skip validation → ✅ pre-commit runs `validate.ts --staged`; run `bun run validate:all` (what CI runs) yourself when the change touches a `.sh` or YAML file: ShellCheck (info level) and yamllint run only there
 - ❌ A suite giving a shipped input a value no real deployment writes (bigger memory limits, an explicit default preload list, a mounted getkey) → it hides the defect it works around → ✅ suites run shipped defaults; an override carries the reason inline (e.g. it is the subject under test)
 - ❌ A workflow step running a suite file (`bun scripts/test/test-<name>.ts`) → ✅ `bun scripts/test-all.ts --group <g> --image <ref>`: `SUITES` is the only suite list, so a hand-listed step drifts (`validate` refuses it)
 

@@ -175,7 +175,7 @@ async function preCommit(): Promise<void> {
   const fixed = stagedFiles.filter((f) => before.get(f) !== after.get(f));
   if (fixed.length > 0) info(`hook fixed and staged: ${fixed.join(" ")}`);
 
-  // The fast checks run on every commit so a failure stops here, not in CI after a push. They run after the fixes,
+  // The fast checks a commit can turn red run here, so a failure stops here, not in CI after a push. They run after the fixes,
   // so nothing the hook can fix blocks the commit. They read the working tree, not the commit candidate: another
   // person's unfinished file can fail them, and a file missing from the commit can pass (CI's validate:all sees it).
   // shellcheck and yamllint stay in validate:all.

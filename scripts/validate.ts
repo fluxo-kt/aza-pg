@@ -36,7 +36,16 @@ export type ValidationCheck = {
   // costs milliseconds and needs no Docker, so gating it behind --all/CI would let its defect land via
   // `bun run validate` (the documented pre-commit gate) and only fail later.
   fast?: boolean;
+  // `--staged` (the pre-commit hook) skips a check whose `affects` no staged path matches: a git hook spends
+  // work only on what the commit carries. Unset = the check reads inputs nobody has declared yet, so it runs.
+  affects?: (path: string) => boolean;
 };
+
+const TYPESCRIPT_INPUT = (path: string): boolean =>
+  /\.tsx?$/.test(path) ||
+  /(^|\/)tsconfig[^/]*\.json$/.test(path) ||
+  path === "package.json" ||
+  path === "bun.lock";
 
 /**
  * Validation result with optional output capture
@@ -366,6 +375,7 @@ async function validate(
       command: ["bun", "run", "tsc", "--noEmit"],
       description: "Type checking (requires full project context)",
       required: true,
+      affects: TYPESCRIPT_INPUT,
     },
     {
       name: "SQL Validation",
@@ -390,7 +400,11 @@ async function validate(
               .sort();
             return {
               name: "Unit Tests",
-              command: ["bun", "test", ...testFiles],
+              // Staged: Bun picks the test files whose import graph reaches a changed path.
+              command: stagedOnly
+                ? ["bun", "test", "--changed=HEAD", ...testFiles]
+                : ["bun", "test", ...testFiles],
+              affects: TYPESCRIPT_INPUT,
               description: `Unit tests (${testFiles.length} files, auto-discovered via glob)`,
               required: true,
             };
@@ -469,12 +483,19 @@ async function validate(
   ];
 
   // Determine which checks to run
-  const checks =
+  const staged = stagedOnly
+    ? Bun.spawnSync(["git", "diff", "--cached", "--name-only", "-z"])
+        .stdout.toString()
+        .split("\0")
+        .filter(Boolean)
+    : [];
+  const checks = (
     mode === "all"
       ? [...coreChecks, ...extendedChecks]
       : // Default (fast) mode still runs the cheap extended checks (fast: true) so the defects
         // they catch are blocked at the pre-commit gate, not just in --all/CI.
-        [...coreChecks, ...extendedChecks.filter((c) => c.fast)];
+        [...coreChecks, ...extendedChecks.filter((c) => c.fast)]
+  ).filter((c) => !stagedOnly || !c.affects || staged.some(c.affects));
 
   // Checks run concurrently by default: they are independent, and one by one they sum to more than the time
   // budget (--all is dominated by two network lookups that overlap everything else). No check writes the tree

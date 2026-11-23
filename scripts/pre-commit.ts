@@ -178,7 +178,12 @@ async function preCommit(): Promise<void> {
   // person's unfinished file can fail them, and a file missing from the commit can pass (CI's validate:all sees it).
   // shellcheck and yamllint stay in validate:all.
   info("🧪 Running fast checks (bun run validate)...");
-  const validate = Bun.spawn(["bun", "run", "validate"], { stdout: "inherit", stderr: "inherit" });
+  // `--staged`: lint/format take only the staged files, and checks declaring `affects` run only when a staged path
+  // can change their verdict (a git hook spends work only on what the commit carries).
+  const validate = Bun.spawn(["bun", "scripts/validate.ts", "--staged"], {
+    stdout: "inherit",
+    stderr: "inherit",
+  });
   if ((await validate.exited) !== 0) {
     // Exit directly: a thrown Error makes Bun print this file's source around the throw, burying the check's output.
     error(

@@ -1,0 +1,657 @@
+{
+  "image": "ghcr.io/fluxo-kt/aza-pg:18.7-202611261839-single-node@sha256:4f9649bf84a00cfb586ae0bdd2bb648ba962bc717d714abf5e57fe94c4f2b8d3",
+  "platforms": {
+    "amd64": [
+      {
+        "digest": "sha256:140cf8ee0b5639f00f9cb44c7e4d69ace0d72f475af9aa94b57582065369764b",
+        "paths": ["v1jhglxvr6fz42y51b94zm266bfvzvw1-index_advisor-0.2.1"]
+      },
+      {
+        "digest": "sha256:51d8fcf512e9f4162c48fd07729b76dce05e20fd9b4fd03427f49778663a6ea4",
+        "paths": ["80v5n8kdscr9r2ls8h72s8ppwmccwrgm-xgcc-16.2.0-libgcc"]
+      },
+      {
+        "digest": "sha256:0417f06e795ed3a28751d6f45fb68b1f9dac59f11226563294f7a84a5d689e87",
+        "paths": ["qk6cz4ba571znqrsyhma192y8h50yi05-gcc-16.2.0-libgcc"]
+      },
+      {
+        "digest": "sha256:c45e5ad59a3ea18a234c1fa3e0839b7959d66bab6310205c530051894748cd03",
+        "paths": ["x6gfi0rx49j7w4ckbz4s61hf46yqv6nz-pgmq-1.13.2"]
+      },
+      {
+        "digest": "sha256:60bcb0377bfda566760eca259764e5ddc8ff93cb8163d8896cdb41090bf67df4",
+        "paths": ["d56p3jpksslx6pqypzl53xidcxxrz2kc-nss-cacert-3.131.1"]
+      },
+      {
+        "digest": "sha256:cab59f80ab6e9ae3768259f07772caf9fef23fb9dfa4ea50f54a545c5d5f93f5",
+        "paths": ["4r0d1hm8458zz59xrh22ga2p0nkwvbpy-libunistring-1.4.2"]
+      },
+      {
+        "digest": "sha256:7566aa19b58b9bcfbc8b90fdaf70b7ff999750bed617be82e63840549d9c60dd",
+        "paths": ["s92hlmg73b3zlw38dfgm13v9cah2bm80-tzdata-2026f"]
+      },
+      {
+        "digest": "sha256:a6cf02beb9d0994702756869e4da47d6fb6a57470eac82f15ddcf03c22a819b9",
+        "paths": ["rwq5g35321vg407qwg7ynsqfz77iyrrp-libidn2-2.3.8"]
+      },
+      {
+        "digest": "sha256:87bc2dc5966664a4746cd59943eb4282c2fdffa384511a6fb1ffa6e49c97fc83",
+        "paths": ["r3hvhzl5fxhrgn0rfy5g7rda17702pj4-glibc-2.44-57"]
+      },
+      {
+        "digest": "sha256:bdd8675d87ec51d20bbc99de44d4f6665a6b88dc01d9f26b4bd82ad8b539a151",
+        "paths": ["lwzll891ljmsdan9bx3qharmscx81yaj-pg-safeupdate-1.7"]
+      },
+      {
+        "digest": "sha256:1edecf05b1104e0d5a9121b8fca3f1195f666b3cd3ec8f4ba80116809303fc98",
+        "paths": ["0wkck35d4njjrfy5mmbawbvy3j4rqx3l-su-exec-0.3"]
+      },
+      {
+        "digest": "sha256:e1e6fd0c748e6256e1b4bffb9b04245c3016823a53b04445bc96c5ee18493886",
+        "paths": ["qm9mr1fc7vq458bgi47i2dnl4h4qi1y8-tini-0.19.0"]
+      },
+      {
+        "digest": "sha256:5586a1ea462fe582ec1ac4e3b6aef57838495b9a8b20e2ddad4390b71a3d7391",
+        "paths": ["sqr4w6rplqykwajwzwbx689pz6cfgmcx-pg_plan_filter-1.0.0"]
+      },
+      {
+        "digest": "sha256:f8bf1b61ae8bba982d3f5b6e3432895309d6af71fc377911588fcbaad689525a",
+        "paths": ["0xghrzn59fxqds4c0rny3cqxmsafp82p-glibc-2.44-57-getent"]
+      },
+      {
+        "digest": "sha256:1a67fc2fcb3ad1e54a81410f44ed4ab67bbe271815e6295d7d0fea676776d0c7",
+        "paths": ["w1yjim8r4a2cv9zkp1avmq2sfz8wxdms-getent-glibc-2.44-57"]
+      },
+      {
+        "digest": "sha256:4f16383c25143aa9b73512c1d91899318b463619caae65b870a7e27eb2657f24",
+        "paths": ["2pdghj7fhihzb7zzy7bp66qr61qh79d0-pg_hashids-unstable-8c404dd"]
+      },
+      {
+        "digest": "sha256:c4878b6eb7cd74602711b2350bf19d7cb2618f0012870b2831e8c9fb71d99b61",
+        "paths": ["k09l334yhzy9b52dckbwmi0vfw2wx7xg-set_user-4.3.0"]
+      },
+      {
+        "digest": "sha256:a45659d64627bb1bfb0790a01ae940e76c0b886e0cca953d61da59dee19774ba",
+        "paths": ["bfjjm3rj692pj2m6wqd3wkism3yc34sb-pgaudit-18.1"]
+      },
+      {
+        "digest": "sha256:ea7b5e1a8a8c5bbe3b857f9fe2cad8a41296980dd7f87e5eff076e34badd8453",
+        "paths": ["930sd5x7lp8xnwvzk2fpzg5ffwbjgbcz-bzip2-1.0.8"]
+      },
+      {
+        "digest": "sha256:469aeb9b389dfa4b7beb4369b40ded2be4374ae0ea675625263d6bc502a90935",
+        "paths": ["hzr6xd6i4hxax19mj165p8nsy5n8l6ci-attr-2.6.0"]
+      },
+      {
+        "digest": "sha256:a1be84f6265c1c96c38b0b91908f90430a0a627c3a706037c9cb107324b5a5e6",
+        "paths": ["00h958521nfsxkb5c1gs612yxgzplbpk-wal2json-2.7"]
+      },
+      {
+        "digest": "sha256:2b5650ae0294d1c1ac436151d6b8c94faa9ff3c84d98264476365601e6f9b48c",
+        "paths": ["kp68n1q6r8lzpf5mxjmfasn3zq2pql4x-zlib-1.3.2"]
+      },
+      {
+        "digest": "sha256:1323c5fa95ca06bec06c73d1d244f41a5001db56438d0d7ed1402dd3094cb927",
+        "paths": ["j7nqmiia4h15b5gsqjdv091nsg9i1axp-acl-2.4.0"]
+      },
+      {
+        "digest": "sha256:0703979988224d36dcc704b1999c8a9c02b3e4029a1b2790ac4217fcc0f0f4de",
+        "paths": ["dv8gah7z4vkj1qgvgcyamdrjqqm6blfk-hypopg-1.4.5"]
+      },
+      {
+        "digest": "sha256:fc1765413c07340d668758ec8f5f1432047824fbd59cff3ab3712919dc840a74",
+        "paths": ["pd6kmgkpz1bmpck9sc2yr520hmvrzm1l-gzip-1.15"]
+      },
+      {
+        "digest": "sha256:eabfd47533dececea73e71440020d47bd34082fad4316de10eeda4ab71e84ac6",
+        "paths": ["fh4gjym6r23h5nwwqg6m6gx5bfxsbbp5-pg_hll-2.21"]
+      },
+      {
+        "digest": "sha256:2d792a79d9d784c5dcbaae1073ae2fdde2609cea23770f385b890e7c747d181d",
+        "paths": ["x3yrj48d2rgk2kgvnicaqvw4ygirh6l3-msgpack-c-7.0.2"]
+      },
+      {
+        "digest": "sha256:d9078674e4cbedc46d18a35a474fef75946fa8437ebcddbc151b27b399f0f665",
+        "paths": ["y2i08xyk1mv8cn07xdv1dsw11v9kjiaf-pg_stat_monitor-2.4.1"]
+      },
+      {
+        "digest": "sha256:61e6f916078c9f742fc34052addb48e513f40c07bc9e1df94d82dbf74598c142",
+        "paths": ["2slk4gxc605zqc9k3spzlli96vql7m14-nghttp2-1.70.0-lib"]
+      },
+      {
+        "digest": "sha256:70fab079f773943eaee5a6c75c600e2d5a59ed861063fc0e46df0b25ea0bcb9a",
+        "paths": ["c3x1l7bihfvff6aky75phg0d389xd7i6-supautils-4.0.1"]
+      },
+      {
+        "digest": "sha256:c055c6b6791f8dc1ad9b023f81560468ea0057f9c09b9ce0c6336c598d9caf49",
+        "paths": ["2f32l9p6dchas8d1gbybzqvx2mnfinww-lz4-1.10.0-lib"]
+      },
+      {
+        "digest": "sha256:3d87b7375c81986b0a1e86bfaddfa5c09c8b395d8ed4653735ab8e56c70d2fd7",
+        "paths": ["rgkgahpq277k2ak1zdxhi72k3093r62k-xxhash-0.8.3"]
+      },
+      {
+        "digest": "sha256:190d03f9b21ca077d46bc784dc31b71574bb9f35cfe1100ea09a3a6383a0f435",
+        "paths": ["xwqj3sd31id8wj8cx3gn3hphwsmqsmmm-rum-1.3.15"]
+      },
+      {
+        "digest": "sha256:1a77f709c4ccad51673d29922751671b69e2a2701874e79890b5433560375987",
+        "paths": ["qrivf1w0s1nfxqr47zz5xrzn71rcrisa-libsodium-1.0.22-unstable-2026-10-15"]
+      },
+      {
+        "digest": "sha256:99f6bde9e2acb8583c8f3137167a173b2cea9cfdb9c2a39658665d51d967d8ba",
+        "paths": ["x275j18p7dx6kv7vfj45saapbhbljia4-gnused-4.10"]
+      },
+      {
+        "digest": "sha256:9792fc47994b0b7c0e778513b230b14e9b28f6603a3dfa85f7bcc13e020f9755",
+        "paths": ["9zgbbs3c89il1npgzb2jckyp7cqx5niw-pgvector-0.8.7"]
+      },
+      {
+        "digest": "sha256:2f688e708d4ad3d1f972f85dea8ca645953892fde07a36e85e9bd1077ae2ee0b",
+        "paths": ["in0sp11d98slvijsmawk5bsyf0z5p1l1-supabase_vault-0.3.2"]
+      },
+      {
+        "digest": "sha256:de8571d49b1d1cf7979bd2fe92dff47a404560f72573936d16158e85f77219ab",
+        "paths": ["5rwcv30wn6pmf09d2k7fwsliq7hqkh1f-plpgsql-check-2.11.1"]
+      },
+      {
+        "digest": "sha256:3de9fdee3441ff1c11bffecb71d0c6024c19550c41b69c95d8fe1f0cf6c36232",
+        "paths": ["5n1qsd423q10dlscj3k4np04imfv4nm2-xz-5.8.4"]
+      },
+      {
+        "digest": "sha256:5113c40f0abfa83db373d23224e55acd2b72f1f962f303ea3958f5fe56326801",
+        "paths": ["6mm66zaj29q72pcax4xhzgh4vwp6qy0y-xz-5.8.4-bin"]
+      },
+      {
+        "digest": "sha256:3a82cc1143239994a62022014b62400a2d52313bb3816103471289db88f298fa",
+        "paths": ["4pms8fxmzynx269xk13hizbwy79srhb6-pgsodium-3.1.11"]
+      },
+      {
+        "digest": "sha256:b3c6a69f6fad226e6a4808d7fe5391f683fae9c2677e86791339328c09bf047b",
+        "paths": ["wa7a9r7b6asfir8r8wdp7wbzx3dj8qhm-libxml2-2.15.4"]
+      },
+      {
+        "digest": "sha256:88fd8a1700980c48be4c87d573e7cde683e224ede42674e13109e6e04b20ff91",
+        "paths": ["hasnvc0j36gg6qrdsfcx7yivx3c2bpqr-bash-5.3p20"]
+      },
+      {
+        "digest": "sha256:64646ea292b1667022e70ec308ccd34fab6870aa400c9ef49de5d45a5c2f4abf",
+        "paths": ["m9y00qgmfbzvlffgbx0hi5hc38dps46q-pcre2-10.49"]
+      },
+      {
+        "digest": "sha256:1c6784261c68b358a1478f65a56ca310326c9129ce71e61c9c9493fe7a6097fa",
+        "paths": ["459kh2fvd4n7ayy4jbmsafq64pm4yyhj-util-linux-minimal-2.42.4-lib"]
+      },
+      {
+        "digest": "sha256:1e06c0d1b3983e261526a2eda44fc82785f06761d912ff8af9bc4dd821909d34",
+        "paths": ["5sgjjiqn90zmvlvlgadw7ss00nn3hpjb-gnugrep-3.12"]
+      },
+      {
+        "digest": "sha256:470f1961e952452a1b1b7b24a7d3a64f6d63f110ea5dd1ad8b31f7800b61526f",
+        "paths": ["53wag47axb3bjnwn0imzksh4c9w3mgx7-glibc-2.44-57-bin"]
+      },
+      {
+        "digest": "sha256:7ca2d8d6026f14c5c5b6305afec6f8bd1ffbaa5f468d45f76b0827154a9176ed",
+        "paths": ["6jw5614njszmn5v325j9lq1fwp4p6lyx-gawk-5.4.1"]
+      },
+      {
+        "digest": "sha256:fed9e735806c82092390872b6cca5aae8278d3449f517ed3c6e4e4533fb7b2e0",
+        "paths": ["adz753psjvfr4j597fprrh4p0cvjylx9-ncurses-6.6"]
+      },
+      {
+        "digest": "sha256:bd69a806b9b32f65763bd3b25e95b211a22611182965f6956149c17ff1917f1a",
+        "paths": ["ga33b6wdnwl7lzkizgxfs9fraramsajy-readline-8.3p3"]
+      },
+      {
+        "digest": "sha256:15a0e066db90022c04530667ccdeb205365f24ec3cd51c7fb4d6dd3692b678c0",
+        "paths": ["hdjkd70ci7m3pc2a4crcfc92js0x639z-pg_partman-5.5.1"]
+      },
+      {
+        "digest": "sha256:d086eddf00f7bfc00a9aafeb950fe94241e4ec37b5c91798e32d085a87432089",
+        "paths": ["3h4ifcg10i9j0kj5c0cmas23v15pc7cl-openssl-3.5.9"]
+      },
+      {
+        "digest": "sha256:33f85f2a6bb922548aee05ff91202949bd42e1d8190c3705174d1f4cc51e1019",
+        "paths": ["9pkiinx75jf4pxq4zmgz4c57jdcy2lva-postgresql-18.7-lib"]
+      },
+      {
+        "digest": "sha256:9c64c7e2e1398f5912b73941e2ef105da698848631c0a7daac142aabd9386959",
+        "paths": ["2s2gwmajkc4s6lnnqphfld9xyg0vrf6b-pg_cron-1.6.8"]
+      },
+      {
+        "digest": "sha256:7526c5bba576faddeb2d0b29fd0ab7c964b268d84713958f9a4783d13aba8642",
+        "paths": ["81x9kqpigpvwflnibpqxagicb5x93am2-curl-8.23.0"]
+      },
+      {
+        "digest": "sha256:7209da7816af36a2c4a206e093ba2f020c83b97816e51af4a195ebceed24f70f",
+        "paths": ["myhwfdgqm39yms5clinafii9i1nmq43h-gcc-16.2.0-lib"]
+      },
+      {
+        "digest": "sha256:f17ffdfe2a55015f2868e5c2b19b848548fd68660b33bd2a620c04306cc1a016",
+        "paths": ["n41x7sgqdfg66rqmwg6jv52ib2cnrsna-pgsql-http-1.7.2"]
+      },
+      {
+        "digest": "sha256:b51fcb957453e2914ad3d31aee0bace393c7b176d351a2638ad1cf3bd15c47b8",
+        "paths": ["vnm73c9laviq71kiak07l7x4zd6z112m-pg_net-0.20.5"]
+      },
+      {
+        "digest": "sha256:d7ab80a81ca96f1f7aec6973801bdd1a05d23eedeae6295a80dc06ec54daaad2",
+        "paths": ["8mn4gd14g7mh9gl34pjqy2b5vcdh19ai-libbacktrace-0-unstable-2026-05-03"]
+      },
+      {
+        "digest": "sha256:4f4ec6561268f39ea3f2776cc6b3b2612a17791ebd667c9213fbccec79e13b37",
+        "paths": ["110rbvwr6hczfwip0f0277di280d6jl2-aza-pg-locales"]
+      },
+      {
+        "digest": "sha256:dedce9488ed4539812a456d6bd70f5a144be31654b9cd8bf012f51b946763c84",
+        "paths": ["5smwg3fcf30jd7f1ga6imjaipbj0i0k9-gmp-with-cxx-6.3.0"]
+      },
+      {
+        "digest": "sha256:1f09fe282796d1776b2146fa044cfe8665256cd9ab58f4e825e3bdeaf9cd42cf",
+        "paths": ["2a69456iqj6rzzc2ys7l2yypsv1w6l5m-zstd-1.5.7"]
+      },
+      {
+        "digest": "sha256:8458bc2acc1c04988ba546cd2efa7bc220f2b770d0a33660fc3d76dec1840357",
+        "paths": ["h25p2zyy2mrq4d6kmj01z26flpqnqkky-pgvectorscale-0.9.1"]
+      },
+      {
+        "digest": "sha256:8208cd356c75b93ca10a5da794a783708ce61a60abf1dac884a2cb5324f3971b",
+        "paths": ["a50ml7za6h61m4mv4cdbvkl33c6sx5yn-coreutils-9.12"]
+      },
+      {
+        "digest": "sha256:e9e9dc04d8a07dc499dd080e195d20afb6ddada089bace5ccf86eb1b5e8e79d4",
+        "paths": ["wcfzcgnvnjmy7g9bdb87w48xfjdah388-pg_jsonschema-0.3.4"]
+      },
+      {
+        "digest": "sha256:9a2d540effa28a18b6f2441319790ff18e9fad83c5e52cdb6304dae0e1c6ee44",
+        "paths": ["jcfp7ykkgcc3k0dda8j0km7ma0viaizh-diffutils-3.12"]
+      },
+      {
+        "digest": "sha256:f401803d079347a9d90165d4cf18cb827600852346b1f0456f7f53d700d0189f",
+        "paths": ["5zsc280i2i7bqgjn7kln87w1ss6li22f-findutils-4.11.0"]
+      },
+      {
+        "digest": "sha256:8f01e15a4a680cc1908116af0e46dd979a296e3071412ff9d0bb33d635ce32c9",
+        "paths": ["s4fkp2js2vg64a8z66gs42afrmyh82s4-zstd-1.5.7-bin"]
+      },
+      {
+        "digest": "sha256:ba42bfb617b3f695c98867a70c8f19eca4a5eb3cac4108cafc63eefbc320f317",
+        "paths": ["a9ck39n5rizl184qjz2v4db4w8vfkds3-pgbackrest-2.60.1"]
+      },
+      {
+        "digest": "sha256:200df035ce62138734d8742290e7a9c6925cd5e9c295812fe5ef1fe1250c9963",
+        "paths": ["pzrymsqihccda6d2v8xilwllvyvanadn-timescaledb-2.32.1"]
+      },
+      {
+        "digest": "sha256:f104e59491c696fd575a62fcea81740c87ade272a0a3185cb4948cdd8dade84f",
+        "paths": ["4srp806d95qk5gx8hxxdjlmr7cw0lskn-timescaledb_toolkit-1.29.0"]
+      },
+      {
+        "digest": "sha256:6386295a39a3be9a4e9f44db8cfa7a0909e3cfabaa0cfd4879d5099f410ba775",
+        "paths": ["27jrg47w5gyriw2a3bmv7vgrr95gifk2-groonga-16.1.4"]
+      },
+      {
+        "digest": "sha256:d30047d401fa5a369eb8f51c9a2caf4b373a35a7c395b68573eae65278e0397e",
+        "paths": ["hlqnq344qh9j2h8fpkb6aqfinwi510wv-pgroonga-4.1.0"]
+      },
+      {
+        "digest": "sha256:25dbf37bd468b9cf77cee84c7c2c1aea65a63128505407d932585313b2301639",
+        "paths": ["f6sc8iqwxy7ig3lqi07as1pz5mag109i-icu4c-78.3"]
+      },
+      {
+        "digest": "sha256:eae5129c0c08bc21ce10876ecd9b891de12ed1a35d655c1ace2a683e71fbc5c7",
+        "paths": ["f4r6fgaxy8lnvz32hvl2w019n5fknhnx-postgresql-18.7"]
+      },
+      {
+        "digest": "sha256:e32746f5b81ef33994a35571fcad85719cadc033f9e8c41739c1d4ab7a33cb18",
+        "paths": ["whfrfsbp049mc4xqln440f50niyqhbyl-pg_repack-1.5.3"]
+      },
+      {
+        "digest": "sha256:b0e8f597b1ecd30c1c4c4e825efbcb7eb87b3ff0290a73785f1555402924daf3",
+        "paths": ["jmn8f46kj9m3nl5jfgpdjmkwq4nrmc9j-postgresql-18.7-jit"]
+      },
+      {
+        "digest": "sha256:fd4278e7663a3362bd69f4c7f8bcad183ba56de37c58d6bb4c31af15f56a3874",
+        "paths": ["46asics9zawvmxmcc8gv9ha11kl119x7-postgresql-and-plugins-18.7"]
+      },
+      {
+        "digest": "sha256:b56d441cc47a75bb67234139b4059cf3fc002acd20c2812c810f5ccb23782e72",
+        "paths": ["hqcwpdgjda1jg8j7q2rw7bbkp9g4h9b3-aza-pg-files"]
+      },
+      {
+        "digest": "sha256:eac4970914d04a2fa7ec056b30ee971aec342488b76808f643bd706b26eca5d8",
+        "paths": ["p8xh3r95vbnw4kaxp10ydcxd9cw96bzh-pg_config"]
+      },
+      {
+        "digest": "sha256:8b66abd96d665dc1fb59353feec463d70fcafecf8be0791a209f4711b0d36a7c",
+        "paths": ["iigs8whw3kq9zk51axzfd5wcic2i941d-aza-pg-customisation-layer"]
+      }
+    ],
+    "arm64": [
+      {
+        "digest": "sha256:74b7e62ee9336b4c906cceff5766f11127f59315adbc85896804c915e37f279a",
+        "paths": ["icb1vglzqgjf8xl91hpcy25l8s91zrm9-index_advisor-0.2.1"]
+      },
+      {
+        "digest": "sha256:94eb1dc0341dadc13d17cf418eb6253252cc8cd943cda4f325fdee34206db02c",
+        "paths": ["9lvlihnvvwdnjc0bmha7v1rgx9i9pcyk-xgcc-16.2.0-libgcc"]
+      },
+      {
+        "digest": "sha256:f02345ef01457a9b2017c94cbae3a892ae190e8382464919c2c3e2893fae24d2",
+        "paths": ["0hhgbij2wvdb35m9awyd6n90jd1rxx82-gcc-16.2.0-libgcc"]
+      },
+      {
+        "digest": "sha256:0dc040f697db5311c1465c60f60ab6922d1a5b478e62ffdc3924147028f58330",
+        "paths": ["j5i1z5wm15apdhdzas57lyb25ylmy8j9-pgmq-1.13.2"]
+      },
+      {
+        "digest": "sha256:8465366954436a170d7b09490ca53d4cfa824df33f26cead5fdf01a0a197e23a",
+        "paths": ["j21c6l74ch4fdzpl25lsywm0wy95s9gr-nss-cacert-3.131.1"]
+      },
+      {
+        "digest": "sha256:5b68d662f491b4f84fefc1fd3a17ed811f9f1eacf44d700b6660bbfec9a51759",
+        "paths": ["rmyaaa0jky4184n36cxfxyb61sdyn8nl-libunistring-1.4.2"]
+      },
+      {
+        "digest": "sha256:93eb40504d99b433c347304deede862d59b1dd6f81ee12954b3b93c6cc07d213",
+        "paths": ["vbifgniaj4l3zgbkh60lxhrd2vzcyiss-tzdata-2026f"]
+      },
+      {
+        "digest": "sha256:3feedf540c360aaae4add70a12303d4c7fc2d3495a60ff610456fe2493007fa6",
+        "paths": ["zh4wmlrq51lsfyqwmfjsi95zckq2ijxk-libidn2-2.3.8"]
+      },
+      {
+        "digest": "sha256:8c13f96b83d3a6412893a792415309a67971daf724d49fe1e85d6f60619afb79",
+        "paths": ["1q857rs68rs3gijls9wdnsjqnwnv5zd8-glibc-2.44-57"]
+      },
+      {
+        "digest": "sha256:2cdd74a259e73243161c68f8270a5e52f929a3d604ab4599e859151979f1a45f",
+        "paths": ["wzby8hxk5xvkm8fy04dd0s1znszz16rb-pg-safeupdate-1.7"]
+      },
+      {
+        "digest": "sha256:60c702f3012a810a1ef0867ee535702ff7e968a2db44b0cf61ad678be47e2298",
+        "paths": ["sbzc4a8a27kwynasbzqhh29q38ainzf7-pg_plan_filter-1.0.0"]
+      },
+      {
+        "digest": "sha256:13bb8c040d0c5200ec572b872f7c8d3dd7addd9f2ee889ca99893053b7ae9e8c",
+        "paths": ["bm0fxkaxj9gfr4rc6jdnx3bfbwbzb2ai-tini-0.19.0"]
+      },
+      {
+        "digest": "sha256:35c4b855b9ed8e8f12f619290dc2cfd3c1a7c5e2f1a86c9b102058e35981afbe",
+        "paths": ["rssbpzv69b8j6nm756428b6ckz7hghyw-pg_hashids-unstable-8c404dd"]
+      },
+      {
+        "digest": "sha256:e6d9b4ef943efcf29c850da6b2140ca24cf382a5d14819280f80d63d3f4d8c48",
+        "paths": ["qc49vm0r1alzp9zjyscyjdpgwmddnjc3-su-exec-0.3"]
+      },
+      {
+        "digest": "sha256:61c3d35a162c8907734e8cd0029615914fd61358436905c0f20b89d331ef7ba6",
+        "paths": ["1jbi6pfn02dwcnapfr3xsx389yr1pzlw-set_user-4.3.0"]
+      },
+      {
+        "digest": "sha256:b0972cbe8193e79858cadfbcf4858816240221651c086e5a8b35d7389c421c8d",
+        "paths": ["689iwi5hns3dnyk47186zbqym699kmsq-glibc-2.44-57-getent"]
+      },
+      {
+        "digest": "sha256:bada39562720a5c607dd82d3389e02e164b22819bfe1dce0e9fac218a5419627",
+        "paths": ["crsj9zd6n6ysszgz3nz75k8pj739pj0g-getent-glibc-2.44-57"]
+      },
+      {
+        "digest": "sha256:d715d19760f915ece29b44372f91876fe6293f519e72da4096ba50271c776046",
+        "paths": ["ggd14l11gjqhphpm32ac5d22l7wm96kc-pgaudit-18.1"]
+      },
+      {
+        "digest": "sha256:7c4c136b4ad880da78ae19e73e18038089f262b4f23eeb3943f3610c102f5a18",
+        "paths": ["xxiaz700wbnqm88qddfmwc67hyw08826-aza-pg-locales"]
+      },
+      {
+        "digest": "sha256:82a3e7094390ef173e2b70ac54105eb2023bce700f9c4aac54080a3f29358313",
+        "paths": ["csj9bmpbxhal4cna1hf7xxrq3n8lw9ng-wal2json-2.7"]
+      },
+      {
+        "digest": "sha256:04ca1b287972949d37c134d0435dd1ac58280cfec46a33d50777b216a1e7973a",
+        "paths": ["c954451nk8b0h3kp3mnxwsxl6mkgr7g9-attr-2.6.0"]
+      },
+      {
+        "digest": "sha256:379ab51e6c5ebdd025927d176e88cfa3c855db3d664f2e8d4bf5d97dd90e113e",
+        "paths": ["adb8yysavjhkz3m1k7lpmk2xs9dmr9gp-bzip2-1.0.8"]
+      },
+      {
+        "digest": "sha256:57154e86b02616f6afeb2ed3b4afbede3586900c8f1c4c604d417008dcd569ba",
+        "paths": ["xgs0r5n1g5g6hsaiyvrnn65za4gvjmjr-zlib-1.3.2"]
+      },
+      {
+        "digest": "sha256:9967a9b178012b537a413aae636c652122c1fca7f47edb2fd610c8854730e826",
+        "paths": ["q2r36g9izvvpw8gwqkja3yvkfhy7k8p2-acl-2.4.0"]
+      },
+      {
+        "digest": "sha256:5ea4edcc0864865485bf6b72c500d5c345c70c2467bd9ac2624c1cb5e4e34b60",
+        "paths": ["mi4lq5s1aik11jm52qhcid2f3509zhkz-hypopg-1.4.5"]
+      },
+      {
+        "digest": "sha256:580e58b4a3362fd3f17afd1de05e6d4f274e7b87352887a045d59c71d2444b0c",
+        "paths": ["bh1dhcf442mkj7q74d3ia7wcjhspd2xc-pg_hll-2.21"]
+      },
+      {
+        "digest": "sha256:f3d5e8ccdf8bec2b15c17f32007487c7cdfc74e2ce7e11b23ac93f7331e45638",
+        "paths": ["x4g0b33yqq25hf0bs7bhvhq3g20v5cip-gzip-1.15"]
+      },
+      {
+        "digest": "sha256:864b611214f7ad8cb82369952b780017f658a9f60460ef22f450ef91de03c82f",
+        "paths": ["45m0qc42lsdxwa4nx4f507wa3k5bcfl2-pg_stat_monitor-2.4.1"]
+      },
+      {
+        "digest": "sha256:a8a44996ecba1190308090bc538ce063f9335a4ceabdc54c035afed9034d2ab7",
+        "paths": ["j99a9isr8fbsl28dwv26qrpm5v0v48a1-msgpack-c-7.0.2"]
+      },
+      {
+        "digest": "sha256:18ea5d23245713f280a8b5fb7376a76d5f86a0d6ea7d3e490b38acfc60030011",
+        "paths": ["1r8dpvcp6g026ms2kqvdr7rrfcprwibx-nghttp2-1.70.0-lib"]
+      },
+      {
+        "digest": "sha256:4ee2e0588abc4351cb54d486b1ed5c2c050cf649d345aeee4bb0b0634b7d0bb9",
+        "paths": ["29dm143s00p9dyg96rvxym9d9a0fc42b-supautils-4.0.1"]
+      },
+      {
+        "digest": "sha256:892f269b60a7ec1939e4e02bd806409506b57d05b0a93634bb2c2f1d7fbe1a9d",
+        "paths": ["zg095hlh9d8lnvignhjyqg5xk15n4d15-lz4-1.10.0-lib"]
+      },
+      {
+        "digest": "sha256:22ee79a10706ff2078655c8e4c1d0e04f5844b1436e859f8d53baaf8fbe7d811",
+        "paths": ["y4n1vvggynq0h7ki6slb39mp1q65l24i-xxhash-0.8.3"]
+      },
+      {
+        "digest": "sha256:f3b6e8baa7baf42f329ea8f0e2259569d978b3c752668b8233e24bd89fc5d3fb",
+        "paths": ["ajvdf17j2b6d9mfz49k0i32hild0xd45-libsodium-1.0.22-unstable-2026-10-15"]
+      },
+      {
+        "digest": "sha256:98041e87fdcb6e5c2395046b638220a6024dcb36cf53fa96cbb9459f7cdcf51f",
+        "paths": ["mqhpjpajcvm2c8qias0nyvnw8wkb9s0m-supabase_vault-0.3.2"]
+      },
+      {
+        "digest": "sha256:307d4f169449c22a2f2384e0400c44aa7fb6f014bea4c36a01bd0c480ec5f5a8",
+        "paths": ["7hqi690hk0il2pwb0bvys0z1sif8cgdr-rum-1.3.15"]
+      },
+      {
+        "digest": "sha256:3ecabb3d96fe21ccede112aa6f3f0b6da4c9116a51657a443550f8cddd398ffc",
+        "paths": ["56dc6div4gi3bi5a4fh0ip4i9vjvnqq9-pgvector-0.8.7"]
+      },
+      {
+        "digest": "sha256:c2e3ff808ebca730855cf87c5ce7fbe45523dccd1af72c1c1ef0b844e78d9264",
+        "paths": ["5yv04945c9sx22h47ckz4vl3jkjqnmcb-gnused-4.10"]
+      },
+      {
+        "digest": "sha256:8a8e49339060c704687f8ad67fc235ccd26c9fedb0707e1c34edbf7392cd29cd",
+        "paths": ["xb8d5ibirn3mdx2yjs4vccky04fhv8bi-plpgsql-check-2.11.1"]
+      },
+      {
+        "digest": "sha256:6c0a63394900fe32ad0d296c7ad87df547a2de3520418f5e8595d6a82cb46123",
+        "paths": ["4cfiirzwpv2g6nnmkd4k98frdynzb7nb-xz-5.8.4"]
+      },
+      {
+        "digest": "sha256:f5390cfec84ddce52d5e1ddce34be14b3629c32ffcae10f857ac9bb2715ee8da",
+        "paths": ["3gscban1xa436amhqb5wv0dnhj4hxl06-pgsodium-3.1.11"]
+      },
+      {
+        "digest": "sha256:5a3ea7d1c987565e08b09a1bd635a30b1fc1596366804d0c12cb2ea529bd232d",
+        "paths": ["qzazz9irkqlkpbj3dcsbdgcdyv02yw1f-xz-5.8.4-bin"]
+      },
+      {
+        "digest": "sha256:7184df48fc51fc258261859e4ab1ac01fccc540efd29fa889dbbe024cd14bbcc",
+        "paths": ["3jidz6iw6l5x213lkzldpqm06jpjz75j-libxml2-2.15.4"]
+      },
+      {
+        "digest": "sha256:d3bf9077280f4f8f3ee7719b623351522cafc9f8d73b7c9a6aab5d93d8163783",
+        "paths": ["qdfg7f6l6d61jsywqzx21zn6kvpn5pbi-pcre2-10.49"]
+      },
+      {
+        "digest": "sha256:73d871c4e679f44d90f37da28456ee8144a32b1e1cd6d3c02b3af59ae4e9940c",
+        "paths": ["q3z2k03w70g0g1b1qc45r1aqk22xrvaw-util-linux-minimal-2.42.4-lib"]
+      },
+      {
+        "digest": "sha256:a5a4ef90a78073d9f37ccbc3ebb5edd7046cd8c748dedfbe79d9e6762bb7b015",
+        "paths": ["7dwc9h9kw4d3q2536h9yrwpaknx8rbfb-gnugrep-3.12"]
+      },
+      {
+        "digest": "sha256:6f88385438a0ec0783296e739066dc291f8630a523ed41e1e68198e62f3c6f9c",
+        "paths": ["yfs9m43wkcrwf9pl35k6a3n3xajb46m4-glibc-2.44-57-bin"]
+      },
+      {
+        "digest": "sha256:328d6ab377a31fb98e898b016144636ac6ec4004ee67b9ad64e20194a6291251",
+        "paths": ["xl3n26zm1kv1zhj3mma2x929f4sx3dlh-bash-5.3p20"]
+      },
+      {
+        "digest": "sha256:9d4f032fab788650d17e14b1955b9cd4234c1ee353d47cf03cd2b0126102e9be",
+        "paths": ["sp2y53mjk9fifz049rakcb53vrdxgvvb-ncurses-6.6"]
+      },
+      {
+        "digest": "sha256:f5677261acc494cc232326f3841f095b483e764e295ec96a82bbd802c3312fcf",
+        "paths": ["62adp9f907m9iagdl017qfgv816kfwld-gawk-5.4.1"]
+      },
+      {
+        "digest": "sha256:44abe1d811cad122afee334cd6ee944a72e57a1622c8b3b8a2d59e7ba5c26ad9",
+        "paths": ["2pjxr4ghmdwkxgzkkqdjwh0siyvsaww8-readline-8.3p3"]
+      },
+      {
+        "digest": "sha256:83185dcf753c0a04eca38308258b9c1dd38e19958e9d29297782125c83d948c0",
+        "paths": ["8s7q5l0f1843gmcc6ki4k306azy814jz-pg_partman-5.5.1"]
+      },
+      {
+        "digest": "sha256:32293682767bd8171fd057e38e81ed37248ef2783ff2752160088809517d8d98",
+        "paths": ["fnf24f2z4n30ixsjv6vyhikylj7czx0m-openssl-3.5.9"]
+      },
+      {
+        "digest": "sha256:a31205235e57cdde05f3c38996fddb5198e08699a64c5eb93fb2ec23112d9885",
+        "paths": ["mjg6zajqrsrihzn926p4iwm9k18bhcsp-postgresql-18.7-lib"]
+      },
+      {
+        "digest": "sha256:5b75c414c2a37719024f121af226a11c5ba8939cb9e4b66a6f26777fb2a6bb27",
+        "paths": ["4b2dwf25c6fpm5r0z5xxhjjlyjrj407q-pg_cron-1.6.8"]
+      },
+      {
+        "digest": "sha256:02c0f3e8bcd3e1933e7e2fd9477b4a2a78b044721a7ce031ae31c67f4a67f547",
+        "paths": ["w79cl5jdx1hggkmy4miwhb1j9w1pb7qg-gcc-16.2.0-lib"]
+      },
+      {
+        "digest": "sha256:6d6a4ad6145a8143761582a5383947fd436e27a159675b22dfdcdeb116c4b469",
+        "paths": ["v98xdrb6vi4fiyq087cn18gcwri21j1h-libbacktrace-0-unstable-2026-05-03"]
+      },
+      {
+        "digest": "sha256:c738483c396e42ff842d257c257705b0affa3cb6c2e1159b833a381a906a2e40",
+        "paths": ["fhv4ja516rznyvylp34jfcyk33djhx53-curl-8.23.0"]
+      },
+      {
+        "digest": "sha256:7a2b61c52be820d98604d707de51d37a160c878962e02999de622d81a55bcab4",
+        "paths": ["irlhararjd7a1yg674x7d4dh2dmb76ia-pgsql-http-1.7.2"]
+      },
+      {
+        "digest": "sha256:7e1b5a73efeae1e7b7c85068985c57d19ed9a76c2925b3e33cf2d3fa7a41edeb",
+        "paths": ["vzdnhpbcz0v3pql98r6zqgy8501k5m37-pg_net-0.20.5"]
+      },
+      {
+        "digest": "sha256:259502578d32883737175300f71b1550bed2e346c97afadb6f4cb8b0e165a650",
+        "paths": ["6iyxidgw801ibiaxsbl1y33a1rfh5pw6-gmp-with-cxx-6.3.0"]
+      },
+      {
+        "digest": "sha256:3409222df01675120636070b59b9a701368ec86fc8e07ad79379cc1824db0657",
+        "paths": ["9mfhqszzd8cz0si8pg1cdjid35zpy9bm-zstd-1.5.7"]
+      },
+      {
+        "digest": "sha256:2a19d24a9eda414ff8b2e24a6a63c41d1c99399c600d8609a18308e77d75a848",
+        "paths": ["v08k7maz19rfwh26mrmnn9alsbmg7zsk-pgvectorscale-0.9.1"]
+      },
+      {
+        "digest": "sha256:16b91cd389ae00a272baa08336fc6f5b3c162edda7eff32442d87d4537cd575a",
+        "paths": ["jw0lpdmxdr8ixp4a0hmjpvdg4r6y7p35-coreutils-9.12"]
+      },
+      {
+        "digest": "sha256:81e16b3fc251e92d5debae3662522234232dcd454748b736302bda2e98592fde",
+        "paths": ["3ga5nv089b13xw34rcgriarqj2rcakq3-pg_jsonschema-0.3.4"]
+      },
+      {
+        "digest": "sha256:2b748b4729ffd9c2d9096d160273dbc0a0afb89d6b591cdf06eee24da097132d",
+        "paths": ["d7v13lk6x7bagmhpjsgwvypf1dc36wyy-diffutils-3.12"]
+      },
+      {
+        "digest": "sha256:e3d5e6904ec6b84a59101d8bfc204f68b086eb1c65da8734b1a34ce196dc1a3c",
+        "paths": ["6mzjnmv4r2mdf44vbxxd4syy916q4w6r-findutils-4.11.0"]
+      },
+      {
+        "digest": "sha256:4be265db260313b1c45e45486c0ab59437ea6d693515669b496ea43240249c9f",
+        "paths": ["3vmljzi06qk09g2zf3v72f4iqlpjrj1k-zstd-1.5.7-bin"]
+      },
+      {
+        "digest": "sha256:63b02af4cbb98292e4e98db350c5cdaa46086a93141de6b7b22954c47f5562b1",
+        "paths": ["vfdl86pdnd889d485rbx7pprgcnix0l0-pgbackrest-2.60.1"]
+      },
+      {
+        "digest": "sha256:4f7d47eaee909a8beca5cfc7964d0cda60b2cc77c4037dc4ecc92614c1fd7378",
+        "paths": ["jydir7n82i78n3n240nh9a6sb0fq7yyx-timescaledb-2.32.1"]
+      },
+      {
+        "digest": "sha256:b22437b860e5087a26d6683947061098ea64dba8957530f396d7026174b035a6",
+        "paths": ["cgmy1wmpwxkhz7h91qcni4sa9bwlrjl9-timescaledb_toolkit-1.29.0"]
+      },
+      {
+        "digest": "sha256:692a2528253b17129c4eeac22bcdc05267dab32d4bd1eeaa07ecd70df0d0634a",
+        "paths": ["i0bypymwcqs267gancrzsvpwwyawg3sm-groonga-16.1.4"]
+      },
+      {
+        "digest": "sha256:61c7208778de4ab1cd6ad7507666577fb5ce959296336772cc1ab2e5ac8d6198",
+        "paths": ["slx7wiyxr3aswspbslqypi7c1zq8c6lb-icu4c-78.3"]
+      },
+      {
+        "digest": "sha256:886002bce399bfc2efb651859cc6c72f210453529f4ec464dbf61dc605bb226b",
+        "paths": ["d6m72jh0lcp7q1i73n982h3r8rrdwm8r-pgroonga-4.1.0"]
+      },
+      {
+        "digest": "sha256:35cde1db5f0b00d24e26a8194efd36913d098e5e2f3b4c4894869a53055fcc5e",
+        "paths": ["7is5j4x017wwimy1hf8j28qkl6y9d84z-postgresql-18.7"]
+      },
+      {
+        "digest": "sha256:d9159c726ac9ec66e777cef478954f07da1e265bb07544fa9b6733d7cc751997",
+        "paths": ["9d3jz0ya87jg0x96sbg22bp431mvxyga-pg_repack-1.5.3"]
+      },
+      {
+        "digest": "sha256:2ccbbe0a25267abbf8526e0a04bd4fe8de778a5b2581c5932eaa63e0ee25213b",
+        "paths": ["9wnm070lhnfzmnkvi5caghihn1iaafjj-postgresql-18.7-jit"]
+      },
+      {
+        "digest": "sha256:1320fbb6497b0a888dffd7be569c7207c0a2e1747311abcc37dbeb3e8f8533cf",
+        "paths": ["w8sraxm7a28wdgq7nji4jnfzgb2fpmzl-postgresql-and-plugins-18.7"]
+      },
+      {
+        "digest": "sha256:9f375e9fadd858224f02d5fab718b3a38e294c72653dbfeb54b4a407c6db952b",
+        "paths": ["rkr57vx2ymcchvg81riyd3dj58cqymca-aza-pg-files"]
+      },
+      {
+        "digest": "sha256:a3e6de9cb997cc73f4b3d3de2282f672988cb3d8d62e0bb18d188ecfef16a04c",
+        "paths": ["5qr2lwfcaxxncn36xwadvmnc7zfl822s-pg_config"]
+      },
+      {
+        "digest": "sha256:b6d01f7cb1dafe4e9c29e519bc67422a047d7320aec6ee0fa5d4f55f77fbbe31",
+        "paths": ["rcgy2awrvby3qdml8b2z8yyjzy31clgs-aza-pg-customisation-layer"]
+      }
+    ]
+  }
+}

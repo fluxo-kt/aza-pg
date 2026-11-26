@@ -34,6 +34,7 @@ const generators: GeneratorTask[] = [
     dependsOn: ["Manifest"],
   },
   { name: "Entrypoint", script: "scripts/docker/generate-entrypoint.ts", dependsOn: ["Manifest"] },
+  { name: "Previous Image", script: "scripts/docker/generate-previous-image.ts" },
   {
     name: "Image Contents",
     script: "scripts/docker/generate-image-contents.ts",

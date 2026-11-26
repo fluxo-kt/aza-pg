@@ -25,6 +25,14 @@ export const MANIFEST_METADATA = {
   bunImage:
     "oven/bun:1.4.5-alpine@sha256:da816670775f4c2b4e990b6b1847cf5540dcdc721a42033dd331ce7a88ba6a3b",
   /**
+   * The release whose server upgrades older data directories: the last release of the previous PostgreSQL major, by
+   * index digest (a tag can move). A data directory from an older major is upgraded with pg_upgrade by this release's
+   * server, fetched at first start (generate-previous-image.ts records its layers and store paths). `/update` repins it
+   * in the round that bumps the major; within one major it stays the newest release, so the upgrade path is testable.
+   */
+  previousImage:
+    "ghcr.io/fluxo-kt/aza-pg:18.7-202611261839-single-node@sha256:4f9649bf84a00cfb586ae0bdd2bb648ba962bc717d714abf5e57fe94c4f2b8d3",
+  /**
    * glibc locales the image ships (UTF-8), so a session can `SET lc_monetary|lc_numeric|lc_time = '<name>.utf8'`.
    * PostgreSQL reads these from glibc, never from ICU, for to_char's L/D/G/TM patterns and the money type. New
    * clusters do not collate with them (builtin provider, ICU per column). All of glibc's locales take 223 MB; this

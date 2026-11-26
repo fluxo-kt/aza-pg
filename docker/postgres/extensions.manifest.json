@@ -1090,6 +1090,7 @@
   "metadata": {
     "pgVersion": "18.7",
     "bunImage": "oven/bun:1.4.5-alpine@sha256:da816670775f4c2b4e990b6b1847cf5540dcdc721a42033dd331ce7a88ba6a3b",
+    "previousImage": "ghcr.io/fluxo-kt/aza-pg:18.7-202611261839-single-node@sha256:4f9649bf84a00cfb586ae0bdd2bb648ba962bc717d714abf5e57fe94c4f2b8d3",
     "locales": [
       "en_US",
       "en_GB",

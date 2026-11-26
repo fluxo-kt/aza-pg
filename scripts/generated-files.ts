@@ -17,6 +17,7 @@ export const GENERATED_FILES = [
   "docker/postgres/docker-auto-config-entrypoint.sh",
   "docker/postgres/docker-entrypoint-initdb.d/01-extensions.sql",
   "docker/postgres/IMAGE-CONTENTS.txt",
+  "docker/postgres/previous-image.json",
 
   // Documentation
   "docs/.generated/docs-data.json",

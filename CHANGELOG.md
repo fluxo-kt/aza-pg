@@ -10,10 +10,21 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
 
 ## [Unreleased]
 
+### Changed
+
+- **pgBackRest's `pg1-path` follows the image's data directory.** The image sets `PGBACKREST_PG1_PATH` to its PGDATA and the entrypoint to the data directory the server runs; the environment overrides a `pg1-path` in `pgbackrest.conf`, which is now ignored. Backups and `archive_command` then follow the next PostgreSQL major instead of the old cluster's path. With a custom `PGDATA`, also set `PGBACKREST_PG1_PATH` to it for `docker exec … pgbackrest` commands.
+- **The first start on a new image also analyses missing statistics and runs `pgbackrest stanza-upgrade` for each configured stanza**, before clients connect (both do nothing when nothing changed). Cost: where pgBackRest is configured, that start needs its repository reachable; otherwise the container stops, naming the error, and the next start retries.
+
 ### Fixed
+
+- **An empty PGDATA beside another major's cluster no longer starts a new, empty database.** Starting an image of one major on a volume holding another major's cluster (`/var/lib/postgresql/<major>/docker`) ran initdb and served an empty database while the data sat unused beside it. The container now stops, naming the cluster it found; replicas stop the same way.
 
 - **A second container on a live data volume no longer starts a second server on it.** PostgreSQL's own guard cannot see a server in another container, so a second `docker run`/`compose run` of the server on the same volume ran two postmasters on the same files and corrupted them. The entrypoint now holds a lock on the data directory for the server's life: a second container on the same host logs `another container runs a server on …` and waits, then starts by itself once the first stops. Two hosts sharing one network disk are untested. If the lock call fails, the container logs a warning and starts without the guard. Cost: the image gains util-linux's `flock` binary (77 KB).
 - **`docker stop` uses PostgreSQL's fast shutdown again (`StopSignal` SIGINT).** The image declared no stop signal, so Docker sent SIGTERM, PostgreSQL's smart shutdown, which waits for every client to disconnect: with a pooler or any open session the stop ran into Docker's timeout, the server was killed, and the next start replayed WAL. Open transactions are now rolled back and the server stops cleanly.
+
+### Compose deployments
+
+- **`examples/backup/compose.yml` and the phase1 `pgbackrest.conf.example` no longer set `pg1-path`** (`/var/lib/postgresql/18/docker`): the image supplies it. A `PGBACKREST_PG1_PATH` left in your Compose environment overrides the image's and keeps pointing at the 18 path after a major upgrade: remove it.
 
 ## [v18.7-202611261839] - 2026-11-26
 

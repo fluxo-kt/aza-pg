@@ -73,8 +73,9 @@ let
     allowBuiltinFetchGit = true;
   };
 
+  # Attributes for both pgrx paths. cargo-pgrx is not among them: buildPgrxExtension reads it only as a call argument
+  # (generic's call below; pgrxOverride for nixpkgs recipes), so as an attribute it would do nothing.
   pgrxArgs = e: src: {
-    cargo-pgrx = pgrxFor src;
     cargoDeps = cargoDepsFor src;
     buildFeatures = e.build.features or [ ];
     buildNoDefaultFeatures = e.build.noDefaultFeatures or false;
@@ -124,7 +125,7 @@ let
       common = { pname = e.name; version = versionOf e; buildInputs = [ pkgs.openssl ] ++ inputsOf e; };
     in
     if e.build.type == "cargo-pgrx" then
-      pkgs.buildPgrxExtension (common // pgrxArgs e src // { inherit src postgresql; })
+      pkgs.buildPgrxExtension (common // pgrxArgs e src // { cargo-pgrx = pgrxFor src; inherit src postgresql; })
     else if e.build.type == "pgxs" then
       postgresqlBuildExtension (common // {
         src = if (e.build or { }) ? subdir then "${src}/${e.build.subdir}" else src;

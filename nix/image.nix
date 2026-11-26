@@ -164,7 +164,9 @@ let
 in
 pkgs.dockerTools.streamLayeredImage rec {
   name = "aza-pg";
-  tag = "pg${pgMajor}";
+  # docker load creates this name, so the variant carrying an unshipped upgrade gets its own: under the shipped name,
+  # loading it re-pointed aza-pg:pg<major> (the image every suite tests as the release) at the variant.
+  tag = "pg${pgMajor}${lib.optionalString (majorUpgrade && !manifest.metadata.shipMajorUpgrade) "-major-upgrade"}";
   inherit contents;
   extraCommands = baseCommands + lib.optionalString majorUpgrade ''
     install -Dm0755 ${src "docker/postgres/major-upgrade.sh"} usr/local/bin/aza-pg-major-upgrade

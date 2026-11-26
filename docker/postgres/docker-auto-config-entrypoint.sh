@@ -1144,6 +1144,24 @@ if [ "$STARTS_SERVER" = true ] && [ -f "${DATA_DIR}/PG_VERSION" ] && [ ! -f "${D
         { cat "${update_dir}/server.log" >&2; exit 1; }
     update_failed=""
     echo "[POSTGRES] [AUTO-CONFIG] first start on this image: updating extensions and rebuilding indexes whose text order changed with glibc; clients wait until it is done" >&2
+    # Each pgBackRest stanza records the cluster's system id and major; after a major upgrade archive_command fails
+    # until stanza-upgrade, so it runs before the steps below write WAL (the archiver would retry every segment and
+    # stall this start). It is a no-op otherwise ("already up to date"), so it runs on every image change, retried
+    # with the rest until it succeeds, and no state records whether an upgrade happened. `pgbackrest info` lists no
+    # stanzas (exit 0) where pgBackRest is not configured; its "stanza: <name>" lines name the configured ones.
+    if stanzas=$(as_postgres pgbackrest info 2>&1); then
+        for stanza in $(printf '%s\n' "$stanzas" | sed -n 's/^stanza: //p'); do
+            # Exit 0 means the stanza now matches this cluster (upgraded or already so): the operator's proof that
+            # backups follow it.
+            if out=$(as_postgres pgbackrest --stanza="$stanza" --pg1-socket-path="$update_dir" stanza-upgrade 2>&1); then
+                echo "[POSTGRES] [AUTO-CONFIG] pgBackRest stanza '${stanza}' matches this cluster" >&2
+            else
+                update_failed+="pgbackrest --stanza=${stanza} stanza-upgrade: ${out}"$'\n'
+            fi
+        done
+    else
+        update_failed+="pgbackrest info (its repository must be reachable to keep backups working): ${stanzas}"$'\n'
+    fi
     # postgres first: until then an older timescaledb there fails the queries below too. A command substitution, not
     # `< <(…)`: a failed listing must stop the container, never read as "no databases". template0 records no version.
     migrate_database postgres
@@ -1159,27 +1177,11 @@ if [ "$STARTS_SERVER" = true ] && [ -f "${DATA_DIR}/PG_VERSION" ] && [ ! -f "${D
     while IFS= read -r db; do
         [ -z "$db" ] || migrate_database "$db"
     done <<<"$databases"
-    # After a major upgrade: pg_upgrade carries planner statistics since PostgreSQL 18 but not extended ones (CREATE
-    # STATISTICS), so the first queries would plan blind; and each pgBackRest stanza still records the old system id
-    # and major, so archive_command and backups fail until stanza-upgrade. Both are no-ops on data that needs nothing
-    # (--missing-stats-only; "stanza is already up to date"), so they run on every image change, retried with the
-    # rest until all succeed, and no state records whether an upgrade happened. `pgbackrest info` lists no stanzas
-    # (exit 0) where pgBackRest is not configured; its "stanza: <name>" lines name the configured ones.
+    # pg_upgrade carries planner statistics since PostgreSQL 18 but not extended ones (CREATE STATISTICS), so after a
+    # major upgrade the first queries would plan blind. --missing-stats-only makes it a no-op otherwise, so like
+    # stanza-upgrade above it runs on every image change.
     as_postgres vacuumdb -h "$update_dir" --all --analyze-in-stages --missing-stats-only -q ||
         update_failed+="vacuumdb --analyze-in-stages failed"$'\n'
-    if stanzas=$(as_postgres pgbackrest info 2>&1); then
-        for stanza in $(printf '%s\n' "$stanzas" | sed -n 's/^stanza: //p'); do
-            # Exit 0 means the stanza now matches this cluster (upgraded or already so): the operator's proof that
-            # backups follow it.
-            if out=$(as_postgres pgbackrest --stanza="$stanza" --pg1-socket-path="$update_dir" stanza-upgrade 2>&1); then
-                echo "[POSTGRES] [AUTO-CONFIG] pgBackRest stanza '${stanza}' matches this cluster" >&2
-            else
-                update_failed+="pgbackrest --stanza=${stanza} stanza-upgrade: ${out}"$'\n'
-            fi
-        done
-    else
-        update_failed+="pgbackrest info (its repository must be reachable to keep backups working): ${stanzas}"$'\n'
-    fi
     as_postgres pg_ctl -D "$DATA_DIR" -w -m fast stop >/dev/null
     if [ -n "$update_failed" ]; then
         printf '%s\n%s' "[POSTGRES] [AUTO-CONFIG] ERROR: the first start on this image could not bring these databases up to it, so the server was not started; every step is idempotent and the next start retries them all:" "$update_failed" >&2

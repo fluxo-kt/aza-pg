@@ -46,11 +46,15 @@ const hasUpgrade = async (image: string) =>
   ).exitCode === 0;
 
 /** Starts `image` detached on the shared volume. */
-async function start(image: string, env: string[] = []): Promise<string> {
+async function start(
+  image: string,
+  env: string[] = [],
+  dockerArgs: string[] = []
+): Promise<string> {
   const name = generateUniqueContainerName("aza-pg-upgrade");
   created.push(name);
   const envArgs = ["POSTGRES_PASSWORD=upgrade-test", ...env].flatMap((e) => ["-e", e]);
-  await $`docker run -d --name ${name} ${TEST_SERVER_MEMORY} -v ${volume}:/var/lib/postgresql ${envArgs} ${image}`.quiet();
+  await $`docker run -d --name ${name} ${TEST_SERVER_MEMORY} -v ${volume}:/var/lib/postgresql ${dockerArgs} ${envArgs} ${image}`.quiet();
   return name;
 }
 
@@ -114,6 +118,13 @@ test("the previous release's cluster is upgraded at start, refused where it must
     "CREATE TABLE kept (v int)",
     "INSERT INTO kept VALUES (42)",
     "CREATE TABLE blocks (p regproc)",
+    // TimescaleDB keeps chunk catalogs and compressed data in its own tables, with libraries named by version: the
+    // extension most likely to break across pg_upgrade.
+    "CREATE TABLE metrics (t timestamptz NOT NULL, v int)",
+    "SELECT create_hypertable('metrics', 't', chunk_time_interval => interval '1 day')",
+    "INSERT INTO metrics SELECT '2026-01-01'::timestamptz + i * interval '1 hour', i FROM generate_series(1, 100) i",
+    "ALTER TABLE metrics SET (timescaledb.compress)",
+    "SELECT count(compress_chunk(c)) FROM show_chunks('metrics') c",
     // Operator state outside relation data, each lost by a bare pg_upgrade: ALTER SYSTEM's file, and pgsodium's root key.
     "ALTER SYSTEM SET log_min_duration_statement = 4321",
     "ALTER SYSTEM SET archive_mode = on",
@@ -137,7 +148,16 @@ test("the previous release's cluster is upgraded at start, refused where it must
   expect(standby.log).toContain("a standby is not upgraded");
   await onVolume(`rm ${oldData}/standby.signal`);
 
-  const failed = await stopped(await start(upgradeImage));
+  // Offline: the stop must come before anything touches the data and print the command that fills the old server from
+  // the previous image; running exactly that command (volume substituted) must make every later start work offline.
+  const offline = await stopped(await start(upgradeImage, [], ["--network", "none"]));
+  expect(offline.code).toBe(1);
+  const fill = offline.log.split("\n").find((l) => l.trim().startsWith("docker run"));
+  if (!fill) throw new Error(`no copy command in the offline stop:\n${offline.log}`);
+  expect(await onVolume(`ls -A ${newData}`)).toBe("");
+  await $`sh -c ${fill.replace("<your data volume>", volume)}`.quiet();
+
+  const failed = await stopped(await start(upgradeImage, [], ["--network", "none"]));
   expect(failed.code).toBe(1);
   expect(failed.log).toContain("upgrade failed");
   // Rollback: the previous release starts on the old cluster again, data intact, and PGDATA holds no half cluster.
@@ -153,6 +173,13 @@ test("the previous release's cluster is upgraded at start, refused where it must
   await waitForPostgres({ container: upgraded, timeout: 180 });
   expect(await sqlOk(upgraded, "SELECT v FROM kept")).toBe("42");
   expect(await sqlOk(upgraded, "SHOW server_version_num")).toStartWith(String(major));
+  expect(await sqlOk(upgraded, "SELECT sum(v) FROM metrics")).toBe("5050");
+  expect(
+    await sqlOk(
+      upgraded,
+      "SELECT bool_and(is_compressed) FROM timescaledb_information.chunks WHERE hypertable_name = 'metrics'"
+    )
+  ).toBe("t");
   expect(await sqlOk(upgraded, `SELECT decrypted_secret FROM vault.decrypted_secrets`)).toBe(
     SECRET
   );

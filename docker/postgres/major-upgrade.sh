@@ -6,9 +6,9 @@
 # The old server comes from the release pinned in MANIFEST_METADATA.previousImage. Every store path of it that this
 # image lacks is a symlink into $STORE (nix/image.nix); this script fills $STORE from that release's layers, so the
 # old binaries run from their own absolute /nix/store paths although postgres cannot write the store.
-# Data safety: nothing touches OLD_PGDATA until pg_upgrade --check passed; --clone keeps it intact, and when only
+# Data safety: nothing touches OLD_PGDATA until pg_upgrade's consistency checks passed; --clone keeps it intact, and when only
 # --link works, a failure after linking restores its pg_control so the previous image still starts on it.
-set -euo pipefail
+set -Eeuo pipefail # -E: the ERR traps below also fire inside functions
 
 old_data=${1:?usage: aza-pg-major-upgrade OLD_PGDATA NEW_PGDATA}
 new_data=${2:?usage: aza-pg-major-upgrade OLD_PGDATA NEW_PGDATA}
@@ -24,9 +24,11 @@ server_opts="-c shared_preload_libraries=${SHARED_PRELOAD_LIBRARIES:?} -c pgsodi
 log() { echo "[POSTGRES] [MAJOR-UPGRADE] $*" >&2; }
 
 fetch_old_store() {
-  local ref digest path token tmp
-  read -r ref <"$LAYERS"
+  local image ref digest path token tmp
+  read -r image <"$LAYERS"
+  ref=${image%%@*} && ref=${ref%:*} # registry/repo: the tag and digest dropped
   mkdir -p "$STORE"
+  trap 'fetch_failed "$ref" "$image"' ERR
   tmp=$(mktemp -d -p "$STORE")
   trap 'rm -rf "$tmp"' RETURN
   token=$(curl -fsS "https://${ref%%/*}/token?scope=repository:${ref#*/}:pull" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
@@ -43,6 +45,23 @@ fetch_old_store() {
     mv "$tmp/x/$path" "$STORE/$path"
     rm -rf "$tmp/x" "$tmp/layer"
   done < <(tail -n +3 "$LAYERS")
+  trap - ERR
+}
+
+# Store paths this image links to $STORE that are not there yet.
+missing_paths() {
+  local _digest path
+  while read -r _digest path; do
+    if [ -L "/nix/store/$path" ] && [ ! -e "$STORE/$path" ]; then printf '/nix/store/%s ' "$path"; fi
+  done < <(tail -n +3 "$LAYERS")
+}
+
+# Without the registry (an offline host, an outage) nothing has touched the data yet: stop with the one command that
+# fills $STORE from the previous image itself, which holds exactly these paths; the next start then skips the fetch.
+fetch_failed() { # registry/repo, pinned image
+  log "ERROR: cannot download the previous release's server from $1. Copy it from that image instead, then start again:"
+  echo "  docker run --rm -v <your data volume>:/var/lib/postgresql --entrypoint sh $2 -c 'mkdir -p $STORE && cp -a $(missing_paths)$STORE/'" >&2
+  exit 1
 }
 
 # Older releases made template1 refuse connections, and pg_upgrade needs every database but template0 to accept

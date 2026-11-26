@@ -49,7 +49,7 @@ Not on `release`: the agent cannot switch branches, so ask Art to run `! git che
 
 Run every item of `/update`'s "Pre-Flight: Detect Available Updates" and "Pre-Flight: Additional Checks" now, on `dev`, and record one line per item: what it found, or "current". Results from an earlier session or day do not count: nixpkgs, Docker Hub, GitHub releases and npm change daily, and an update held back by the minimum release age becomes due when the age passes. The `check-updates` gate alone misses companion images, Bun packages and runtime, Actions pins and the nixpkgs revision in `flake.lock`. Anything due ⇒ ABORT the release and run `/update` on `dev` first.
 
-Run file-reading checks on the pinned squash tip. Extract its Git archive into an empty scratch directory, run `git init` and stage the extracted files there before linking `node_modules`. The extension checker needs Git, and the Nix flake only sees files tracked by Git. Run EVERY item that reads a repo file from inside that directory (`flake.lock`, `bun outdated`, `actions-up`, the `nix.ts` image tag), never from the checkout: the checkout is `release`, so those commands silently report the last release's pins, and a lock or pin that is stale there reads as an update due (or a due one reads as current). Install there with `bun install --frozen-lockfile` instead of linking `node_modules` when running `bun outdated`, which reads `package.json` and `bun.lock` of the directory it runs in. Stage files only (`git add -A`); a commit there is not needed and its hooks would run against the scratch copy.
+Run `bun scripts/check-current.ts --rev DEV_SQUASH_TIP` (exit 0 current, 1 due, 2 a check failed: unknown, never current). It extracts that revision and runs the automatable items there, never in the checkout: the checkout is `release`, so a hand-run `flake.lock` read, `bun outdated` or `actions-up` reports the last release's pins, and stale work reads as due or due work as current. Then do `/update`'s Additional Checks by hand; with nothing due they record "n/a: no update".
 
 ---
 
@@ -373,7 +373,7 @@ echo "Next steps (all agent work complete):"
 echo "  1. Review commit: git show HEAD"
 echo "  2. Push both branches (main mirrors release; workflow_run runs dev's definitions — a publish.yml fix must be on dev):"
 echo "       git push origin $CURRENT_BRANCH && git push origin $CURRENT_BRANCH:main"
-echo "  3. After publish succeeds, the agent runs bun scripts/release/anchor-merge.ts (Appendix A)"
+echo "  3. The agent waits for CI and publish (see Watching publish below), then runs bun scripts/release/anchor-merge.ts (Appendix A)"
 echo "  4. Then switch back for daily work: git checkout dev"
 ```
 
@@ -423,7 +423,10 @@ To stop instead, report the failure and ask Art to run `! git reset --hard HEAD 
 
 ## Watching publish, and when it fails after the push
 
-publish.yml is a `workflow_run` of CI, so GitHub files it under dev's branch and head SHA, never the release commit: `gh run list --commit <release SHA> --workflow publish.yml` stays empty forever. Find it with `gh run list --workflow publish.yml --limit 1 --json databaseId,createdAt,status,conclusion` and check `createdAt` follows CI's completion on release.
+publish.yml is a `workflow_run` of CI, so GitHub files it under dev's branch and head SHA, never the release commit: `gh run list --commit <release SHA> --workflow publish.yml` stays empty forever. Wait in two steps, each on a state field, never on `gh run watch --exit-status` (it can exit 1 while the run is still going, which reads as a failure):
+
+1. CI on release: `until [ "$(gh run view <ci-id> --json status --jq .status)" = completed ]; do sleep 30; done`, then read its `conclusion`.
+2. publish: select it by time, never as "the latest" (until CI on release finishes, the latest publish run is the previous release's, and it reads as this one succeeding): `gh run list --workflow publish.yml --json databaseId,createdAt --jq '[.[] | select(.createdAt > "<CI createdAt>")][-1].databaseId'`, retried until it prints an id, then wait on its `status` the same way.
 
 If a transient failure clears and the same commit can ship, rerun the whole publish workflow with `gh run rerun <id>`. Cleanup runs after failures and can delete the testing images from successful jobs. A failed-jobs rerun can reuse their digest files after those images are gone.
 

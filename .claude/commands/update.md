@@ -29,6 +29,11 @@ docker info >/dev/null 2>&1 || { orb start 2>/dev/null || open -ga OrbStack; unt
 
 ## Pre-Flight: Detect Available Updates (RUN IN PARALLEL)
 
+**Start with `bun scripts/check-current.ts`** (exit 0 current, 1 due, 2 a check failed): one line each for enabled
+extensions and every pinned image, nixpkgs, sbomnix, the Bun runtime and packages, Actions pins and local Nix, read
+at one committed revision. The items below say how to interpret and act on each line, and cover what it cannot judge
+(release families, prereleases, wrapper-image contents).
+
 Use parallel tool calls or sub-agents only when the active environment supports them. Keep each
 check bounded, verify every returned claim locally, and never let a sub-agent make the decision.
 Do not start implementation from only one row of this list. The update scope is the full matrix
@@ -560,6 +565,12 @@ takes it from nixpkgs, or stops and prints the `pgrx-<version>` input to add to 
 the built derivation: `nix derivation show` of each changed pgrx extension must reference exactly one cargo-pgrx, the
 locked version (a build can pass with the wrong one). Feature flags must match the
 PostgreSQL major (e.g. `features: ["pg18"]`).
+
+**Security fixes in pgrx reach an extension only when it is rebuilt on the fixed pgrx**, and each extension locks its
+own pgrx in its `Cargo.lock`, so one entry on the fixed pgrx proves nothing about the others. For every enabled pgrx entry, read the pgrx releases newer
+than its locked version (`gh release list -R pgcentralfoundation/pgrx`, then `gh release view <tag>`), and apply
+AGENTS.md "Choosing or keeping a component" to each security fix: `rg` the pinned source (a tarball per entry, see the
+PG-minor step above) for the API the fix patched, and fix or record the result as that invariant says.
 
 ### 5.4: Disabling Unmaintained Extensions
 

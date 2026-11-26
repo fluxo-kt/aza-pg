@@ -200,6 +200,10 @@ pkgs.dockerTools.streamLayeredImage rec {
       "PG_MAJOR=${pgMajor}"
       "PG_VERSION=${meta.pgVersion}"
       "PGDATA=/var/lib/postgresql/${pgMajor}/docker"
+      # pgBackRest takes this over a config file's pg1-path (measured), so `docker exec … pgbackrest` follows PGDATA
+      # to the next major after an automatic upgrade instead of backing up the old cluster's path. The entrypoint
+      # sets the server's own (archive_command) to the data directory it runs.
+      "PGBACKREST_PG1_PATH=/var/lib/postgresql/${pgMajor}/docker"
       "LANG=en_US.UTF-8"
       # Nix's glibc reads locales from here, not from /usr/lib/locale.
       "LOCALE_ARCHIVE=${locales}/lib/locale/locale-archive"

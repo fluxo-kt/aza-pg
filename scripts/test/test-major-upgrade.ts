@@ -25,6 +25,13 @@ const IMAGE = resolveImageTag({ argv: [] });
 const PREVIOUS = MANIFEST_METADATA.previousImage;
 const created: string[] = [];
 const volume = generateUniqueContainerName("aza-pg-upgrade-vol");
+// pgBackRest as an operator configures it, with the repository on the same volume. No pg1-path: the image derives it.
+const BACKREST = [
+  "PGBACKREST_STANZA=main",
+  "PGBACKREST_REPO1_PATH=/var/lib/postgresql/repo",
+  "PGBACKREST_ARCHIVE_TIMEOUT=15",
+];
+const SECRET = "survives-the-upgrade";
 
 afterAll(async () => {
   for (const name of created) await $`docker rm -f -v ${name}`.nothrow().quiet();
@@ -54,6 +61,23 @@ async function stopped(name: string): Promise<{ code: number; log: string }> {
   return { code, log: r.stdout.toString() + r.stderr.toString() };
 }
 
+const pgbackrest = (container: string, command: string) =>
+  $`docker exec -u postgres ${container} pgbackrest ${command}`.quiet();
+
+/** psql over TCP, so pg_hba.conf's host rules decide (local socket connections are trusted). */
+async function tcpLogin(container: string, password: string): Promise<number> {
+  const ip = (
+    await $`docker inspect -f ${"{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}"} ${container}`
+      .quiet()
+      .text()
+  ).trim();
+  const r =
+    await $`docker exec -e PGPASSWORD=${password} ${container} psql -X -h ${ip} -U postgres -tAc ${"SELECT 1"}`
+      .nothrow()
+      .quiet();
+  return r.exitCode;
+}
+
 /** Shell as postgres on the volume, through the image's own tools. */
 const onVolume = (script: string) =>
   $`docker run --rm -u postgres -v ${volume}:/var/lib/postgresql --entrypoint bash ${IMAGE} -c ${script}`
@@ -81,13 +105,24 @@ test("the previous release's cluster is upgraded at start, refused where it must
   const newData = `/var/lib/postgresql/${major}/docker`;
 
   // The previous release makes the cluster; regproc is a type pg_upgrade refuses in user tables (a real failure).
-  const old = await start(PREVIOUS, [`PGDATA=${oldData}`]);
+  // The previous release has no PGBACKREST_PG1_PATH of its own, so its containers get the one an operator would write.
+  const oldEnv = [`PGDATA=${oldData}`, `PGBACKREST_PG1_PATH=${oldData}`, ...BACKREST];
+  const old = await start(PREVIOUS, oldEnv);
   await waitForPostgres({ container: old, timeout: 120 });
   await sqlOk(old, [
     "CREATE TABLE kept (v int)",
     "INSERT INTO kept VALUES (42)",
     "CREATE TABLE blocks (p regproc)",
+    // Operator state outside relation data, each lost by a bare pg_upgrade: ALTER SYSTEM's file, and pgsodium's root key.
+    "ALTER SYSTEM SET log_min_duration_statement = 4321",
+    "ALTER SYSTEM SET archive_mode = on",
+    "ALTER SYSTEM SET archive_command = 'pgbackrest archive-push %p'",
+    `SELECT vault.create_secret('${SECRET}')`,
   ]);
+  await $`docker restart ${old}`.quiet();
+  await waitForPostgres({ container: old, timeout: 120 });
+  await $`docker exec -u postgres ${old} mkdir -p /var/lib/postgresql/repo`.quiet();
+  await pgbackrest(old, "stanza-create");
   await $`docker stop ${old}`.quiet();
 
   if (upgradeImage !== IMAGE) {
@@ -107,16 +142,24 @@ test("the previous release's cluster is upgraded at start, refused where it must
   expect(failed.log).toContain("upgrade failed");
   // Rollback: the previous release starts on the old cluster again, data intact, and PGDATA holds no half cluster.
   expect(await onVolume(`ls -A ${newData}`)).toBe("");
-  const restored = await start(PREVIOUS, [`PGDATA=${oldData}`]);
+  const restored = await start(PREVIOUS, oldEnv);
   await waitForPostgres({ container: restored, timeout: 120 });
   expect(await sqlOk(restored, "SELECT v FROM kept")).toBe("42");
   await sqlOk(restored, "DROP TABLE blocks");
   await $`docker stop ${restored}`.quiet();
 
-  const upgraded = await start(upgradeImage);
+  const upgraded = await start(upgradeImage, BACKREST);
   await waitForPostgres({ container: upgraded, timeout: 180 });
   expect(await sqlOk(upgraded, "SELECT v FROM kept")).toBe("42");
   expect(await sqlOk(upgraded, "SHOW server_version_num")).toStartWith(String(major));
+  expect(await sqlOk(upgraded, `SELECT decrypted_secret FROM vault.decrypted_secrets`)).toBe(
+    SECRET
+  );
+  expect(await sqlOk(upgraded, "SHOW log_min_duration_statement")).toBe("4321ms");
+  expect(await tcpLogin(upgraded, "upgrade-test")).toBe(0);
+  expect(await tcpLogin(upgraded, "wrong-password")).not.toBe(0);
+  // check switches WAL and waits for the archive: the stanza was upgraded and archive_command works on the new major.
+  await pgbackrest(upgraded, "check");
   // The fetched old server is gone; the marker names this image's server, so the next start migrates nothing.
   const state = await onVolume(`ls -A /var/lib/postgresql; cat ${newData}/aza-pg-image`);
   expect(state).not.toContain(".aza-old-store");

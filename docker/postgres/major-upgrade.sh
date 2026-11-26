@@ -72,6 +72,19 @@ template1_closed=$(echo "SELECT datallowconn FROM pg_database WHERE datname = 't
   "$old_bin/postgres" --single -D "$old_data" -j postgres | grep -q 'datallowconn = "f"' && echo yes || echo no)
 [ "$template1_closed" = no ] || set_template1_connections "$old_bin" "$old_data" true
 initdb -D "$new_data" -U "$superuser" "$checksums" >/dev/null
+# pg_upgrade moves relation data only. Everything else at OLD_PGDATA's top level is the operator's state and travels:
+# configuration (pg_hba.conf's scram rules, ALTER SYSTEM's postgresql.auto.conf), pgsodium's root key (a new one
+# would leave every encrypted value unreadable), the migration marker, TLS files. Copied before pg_upgrade starts the
+# new server, so the key script finds the old key instead of minting one, and a setting the new major rejects fails
+# inside pg_upgrade, which rolls back. PostgreSQL's own directories and runtime files stay behind.
+shopt -s dotglob nullglob
+for entry in "$old_data"/*; do
+  case ${entry##*/} in
+    base | global | pg_* | PG_VERSION | postmaster.pid | postmaster.opts | current_logfiles) ;;
+    *) cp -a "$entry" "$new_data/" ;;
+  esac
+done
+shopt -u dotglob nullglob
 cd /tmp # pg_upgrade writes its logs and delete_old_cluster.sh to the working directory
 mode=--link
 pg_upgrade -b "$old_bin" -B "$new_bin" -d "$old_data" -D "$new_data" -U "$superuser" -o "$server_opts" -O "$server_opts" --check --clone >/dev/null 2>&1 && mode=--clone
@@ -79,8 +92,6 @@ log "upgrading ${old_data} into ${new_data} (pg_upgrade ${mode})"
 pg_upgrade -b "$old_bin" -B "$new_bin" -d "$old_data" -D "$new_data" -U "$superuser" -o "$server_opts" -O "$server_opts" "$mode" >&2
 trap - ERR
 [ "$template1_closed" = no ] || set_template1_connections "$new_bin" "$new_data" false
-# The marker holds the server the data last ran on; the entrypoint's first-start migration reads it.
-[ ! -f "$old_data/aza-pg-image" ] || cp "$old_data/aza-pg-image" "$new_data/"
 chmod -R u+w "$STORE" && rm -rf "$STORE" # the old server is never needed again: OLD_PGDATA rolls back with the previous image
 # OLD_PGDATA stays: --clone and --link share its blocks or files with NEW_PGDATA, so deleting it frees little, and until
 # the new server starts it is the rollback (pg_upgrade docs, --link).

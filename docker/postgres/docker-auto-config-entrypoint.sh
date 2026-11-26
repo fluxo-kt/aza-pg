@@ -652,6 +652,9 @@ PG_SHAREDIR=$(pg_config --sharedir)
 # and the Nix image's sharedir is a read-only store path. pgsodium.getkey_script below points the server at it.
 PGSODIUM_GETKEY_PATH="/usr/share/postgresql/${PG_MAJOR}/extension/pgsodium_getkey"
 SHARED_PRELOAD_LIBRARIES=${POSTGRES_SHARED_PRELOAD_LIBRARIES:-$DEFAULT_SHARED_PRELOAD_LIBRARIES}
+# pg1-path is by definition the data directory this server runs (pgBackRest takes the environment over its config
+# file), so archive_command and stanza-upgrade below hold even with a custom PGDATA or an old path in the config.
+[ -z "$DATA_DIR" ] || export PGBACKREST_PG1_PATH="$DATA_DIR"
 
 # WAL level configuration (logical for CDC, replica for replication, minimal for single-node)
 # Default: logical (safest, enables CDC extensions like wal2json)
@@ -961,7 +964,6 @@ if [ "$STARTS_SERVER" = true ] && [ -n "$DATA_DIR" ] && [ ! -f "${DATA_DIR}/PG_V
         command -v aza-pg-major-upgrade >/dev/null || die "this image does not upgrade from that major; keep running the image that made it"
         as_postgres env SHARED_PRELOAD_LIBRARIES="$SHARED_PRELOAD_LIBRARIES" PGSODIUM_GETKEY_PATH="$PGSODIUM_GETKEY_PATH" \
             aza-pg-major-upgrade "$old_data" "$DATA_DIR" || exit 1
-        upgraded=true
     fi
 fi
 # The first start on a different image fixes, before the server serves clients, what an image change breaks in an
@@ -1157,10 +1159,22 @@ if [ "$STARTS_SERVER" = true ] && [ -f "${DATA_DIR}/PG_VERSION" ] && [ ! -f "${D
     while IFS= read -r db; do
         [ -z "$db" ] || migrate_database "$db"
     done <<<"$databases"
-    # pg_upgrade carries planner statistics since PostgreSQL 18 but not extended ones (CREATE STATISTICS); without them
-    # the first queries plan blind. --missing-stats-only analyses only what lacks them.
-    [ -z "${upgraded:-}" ] || as_postgres vacuumdb -h "$update_dir" --all --analyze-in-stages --missing-stats-only -q ||
+    # After a major upgrade: pg_upgrade carries planner statistics since PostgreSQL 18 but not extended ones (CREATE
+    # STATISTICS), so the first queries would plan blind; and each pgBackRest stanza still records the old system id
+    # and major, so archive_command and backups fail until stanza-upgrade. Both are no-ops on data that needs nothing
+    # (--missing-stats-only; "stanza is already up to date"), so they run on every image change, retried with the
+    # rest until all succeed, and no state records whether an upgrade happened. `pgbackrest info` lists no stanzas
+    # (exit 0) where pgBackRest is not configured; its "stanza: <name>" lines name the configured ones.
+    as_postgres vacuumdb -h "$update_dir" --all --analyze-in-stages --missing-stats-only -q ||
         update_failed+="vacuumdb --analyze-in-stages failed"$'\n'
+    if stanzas=$(as_postgres pgbackrest info 2>&1); then
+        for stanza in $(printf '%s\n' "$stanzas" | sed -n 's/^stanza: //p'); do
+            out=$(as_postgres pgbackrest --stanza="$stanza" --pg1-socket-path="$update_dir" stanza-upgrade 2>&1) ||
+                update_failed+="pgbackrest --stanza=${stanza} stanza-upgrade: ${out}"$'\n'
+        done
+    else
+        update_failed+="pgbackrest info (its repository must be reachable to keep backups working): ${stanzas}"$'\n'
+    fi
     as_postgres pg_ctl -D "$DATA_DIR" -w -m fast stop >/dev/null
     if [ -n "$update_failed" ]; then
         printf '%s\n%s' "[POSTGRES] [AUTO-CONFIG] ERROR: the first start on this image could not bring these databases up to it, so the server was not started; every step is idempotent and the next start retries them all:" "$update_failed" >&2

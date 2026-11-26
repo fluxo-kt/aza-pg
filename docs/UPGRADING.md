@@ -105,7 +105,7 @@ The entrypoint finds the previous major's cluster (`/var/lib/postgresql/18/docke
 - Its first-start migration then updates every extension, analyses statistics `pg_upgrade` does not carry, and runs `pgbackrest stanza-upgrade` for each configured stanza. The repository must be reachable. Unmeasured: the stanza's next backup is expected to be a full one.
 - On any failure the container stops and the old cluster is left as it was: the previous image still starts on it.
 
-The old cluster stays in the volume (the log names it). With `--clone` or `--copy` it is a complete rollback: start the previous image with `PGDATA` set to it. Once it has run, this image refuses to start on the upgraded PGDATA, which then holds older data: delete PGDATA to upgrade again, or the old cluster to keep PGDATA. With `--link` it is unusable once the new server has started. Delete it when you no longer need it.
+The old cluster stays in the volume (the log names it). With `--clone` or `--copy` it is a complete rollback: start the previous image with `PGDATA` set to it. Once it has run, this image refuses to start on the upgraded PGDATA, since each may then hold writes the other lacks: delete PGDATA to upgrade the old cluster again (losing writes made in PGDATA since the upgrade), or delete the old cluster to keep PGDATA. With `--link` it is unusable once the new server has started. Delete it when you no longer need it.
 
 The container stops instead of upgrading, naming the reason, for a **replica** (upgrade the primary, then re-clone the replica from it) and on an image that does not carry the upgrade, and for a cluster of a major other than the one the image upgrades from.
 

@@ -226,5 +226,5 @@ test("the previous release's cluster is upgraded at start, refused where it must
   await $`docker stop ${back}`.quiet();
   const refused = await stopped(await start(upgradeImage));
   expect(refused.code).toBe(1);
-  expect(refused.log).toContain(`so ${newData} holds older data`);
+  expect(refused.log).toContain(`so each may hold writes the other lacks`);
 }, 280_000);

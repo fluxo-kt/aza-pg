@@ -969,8 +969,10 @@ if [ "$STARTS_SERVER" = true ] && [ -n "$DATA_DIR" ]; then
             aza-pg-major-upgrade "$old_data" "$DATA_DIR" || exit 1
     elif [ -n "$old_data" ] && [ "${old_data}/global/pg_control" -nt "${DATA_DIR}/global/pg_control" ]; then
         # The older cluster ran after this one was made: a rollback to the previous image. Starting here would serve the
-        # copy taken at the upgrade, silently missing every later write. (--link leaves no pg_control there to compare.)
-        die "it ran after ${DATA_DIR} was upgraded from it, so ${DATA_DIR} holds older data. To upgrade again, delete ${DATA_DIR}; to keep it, delete ${old_data}"
+        # copy taken at the upgrade, silently missing every write made since the rollback. (--link leaves no pg_control there to
+        # compare.) File times, not a recorded checkpoint (Unmeasured: tar and rsync -a copies keep them); a false
+        # refusal costs one choice the message names, while a recorded LSN needs stored state and an old-major control reader.
+        die "it ran after ${DATA_DIR} was upgraded from it, so each may hold writes the other lacks. To upgrade it again, delete ${DATA_DIR} (losing writes made there since the upgrade); to keep ${DATA_DIR}, delete ${old_data}"
     fi
 fi
 # The first start on a different image fixes, before the server serves clients, what an image change breaks in an

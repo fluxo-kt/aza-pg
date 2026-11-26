@@ -25,9 +25,14 @@ function so(name: string, sizeMb: number): SharedObjectFile {
 }
 
 describe("selectSharedObjectSize", () => {
-  test("uses manifest soFileName before fallback names", () => {
+  test("measures the versioned library, not a plain-named file beside it", () => {
     const files = [so("vectorscale.so", 1.1), so("vectorscale-0.9.0.so", 0.93)];
     expect(selectSharedObjectSize(files, "vectorscale", "vectorscale-0.9.0.so")).toBeCloseTo(0.93);
+  });
+
+  test("measures TimescaleDB's versioned library, not its loader named by soFileName", () => {
+    const files = [so("timescaledb.so", 0.04), so("timescaledb-2.32.1.so", 0.85)];
+    expect(selectSharedObjectSize(files, "timescaledb", "timescaledb.so")).toBeCloseTo(0.85);
   });
 
   test("falls back to exact extensionName.so", () => {

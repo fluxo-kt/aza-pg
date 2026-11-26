@@ -137,23 +137,23 @@ export function selectSharedObjectSize(
   extensionName: string,
   manifestSoFileName?: string
 ): number | null {
+  // A versioned library is the build itself; next to it, the plain name is a loader that only dlopens it (TimescaleDB's
+  // timescaledb.so is ~45 KB beside timescaledb-<version>.so), so measuring the plain name would hide a broken build.
+  const versionedName = new RegExp(`^${escapeRegExp(extensionName)}-[0-9][a-zA-Z0-9_.-]*\\.so$`);
+  const versioned = files
+    .filter((file) => versionedName.test(file.name))
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .at(-1);
+  if (versioned) return versioned.sizeBytes / (1024 * 1024);
+
   const exactNames = [manifestSoFileName, `${extensionName}.so`].filter(
     (name): name is string => name !== undefined
   );
-
   for (const exactName of exactNames) {
     const file = files.find((candidate) => candidate.name === exactName);
-    if (file) {
-      return file.sizeBytes / (1024 * 1024);
-    }
+    if (file) return file.sizeBytes / (1024 * 1024);
   }
-
-  const versionedName = new RegExp(`^${escapeRegExp(extensionName)}-[0-9][a-zA-Z0-9_.-]*\\.so$`);
-  const versionedFiles = files
-    .filter((file) => versionedName.test(file.name))
-    .sort((a, b) => a.name.localeCompare(b.name));
-  const file = versionedFiles.at(-1);
-  return file ? file.sizeBytes / (1024 * 1024) : null;
+  return null;
 }
 
 /**

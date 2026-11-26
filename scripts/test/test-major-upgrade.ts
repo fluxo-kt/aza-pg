@@ -93,7 +93,14 @@ test("the previous release's cluster is upgraded at start, refused where it must
   const major = Number(
     (await $`docker run --rm --entrypoint sh ${IMAGE} -c ${"echo $PG_MAJOR"}`.quiet().text()).trim()
   );
-  const upgradeImage = (await hasUpgrade(IMAGE)) ? IMAGE : `${IMAGE}-major-upgrade`;
+  // The flag decides which image carries the upgrade, never what IMAGE happens to contain: a tag re-pointed at the
+  // variant once made every suite test it as the release, while this suite silently skipped the shipped refusal.
+  const shipsUpgrade = MANIFEST_METADATA.shipMajorUpgrade;
+  if ((await hasUpgrade(IMAGE)) !== shipsUpgrade)
+    throw new Error(
+      `${IMAGE} ${shipsUpgrade ? "lacks" : "carries"} the upgrade although shipMajorUpgrade is ${shipsUpgrade}: it is not the release image; rebuild it with bun run build`
+    );
+  const upgradeImage = shipsUpgrade ? IMAGE : `${IMAGE}-major-upgrade`;
   if (!(await hasUpgrade(upgradeImage)))
     throw new Error(
       `${upgradeImage} is missing or lacks the upgrade: bun scripts/nix/build-image.ts --major-upgrade --tag ${upgradeImage}`

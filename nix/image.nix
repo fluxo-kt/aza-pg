@@ -136,8 +136,14 @@ let
   # this image is a symlink into the data volume, which the entrypoint fills from that release's layers at first
   # start (docker/postgres/previous-image.json, generate-previous-image.ts). Paths both images share are already here.
   previous = builtins.fromJSON (builtins.readFile (src "docker/postgres/previous-image.json"));
-  previousPaths = pkgs.writeText "previous-store-paths" (lib.concatLines (lib.concatMap (l: l.paths)
-    previous.platforms.${if pkgs.stdenv.hostPlatform.isAarch64 then "arm64" else "amd64"}));
+  previousLayerList = previous.platforms.${if pkgs.stdenv.hostPlatform.isAarch64 then "arm64" else "amd64"};
+  previousPaths = pkgs.writeText "previous-store-paths" (lib.concatLines (lib.concatMap (l: l.paths) previousLayerList));
+  # major-upgrade.sh's input: registry/repo, the old server's store path, then one "<digest> <path>" per layer.
+  previousLayers = pkgs.writeText "previous-layers" (lib.concatLines ([
+    (lib.head (lib.splitString "@" (lib.head (lib.splitString ":" previous.image))))
+    (lib.findFirst (p: lib.hasInfix "-postgresql-and-plugins-" p)
+      (throw "previous-image.json lists no postgresql-and-plugins path") (lib.concatMap (l: l.paths) previousLayerList))
+  ] ++ lib.concatMap (l: map (p: "${l.digest} ${p}") l.paths) previousLayerList));
   # pgConfig reports the combined installation's paths (sharedir, pkglibdir), which the entrypoint,
   # the pg_repack wrapper and the image checks read; the server package itself ships no pg_config.
   contents = [ postgresql pgConfig files pkgs.cacert ] ++ tools;
@@ -159,6 +165,8 @@ pkgs.dockerTools.streamLayeredImage {
     ln -sf ${pkgs.bashNonInteractive}/bin/bash bin/sh
     chmod 1777 tmp
   '' + lib.optionalString majorUpgrade ''
+    install -Dm0755 ${src "docker/postgres/major-upgrade.sh"} usr/local/bin/aza-pg-major-upgrade
+    install -Dm0644 ${previousLayers} usr/local/share/aza-pg/previous-layers
     mkdir -p nix/store
     while read -r p; do
       grep -qxF "/nix/store/$p" ${pkgs.closureInfo { rootPaths = contents; }}/store-paths ||

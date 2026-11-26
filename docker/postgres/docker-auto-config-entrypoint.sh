@@ -1169,10 +1169,13 @@ if [ "$STARTS_SERVER" = true ] && [ -f "${DATA_DIR}/PG_VERSION" ] && [ ! -f "${D
         update_failed+="vacuumdb --analyze-in-stages failed"$'\n'
     if stanzas=$(as_postgres pgbackrest info 2>&1); then
         for stanza in $(printf '%s\n' "$stanzas" | sed -n 's/^stanza: //p'); do
-            out=$(as_postgres pgbackrest --stanza="$stanza" --pg1-socket-path="$update_dir" --log-level-console=info \
-                stanza-upgrade 2>&1) || update_failed+="pgbackrest --stanza=${stanza} stanza-upgrade: ${out}"$'\n'
-            # Its verdict ("upgraded" / "already up to date") is the operator's proof that backups follow the new cluster.
-            printf '%s\n' "$out" | sed -n "s/.*INFO: \(stanza '.*\)/[POSTGRES] [AUTO-CONFIG] pgBackRest \1/p" >&2
+            # Exit 0 means the stanza now matches this cluster (upgraded or already so): the operator's proof that
+            # backups follow it.
+            if out=$(as_postgres pgbackrest --stanza="$stanza" --pg1-socket-path="$update_dir" stanza-upgrade 2>&1); then
+                echo "[POSTGRES] [AUTO-CONFIG] pgBackRest stanza '${stanza}' matches this cluster" >&2
+            else
+                update_failed+="pgbackrest --stanza=${stanza} stanza-upgrade: ${out}"$'\n'
+            fi
         done
     else
         update_failed+="pgbackrest info (its repository must be reachable to keep backups working): ${stanzas}"$'\n'

@@ -160,8 +160,10 @@ test("the previous release's cluster is upgraded at start, refused where it must
   expect(await tcpLogin(upgraded, "upgrade-test")).toBe("");
   expect(await tcpLogin(upgraded, "wrong-password")).toContain("password authentication failed");
   // check switches WAL and waits for the archive: the stanza was upgraded and archive_command works on the new major.
+  // The first-start migration's verdict; the whole log on failure names which step skipped or failed.
   const upgradedLog = (await $`docker logs ${upgraded}`.quiet()).stderr.toString();
-  expect(upgradedLog).toContain("pgBackRest stanza 'main'");
+  if (!upgradedLog.includes("pgBackRest stanza 'main'"))
+    throw new Error(`no stanza-upgrade verdict in the upgraded container's log:\n${upgradedLog}`);
   await pgbackrest(upgraded, "check");
   // The fetched old server is gone; the marker names this image's server, so the next start migrates nothing.
   const state = await onVolume(`ls -A /var/lib/postgresql; cat ${newData}/aza-pg-image`);

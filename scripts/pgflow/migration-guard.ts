@@ -10,7 +10,10 @@
  * guarded statement drops out here without any list of reviewed files to maintain.
  *
  * A lexer, not a regex over the file: dollar-quote tags must match exactly and string literals may contain `cron.`
- * (pgflow's COMMENT ON texts do), which a single pattern cannot get right.
+ * (pgflow's COMMENT ON texts do), which a single pattern cannot get right. It follows PostgreSQL's lexical rules
+ * (manual, "SQL Syntax" › "Lexical Structure": comments, string constants incl. E'' backslash escapes, dollar-quoted
+ * constants): check a change against that section, not memory. A token it mis-ends hides the statements after it,
+ * which is the unsafe direction for this guard.
  */
 export function migrationTimeOptionalRefs(sql: string): string[] {
   let top = "";

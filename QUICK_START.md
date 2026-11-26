@@ -190,14 +190,14 @@ It creates no database users; create `app_user` by hand ([docs/DEPLOYMENT.md](do
 **Internal (Docker network):**
 
 ```
-postgresql://postgres:PASSWORD@pgbouncer:6432/main?pgbouncer=true
+postgresql://postgres:PASSWORD@pgbouncer:6432/main
 ```
 
 **Cross-stack (Coolify):**
 
 ```
 1. Enable "Connect to Predefined Network" → aza-pg-network
-2. Use: postgresql://postgres:PASSWORD@pgbouncer:6432/main?pgbouncer=true
+2. Use: postgresql://postgres:PASSWORD@pgbouncer:6432/main
 ```
 
 ### For Application Users
@@ -207,13 +207,13 @@ These users exist only after you create them, and PgBouncer accepts them only on
 **Read-write:**
 
 ```
-postgresql://app_user:PASSWORD@pgbouncer:6432/main?pgbouncer=true
+postgresql://app_user:PASSWORD@pgbouncer:6432/main
 ```
 
 **Read-only (reporting):**
 
 ```
-postgresql://readonly:PASSWORD@pgbouncer:6432/main?pgbouncer=true
+postgresql://readonly:PASSWORD@pgbouncer:6432/main
 ```
 
 ---

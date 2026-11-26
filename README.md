@@ -18,7 +18,7 @@ PostgreSQL 18 with auto-configuration, comprehensive extensions, and deployment 
 - Docker Compose only (no Kubernetes)
 - Auto-config sizes from `POSTGRES_MEMORY` or the cgroup v2 limit; without either it falls back to the host's RAM and warns
 - Connection limits: 60 (≤2GB), 84 (2-4GB), 102 (4-8GB), 120 (≥8GB) with `mixed` workload default
-- PgBouncer transaction mode: No prepared statements, advisory locks, or LISTEN/NOTIFY
+- PgBouncer transaction mode: no session state between transactions (session `SET`, advisory locks, LISTEN/NOTIFY, SQL `PREPARE`). Drivers' protocol-level prepared statements work: PgBouncer tracks them
 
 ## Extensions
 
@@ -240,7 +240,7 @@ PostgreSQL 18+ uses a new data directory structure (`/var/lib/postgresql/18/dock
 
 **Kubernetes support?** No. Use cloud-native operators.
 
-**Why PgBouncer transaction mode?** Maximizes connection multiplexing. Use :5432 for prepared statements/advisory locks.
+**Why PgBouncer transaction mode?** Maximizes connection multiplexing. Use :5432 for session state (advisory locks, LISTEN/NOTIFY, SQL `PREPARE`).
 
 **Override auto-config?** Pass `-c name=value` to the container command or use `ALTER SYSTEM`; both win over auto-tuning. A value in a `postgresql.conf` file is replaced by the tuned one; from the second start on, the startup log names each such value. `POSTGRES_MEMORY=<MB>` changes the RAM the rules start from.
 

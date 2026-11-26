@@ -21,10 +21,6 @@ Work:
 
 ## Medium
 
-### Docs say prepared statements fail through PgBouncer; the pinned PgBouncer supports them
-
-`README.md` (Limitations; "Why PgBouncer transaction mode?") says transaction mode allows "No prepared statements", and `QUICK_START.md` and `deployments/phase1-single-vps/scripts/setup.sh` give clients `?pgbouncer=true`, Prisma's flag that turns client prepared statements off. The stacks pin `ghcr.io/cloudnative-pg/pgbouncer` (PgBouncer 1.26.1). PgBouncer tracks protocol-level (Parse/Bind) prepared statements in transaction mode since 1.21 and enables it by default since 1.24.0 (`max_prepared_statements = 200`; pgbouncer.org config and changelog, read 2026-11-04); SQL-level `PREPARE`/`EXECUTE` is still forwarded untracked. `pgbouncer.ini.template` does not set the value, so the effective value comes from the image's defaults — unobserved. Why it matters: every query sent unprepared through the pooler is parsed and planned on each call. Fix: read `SHOW CONFIG` for `max_prepared_statements` in the running primary stack, prove a driver's named prepared statement survives a pooled transaction switching backends, then correct both claims and the client advice (which `pgbouncer=true` effects Prisma still needs is unverified).
-
 ### Major upgrades are not automatic yet
 
 A data directory from an older PostgreSQL major must be upgraded at the first start on a new-major image, with no operator step (AGENTS.md "Data directories made by older images…"); `docs/UPGRADING.md` Option A still describes a manual path whose two-major image does not exist. Build this before the next major, then make Option A say "pull the new image".
@@ -44,6 +40,10 @@ Rejected: a two-major image ships a second server that serves nothing after the 
 The PostgreSQL 19 round starts when every shipped extension has a tagged release that builds on 19. TimescaleDB 2.32.1 refuses PostgreSQL above 18 (its main branch supports 19); nixpkgs packages `postgresql_19`, and pgrx 0.20 builds `pg19`.
 
 ## Low
+
+### Two replica containers cloning onto one empty volume at once
+
+The entrypoint's data-directory lock is taken after `stacks/replica/scripts/replica-entrypoint.sh` has cloned with `pg_basebackup`, so two replica containers started together on one empty volume can both clone into it (one started later stops: `pg_basebackup` refuses a non-empty directory). Fix: take the same `flock` on the data directory in the replica script before cloning and keep it through the handover; prove with two replica containers started together on one volume.
 
 ### Report an unavailable image size check as skipped
 

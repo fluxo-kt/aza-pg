@@ -616,7 +616,7 @@ postgresql://postgres:PASSWORD@postgres:5432/main
 **Via PgBouncer (RECOMMENDED for all applications):**
 
 ```
-postgresql://postgres:PASSWORD@pgbouncer:6432/main?pgbouncer=true
+postgresql://postgres:PASSWORD@pgbouncer:6432/main
 ```
 
 **For services in different Coolify stacks:**

@@ -423,7 +423,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     source: {
       type: "git",
       repository: "https://github.com/okbob/plpgsql_check.git",
-      tag: "v2.11.0",
+      tag: "v2.11.1",
     },
     build: { type: "pgxs" },
     runtime: {
@@ -784,7 +784,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     source: {
       type: "git",
       repository: "https://github.com/pgflow-dev/pgflow.git",
-      tag: "pgflow@0.17.2",
+      tag: "pgflow@0.18.0",
     },
     runtime: {
       sharedPreload: false,

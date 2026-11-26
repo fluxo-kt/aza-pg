@@ -210,15 +210,14 @@ function patchRequeueCronSetup(filename: string, upstreamContent: string): strin
   patched = replaceRequired(
     filename,
     patched,
-    "begin\n  -- Remove existing job if any",
-    "begin\n  IF to_regprocedure('cron.schedule(text,text,text)') IS NULL THEN\n    RETURN 'pg_cron is not available in this database; skipped pgflow stalled-task cron setup';\n  END IF;\n\n  -- Remove existing job if any"
+    "begin\n  -- Remove existing jobs if any",
+    "begin\n  IF to_regprocedure('cron.schedule(text,text,text)') IS NULL THEN\n    RETURN 'pg_cron is not available in this database; skipped pgflow stalled-task cron setup';\n  END IF;\n\n  -- Remove existing jobs if any"
   );
-  patched = replaceRequired(filename, patched, "job_id=%s)', \n", "job_id=%s)',\n");
   return replaceRequired(
     filename,
     patched,
-    "Replaces existing job if it exists (idempotent).\nReturns a confirmation message with job ID.';",
-    "Replaces existing job if it exists (idempotent).\nReturns a skipped message when pg_cron is configured in another database.\nReturns a confirmation message with job ID.';"
+    "Replaces existing jobs if they exist (idempotent).\nReturns a confirmation message with job IDs.';",
+    "Replaces existing jobs if they exist (idempotent).\nReturns a skipped message when pg_cron is configured in another database.\nReturns a confirmation message with job IDs.';"
   );
 }
 
@@ -226,14 +225,14 @@ function patchEnsureWorkersVaultAccess(filename: string, upstreamContent: string
   let patched = replaceRequired(
     filename,
     upstreamContent,
-    "nullif((select decrypted_secret from vault.decrypted_secrets where name = 'pgflow_auth_secret'), ''),\n            nullif((select decrypted_secret from vault.decrypted_secrets where name = 'supabase_service_role_key'), '')",
-    "pgflow.aza_vault_secret('pgflow_auth_secret'),\n            pgflow.aza_vault_secret('supabase_service_role_key')"
+    "nullif((select decrypted_secret from vault.decrypted_secrets where name = 'pgflow_auth_secret'), ''),\n          nullif((select decrypted_secret from vault.decrypted_secrets where name = 'supabase_service_role_key'), '')",
+    "pgflow.aza_vault_secret('pgflow_auth_secret'),\n          pgflow.aza_vault_secret('supabase_service_role_key')"
   );
   patched = replaceRequired(
     filename,
     patched,
-    "else (select 'https://' || nullif(decrypted_secret, '') || '.supabase.co/functions/v1' from vault.decrypted_secrets where name = 'supabase_project_id')",
-    "else 'https://' || pgflow.aza_vault_secret('supabase_project_id') || '.supabase.co/functions/v1'"
+    "else (\n          select 'https://' || nullif(decrypted_secret, '') || '.supabase.co/functions/v1'\n          from vault.decrypted_secrets where name = 'supabase_project_id'\n        ) end",
+    "else 'https://' || pgflow.aza_vault_secret('supabase_project_id') || '.supabase.co/functions/v1' end"
   );
 
   return `${VAULT_SECRET_COMPAT_SQL}\n\n\n${patched}`;
@@ -304,11 +303,24 @@ select 'pgflow_telemetry_report', cron.schedule(
   $cron$begin; set local statement_timeout = '5 s'; select pgflow_telemetry.report(); commit;$cron$
 );`;
 
-// The 0.13.2 migration schedules the stalled-task job through upstream's setup function, which fails in a pgflow
-// database without pg_cron. aza-overrides.sql (patched 0063) re-creates that function in its pg_cron-safe form and
-// makes the same call after the migrations, exactly as a fresh install does, so the migration's own call is dropped.
+// Upstream schedules the stalled-task jobs once, in the 0.13.2 migration, and later migrations keep whatever the
+// operator made of them (0.18.0 mirrors a paused or re-timed recovery job onto the new escalation job). Both
+// statements fail in a pgflow database without pg_cron, so each runs only where pg_cron's objects exist. The schedule
+// call must stay in its migration: re-running it after every upgrade (as aza-overrides.sql once did) re-activated
+// paused jobs and reset their interval.
 const REQUEUE_SETUP_CALL_SQL =
   "-- Automatically set up the cron job\nSELECT pgflow.setup_requeue_stalled_tasks_cron();";
+const ESCALATE_MIRROR_SQL = `SELECT cron.schedule_in_database(
+  job_name => 'pgflow_escalate_permanently_stalled',
+  schedule => recovery.schedule,
+  command => 'select pgflow.escalate_permanently_stalled()',
+  database => recovery.database,
+  active => recovery.active
+)
+FROM cron.job AS recovery
+WHERE recovery.jobname = 'pgflow_requeue_stalled_tasks'
+  AND recovery.username = current_user
+  AND recovery.database = current_database();`;
 
 function localMigrationContent(filename: string, content: string): string {
   if (filename.endsWith("_pgflow_requeue_stalled_tasks.sql")) {
@@ -316,7 +328,29 @@ function localMigrationContent(filename: string, content: string): string {
       filename,
       content,
       REQUEUE_SETUP_CALL_SQL,
-      "-- aza-pg: scheduled by aza-overrides.sql after the migrations (pg_cron-safe setup function)"
+      `-- Automatically set up the cron job (aza-pg: only where pg_cron exists in this database)
+DO $aza$
+BEGIN
+  IF to_regprocedure('cron.schedule(text,text,text)') IS NOT NULL THEN
+    PERFORM pgflow.setup_requeue_stalled_tasks_cron();
+  END IF;
+END
+$aza$;`
+    );
+  }
+  if (filename.endsWith("_pgflow_escalate_permanently_stalled.sql")) {
+    return replaceRequired(
+      filename,
+      content,
+      ESCALATE_MIRROR_SQL,
+      `-- aza-pg: only where pg_cron exists in this database
+DO $aza$
+BEGIN
+  IF to_regclass('cron.job') IS NOT NULL THEN
+    PERFORM ${ESCALATE_MIRROR_SQL.slice("SELECT ".length)}
+  END IF;
+END
+$aza$;`
     );
   }
   if (!filename.endsWith("_pgflow_telemetry.sql")) {
@@ -334,6 +368,18 @@ function localMigrationContent(filename: string, content: string): string {
 // differs from what the migrations create: every file the generator patches, plus 0030_utilities.sql, whose
 // is_local() images up to pgflow 0.14.1 replaced with an always-true version (the migrations never redefine it).
 const RESTORED_UPSTREAM_FILES = ["0030_utilities.sql"];
+
+// The schema file's own schedule call is what a fresh install needs; in the overrides, run after every upgrade, it
+// would reset the operator's jobs (see REQUEUE_SETUP_CALL_SQL), so only the function definition is re-applied.
+function overrideContent(filename: string, content: string): string {
+  if (filename !== "0063_function_setup_requeue_stalled_tasks_cron.sql") return content;
+  return replaceRequired(
+    filename,
+    content,
+    "-- Automatically set up the cron job when migration runs\nselect pgflow.setup_requeue_stalled_tasks_cron();",
+    ""
+  );
+}
 
 function overrideFiles(schemas: ReadonlyMap<string, string>): string[] {
   return [...schemas.keys()].filter(
@@ -528,7 +574,10 @@ async function writeUpgradeFixtures(
   }
 
   const overrides = overrideFiles(schemas)
-    .map((f) => `-- Source: ${f}\n${localSchemaContent(f, schemas.get(f) ?? "").trim()}\n`)
+    .map(
+      (f) =>
+        `-- Source: ${f}\n${overrideContent(f, localSchemaContent(f, schemas.get(f) ?? "")).trim()}\n`
+    )
     .join("\n");
 
   await rm(UPGRADE_DIR, { recursive: true, force: true });

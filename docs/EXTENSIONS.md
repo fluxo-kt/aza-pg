@@ -105,7 +105,7 @@ The tables below are generated from `extensions.manifest.json`. Columns indicate
 
 | Extension                                                 | Version                                                                | Enabled by Default | Shared Preload | Documentation                                         | Notes                                                |
 | --------------------------------------------------------- | ---------------------------------------------------------------------- | ------------------ | -------------- | ----------------------------------------------------- | ---------------------------------------------------- |
-| [`plpgsql_check`](https://github.com/okbob/plpgsql_check) | [v2.11.0](https://github.com/okbob/plpgsql_check/releases/tag/v2.11.0) | No                 | No             | [Docs](https://github.com/okbob/plpgsql_check#readme) | Static analyzer for PL/pgSQL functions and triggers. |
+| [`plpgsql_check`](https://github.com/okbob/plpgsql_check) | [v2.11.1](https://github.com/okbob/plpgsql_check/releases/tag/v2.11.1) | No                 | No             | [Docs](https://github.com/okbob/plpgsql_check#readme) | Static analyzer for PL/pgSQL functions and triggers. |
 
 ### queueing
 
@@ -161,7 +161,7 @@ The tables below are generated from `extensions.manifest.json`. Columns indicate
 
 | Extension                                        | Version                                                                          | Enabled by Default | Shared Preload | Documentation              | Notes                                                                     |
 | ------------------------------------------------ | -------------------------------------------------------------------------------- | ------------------ | -------------- | -------------------------- | ------------------------------------------------------------------------- |
-| [`pgflow`](https://github.com/pgflow-dev/pgflow) | [pgflow@0.17.2](https://github.com/pgflow-dev/pgflow/releases/tag/pgflow@0.17.2) | Yes                | No             | [Docs](https://pgflow.dev) | DAG-based workflow orchestration engine with step-by-step task execution. |
+| [`pgflow`](https://github.com/pgflow-dev/pgflow) | [pgflow@0.18.0](https://github.com/pgflow-dev/pgflow/releases/tag/pgflow@0.18.0) | Yes                | No             | [Docs](https://pgflow.dev) | DAG-based workflow orchestration engine with step-by-step task execution. |
 
 <!-- extensions-table:end -->
 

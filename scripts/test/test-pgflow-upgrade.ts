@@ -472,8 +472,20 @@ async function routine(fresh: Promise<string>, hashSql: string): Promise<void> {
   });
 
   await test(`pgflow-upgrade without --from brings a ${release.pgflow} database to the fresh install`, async () => {
+    // An operator's pause and interval survive the upgrade, and the escalation job 0.18.0 adds copies them, as
+    // upstream's migration does: a paused recovery job must never start escalating. The defaults are restored before
+    // the fingerprint, which compares against a fresh install's 15-second jobs.
+    const jobs = `SELECT string_agg(jobname || ' ' || schedule || ' ' || active, ', ' ORDER BY jobname) FROM cron.job WHERE jobname LIKE 'pgflow\\_%stalled%'`;
+    const alter = (schedule: string, active: boolean) =>
+      `SELECT count(cron.alter_job(jobid, schedule => '${schedule}', active => ${active})) FROM cron.job WHERE jobname LIKE 'pgflow\\_%stalled%';`;
+    await psql(container, alter("30 seconds", false));
     const r = await upgrade(container);
     if (r.code !== 0) throw new Error(`exit ${r.code}:\n${r.output}`);
+    const kept = (await psql(container, jobs)).trim();
+    const expected =
+      "pgflow_escalate_permanently_stalled 30 seconds false, pgflow_requeue_stalled_tasks 30 seconds false";
+    if (kept !== expected) throw new Error(`stalled-task jobs after the upgrade: "${kept}"`);
+    await psql(container, alter("15 seconds", true));
     expectSame(
       await fingerprint(container),
       await fresh,

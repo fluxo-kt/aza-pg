@@ -5,8 +5,8 @@
     "": {
       "name": "aza-pg",
       "devDependencies": {
-        "@pgflow/client": "0.17.2",
-        "@pgflow/dsl": "0.17.2",
+        "@pgflow/client": "0.18.0",
+        "@pgflow/dsl": "0.18.0",
         "@types/bun": "^1.4.5",
         "arktype": "^2.2.10",
         "bun-git-hooks": "^0.3.3",
@@ -70,11 +70,11 @@
 
     "@oxlint/binding-win32-x64-msvc": ["@oxlint/binding-win32-x64-msvc@1.95.0", "", { "os": "win32", "cpu": "x64" }, "sha512-I/Fn+Fed1qzb1k2uRjMe2VRtRN1+ZObyU+E76B6v/Ul3Z6JdeAW5zBHSe0n5d8a0ZyU4iorzVy0Rw9LYgo3MSQ=="],
 
-    "@pgflow/client": ["@pgflow/client@0.17.2", "", { "dependencies": { "@pgflow/core": "0.17.2", "@pgflow/dsl": "0.17.2", "@supabase/supabase-js": "^2.49.4", "nanoevents": "^7.0.1", "uuid": "^9.0.0" } }, "sha512-9gF0tpOl5ceAnCiclc5Pgv4LL8DKmuabBcAEuPvUlHBYIrq6iczmEt2WUX01hfjy65AB3HiHZKUjSu5qyM1CDQ=="],
+    "@pgflow/client": ["@pgflow/client@0.18.0", "", { "dependencies": { "@pgflow/core": "0.18.0", "@pgflow/dsl": "0.18.0", "@supabase/supabase-js": "^2.49.4", "nanoevents": "^7.0.1", "uuid": "^9.0.0" } }, "sha512-S10yf6VVKEsAzs5XkdrSGgo2747npUdUnj4gAE5lpa3Oh5XJlsfROsu8H4OqQnZ7zXoW+Pntcs8UP7AjJgSFFA=="],
 
-    "@pgflow/core": ["@pgflow/core@0.17.2", "", { "dependencies": { "@pgflow/dsl": "0.17.2", "postgres": "^3.4.5" } }, "sha512-XegzRe/HFkv0o15FQvPWNLxAk8HEu8f2XazkGHJQeHidIPqYTrC1j9r8CXTmU6AuuDgz5sUzddoizHbMSDokoA=="],
+    "@pgflow/core": ["@pgflow/core@0.18.0", "", { "dependencies": { "@pgflow/dsl": "0.18.0", "postgres": "^3.4.5" } }, "sha512-xgjgn228cGXF9yNqglozGH5rvUH2ZHWPEjKXtLB1eJv5UAihzHwPj6qLfSHmpWG99POWnLT/yB8c+wPkZBRU5w=="],
 
-    "@pgflow/dsl": ["@pgflow/dsl@0.17.2", "", {}, "sha512-XS7LIT6UZjFqFDHblZlvzTXqkh8YaSwEqLj0OR/7GHh0U18aDIR1zTnDjy3osWkmhJm7WdsHsFNpsyvtswkcSg=="],
+    "@pgflow/dsl": ["@pgflow/dsl@0.18.0", "", {}, "sha512-VJeyqV0x5VZjRDiHNl2g1fZZ2pqVi41zk6ZmI3xCg1xlwFT4So1Pi3bHouKfHi4cVfBiXBbl/606ck53o/7OOA=="],
 
     "@squawk-cli/darwin-arm64": ["@squawk-cli/darwin-arm64@2.74.0", "", { "os": "darwin", "cpu": "arm64" }, "sha512-VP9BkRk/0XdTx6hbXvZJVg6zCOMrVFLfEi4FI4y433KlRiAneKbHsjnnrDnmmv34yWSVokQnv7OTPhvw3KJvrg=="],
 

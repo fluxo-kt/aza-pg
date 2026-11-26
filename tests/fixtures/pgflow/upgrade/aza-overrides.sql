@@ -109,118 +109,61 @@ $$;
 COMMENT ON function pgflow.aza_vault_secret (TEXT) IS 'Reads a Supabase Vault secret when vault.decrypted_secrets exists; returns NULL when Vault is not installed in this database.';
 
 
--- Ensure Workers
--- Returns which worker functions should be invoked, makes HTTP requests, and updates last_invoked_at
--- Called by cron job to keep workers running
+-- Reserve and enqueue in the same transaction: delivery cannot precede the
+-- committed pending state, and enqueue failure rolls the reservation back.
+-- Startup eligibility (debounce, pending state, healthy workers) lives in
+-- pgflow.reserve_worker_invocations, shared with manual startup.
 CREATE OR REPLACE FUNCTION pgflow.ensure_workers () returns TABLE (function_name TEXT, invoked BOOLEAN, request_id BIGINT) language sql AS $$
   with
-    -- Detect environment
-    env as (
+    -- Local development targets Kong directly without auth; production
+    -- resolves the project URL and service credentials from Vault.
+    env as materialized (
       select pgflow.is_local() as is_local
     ),
-
-    -- Get credentials: Local mode uses hardcoded URL, production uses vault secrets
-    -- Empty strings are treated as NULL using nullif()
-    -- pgflow_auth_secret takes priority over supabase_service_role_key for production auth
-    credentials as (
+    credentials as materialized (
       select
-        case
-          when (select is_local from env) then null
-          else coalesce(
-            pgflow.aza_vault_secret('pgflow_auth_secret'),
-            pgflow.aza_vault_secret('supabase_service_role_key')
-          )
-        end as service_role_key,
-        case
-          when (select is_local from env) then 'http://kong:8000/functions/v1'
-          else 'https://' || pgflow.aza_vault_secret('supabase_project_id') || '.supabase.co/functions/v1'
-        end as base_url
+        case when e.is_local then null else coalesce(
+          pgflow.aza_vault_secret('pgflow_auth_secret'),
+          pgflow.aza_vault_secret('supabase_service_role_key')
+        ) end as service_role_key,
+        case when e.is_local then 'http://kong:8000/functions/v1' else 'https://' || pgflow.aza_vault_secret('supabase_project_id') || '.supabase.co/functions/v1' end as base_url,
+        e.is_local
+      from env as e
     ),
-
-    -- Only HTTP-started worker functions are supervised via HTTP pings.
-    http_worker_functions as (
-      select wf.function_name, wf.debounce, wf.last_invoked_at
-      from pgflow.worker_functions as wf
-      where wf.enabled = true
-        and wf.start_mode = 'http'
+    targets as materialized (
+      select c.*, array(
+        select wf.function_name from pgflow.worker_functions as wf
+        where wf.enabled and wf.start_mode = 'http'
+      ) as function_names
+      from credentials as c
+      where c.base_url is not null and (c.is_local or c.service_role_key is not null)
     ),
-
-    -- Find functions that pass the debounce check
-    debounce_passed as (
-      select wf.function_name, wf.debounce
-      from http_worker_functions as wf
-      where wf.last_invoked_at is null
-        or wf.last_invoked_at < now() - wf.debounce
-    ),
-
-    -- Find functions that have at least one alive worker
-    functions_with_alive_workers as (
-      select distinct w.function_name
-      from pgflow.workers as w
-      inner join debounce_passed as dp on w.function_name = dp.function_name
-      where w.stopped_at is null
-        and w.deprecated_at is null
-        and w.last_heartbeat_at > now() - dp.debounce
-    ),
-
-    -- Determine which functions should be invoked
-    -- Local mode: all enabled functions (bypass debounce AND alive workers check)
-    -- Production mode: only functions that pass debounce AND have no alive workers
-    functions_to_invoke as (
-      select wf.function_name
-      from http_worker_functions as wf
-      where pgflow.is_local() = true  -- Local: all enabled HTTP functions
-        or (
-          -- Production: debounce + no alive workers
-          wf.function_name in (select dp.function_name from debounce_passed as dp)
-          and wf.function_name not in (select faw.function_name from functions_with_alive_workers as faw)
-        )
-    ),
-
-    -- Make HTTP requests and capture request_ids
-    http_requests as (
-      select
-        fti.function_name,
-        net.http_post(
-          url => c.base_url || '/' || fti.function_name,
-          headers => case
-            when e.is_local then '{}'::jsonb
-            else jsonb_build_object(
-              'Content-Type', 'application/json',
-              'Authorization', 'Bearer ' || c.service_role_key
-            )
-          end,
-          body => '{}'::jsonb
-        ) as request_id
-      from functions_to_invoke as fti
-      cross join credentials as c
-      cross join env as e
-      where c.base_url is not null
-        and (e.is_local or c.service_role_key is not null)
-    ),
-
-    -- Update last_invoked_at for invoked functions
-    updated as (
-      update pgflow.worker_functions as wf
-      set last_invoked_at = clock_timestamp()
-      from http_requests as hr
-      where wf.function_name = hr.function_name
-      returning wf.function_name
+    reservations as materialized (
+      select r.function_name, r.invocation_id, t.base_url, t.service_role_key, t.is_local
+      from targets as t
+      cross join lateral pgflow.reserve_worker_invocations(function_names => t.function_names) as r
     )
-
-  select u.function_name, true as invoked, hr.request_id
-  from updated as u
-  inner join http_requests as hr on u.function_name = hr.function_name
+  -- pg_net delivers asynchronously after this transaction commits.
+  select r.function_name, true,
+    net.http_post(
+      url => r.base_url || '/' || r.function_name,
+      headers => case when r.is_local then '{"Content-Type":"application/json"}'::jsonb
+        else jsonb_build_object(
+          'Content-Type', 'application/json',
+          'Authorization', 'Bearer ' || r.service_role_key
+        ) end,
+      body => jsonb_build_object('invocation_id', r.invocation_id),
+      timeout_milliseconds => 60000
+    )
+  from reservations as r;
 $$;
 
 
-COMMENT ON function pgflow.ensure_workers () IS 'Ensures worker functions are running by pinging them via HTTP when needed.
-In local mode: pings ALL enabled functions (ignores debounce AND alive workers check).
-In production mode: only pings functions that pass debounce AND have no alive workers.
-Debounce: skips functions pinged within their debounce interval (production only).
-Credentials: Uses Vault secrets (pgflow_auth_secret with fallback to supabase_service_role_key, supabase_project_id) or local fallbacks.
-URL is built from project_id: https://{project_id}.supabase.co/functions/v1
-Returns request_id from pg_net for each HTTP request made.';
+COMMENT ON function pgflow.ensure_workers () IS 'Enqueues HTTP startup only when no healthy worker or unexpired pending invocation exists.
+Reservations last 60 seconds; debounce throttles retries. Local development uses the same handshake
+with local URL/auth fallbacks. Credentials: Vault pgflow_auth_secret, falling back to
+supabase_service_role_key, and supabase_project_id. Returns the pg_net request_id;
+handshake state is in worker_functions.';
 
 
 -- Source: 0060_function_cleanup_ensure_workers_logs.sql
@@ -324,38 +267,57 @@ SET
   pg_temp AS $$
 declare
   job_id bigint;
+  escalate_job_id bigint;
 begin
   IF to_regprocedure('cron.schedule(text,text,text)') IS NULL THEN
     RETURN 'pg_cron is not available in this database; skipped pgflow stalled-task cron setup';
   END IF;
 
-  -- Remove existing job if any
+  -- Remove existing jobs if any
   begin
     perform cron.unschedule('pgflow_requeue_stalled_tasks');
   exception
     when others then null;
   end;
 
-  -- Schedule the new job
+  begin
+    perform cron.unschedule('pgflow_escalate_permanently_stalled');
+  exception
+    when others then null;
+  end;
+
+  -- Schedule the recovery job
   job_id := cron.schedule(
     job_name => 'pgflow_requeue_stalled_tasks',
     schedule => setup_requeue_stalled_tasks_cron.cron_interval,
     command => 'select pgflow.requeue_stalled_tasks()'
   );
 
-  return format('Scheduled pgflow_requeue_stalled_tasks (every %s, job_id=%s)',
-    setup_requeue_stalled_tasks_cron.cron_interval, job_id);
+  -- Schedule escalation as its own job and transaction. The jobs may overlap;
+  -- recovery locks step_tasks first, while fail_task() locks the run and step
+  -- first (#689). Separate transactions release recovery locks before the next
+  -- escalation sweep, whose candidate rows are rechecked under lock.
+  escalate_job_id := cron.schedule(
+    job_name => 'pgflow_escalate_permanently_stalled',
+    schedule => setup_requeue_stalled_tasks_cron.cron_interval,
+    command => 'select pgflow.escalate_permanently_stalled()'
+  );
+
+  return format(
+    'Scheduled pgflow_requeue_stalled_tasks (every %s, job_id=%s) and pgflow_escalate_permanently_stalled (job_id=%s)',
+    setup_requeue_stalled_tasks_cron.cron_interval,
+    job_id,
+    escalate_job_id
+  );
 end;
 $$;
 
 
-COMMENT ON function pgflow.setup_requeue_stalled_tasks_cron (TEXT) IS 'Sets up cron job to automatically requeue stalled tasks.
-Schedules pgflow_requeue_stalled_tasks at the specified cron_interval (default: 15 seconds).
-Replaces existing job if it exists (idempotent).
+COMMENT ON function pgflow.setup_requeue_stalled_tasks_cron (TEXT) IS 'Sets up cron jobs to automatically recover and terminalize stalled tasks.
+Schedules pgflow_requeue_stalled_tasks and pgflow_escalate_permanently_stalled
+at the specified cron_interval (default: 15 seconds).
+Escalation runs as a separate job so recovery commits before fail_task()
+locks are taken (#689).
+Replaces existing jobs if they exist (idempotent).
 Returns a skipped message when pg_cron is configured in another database.
-Returns a confirmation message with job ID.';
-
-
--- Automatically set up the cron job when migration runs
-SELECT
-  pgflow.setup_requeue_stalled_tasks_cron ();
+Returns a confirmation message with job IDs.';

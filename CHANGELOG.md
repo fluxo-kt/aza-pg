@@ -10,6 +10,23 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
 
 ## [Unreleased]
 
+### Breaking
+
+- **pgflow 0.17.2 → 0.18.0: run `docker exec <container> pgflow-upgrade` on each pgflow database, then deploy `@pgflow/client`/workers 0.18.0.** Stop pgflow workers first: 0.18.0 workers start through a new invocation handshake (`ensure_workers()` reserves one `invocation_id` per function; duplicate cron starts and manual requests share it), which needs the migration applied first. New: tasks marked permanently stalled are terminalized through the step's `whenExhausted` policy by `pgflow.escalate_permanently_stalled()`, scheduled as its own `pgflow_escalate_permanently_stalled` cron job beside `pgflow_requeue_stalled_tasks` (the upgrade gives it the recovery job's interval and paused state). Workers keep handler results when logging or settlement fails, and store falsy outputs (`0`, `false`, `""`) as given and null outputs as JSON null.
+
+### Fixed
+
+- **pgflow-upgrade (pgflow)** no longer re-activates a paused `pgflow_requeue_stalled_tasks` job or resets its interval: it re-scheduled the job at the default 15 seconds after every upgrade. The upgrade's pg_cron steps are also skipped in databases without pg_cron instead of failing.
+
+### Changed
+
+- **plpgsql_check 2.11.0 → 2.11.1**: checks stack depth while walking deeply nested PL/pgSQL statements (was a possible backend crash), checks `FETCH` from a dynamic cursor as a dynamic query, keeps the dynamic SQL parser hook state alive as long as its plan, releases the error copies kept by the debugger API at the end of each call, and initializes all checker state fields. No SQL changes.
+
+### Compose deployments
+
+- **PgBouncer image ghcr.io/cloudnative-pg/pgbouncer 1.26.1, rebuild 202611121015 → 202611251233** (primary stack and `deployments/phase1-single-vps`): same PgBouncer, rebuilt on current Debian packages.
+- **Grafana 13.3.1 → 13.3.2** (`deployments/phase1-single-vps`): fixes CVE-2026-107561 and CVE-2026-88960; provisioning keeps existing folder identities when it creates child folders.
+
 ## [v18.7-202611192045] - 2026-11-19
 
 ### Breaking

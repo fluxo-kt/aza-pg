@@ -133,4 +133,11 @@ Replaces existing job if it exists (idempotent).
 Returns a confirmation message with job ID.';
 
 
--- aza-pg: scheduled by aza-overrides.sql after the migrations (pg_cron-safe setup function)
+-- Automatically set up the cron job (aza-pg: only where pg_cron exists in this database)
+DO $aza$
+BEGIN
+  IF to_regprocedure('cron.schedule(text,text,text)') IS NOT NULL THEN
+    PERFORM pgflow.setup_requeue_stalled_tasks_cron();
+  END IF;
+END
+$aza$;

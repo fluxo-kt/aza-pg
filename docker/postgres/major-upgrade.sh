@@ -17,8 +17,10 @@ STORE=/var/lib/postgresql/.aza-old-store
 LAYERS=/usr/local/share/aza-pg/previous-layers
 superuser=${POSTGRES_USER:-postgres}
 # pg_upgrade starts both servers itself; timescaledb and pgaudit refuse to load unless preloaded, and pgsodium needs
-# its key script; the entrypoint passes the values the server will run with.
-server_opts="-c shared_preload_libraries=${SHARED_PRELOAD_LIBRARIES:?} -c pgsodium.getkey_script=${PGSODIUM_GETKEY_PATH:?}"
+# its key script; the entrypoint passes the values the server will run with. Neither server archives: their WAL belongs
+# to no backup history, and a carried archive_command fails against the not yet upgraded pgBackRest stanza, its retries
+# holding every server stop for about 4 s (measured: four such stops per upgrade).
+server_opts="-c shared_preload_libraries=${SHARED_PRELOAD_LIBRARIES:?} -c pgsodium.getkey_script=${PGSODIUM_GETKEY_PATH:?} -c archive_mode=off"
 log() { echo "[POSTGRES] [MAJOR-UPGRADE] $*" >&2; }
 
 fetch_old_store() {

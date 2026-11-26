@@ -102,7 +102,8 @@ try {
     // The first execution's backend A must be busy when the second runs, so the second lands on another server. Which
     // server PgBouncer hands a new client is its choice (other connections, polls included, reorder it under load), so
     // holders are started until one is SEEN holding A. Those checks use the local socket, which takes no pooled server;
-    // each holder is awaited until visible, never a delay. A full pool without A held prints "A never held" and the
+    // each holder is awaited until visible, never a delay, or until its psql exits (refused, auth error), which would
+    // otherwise spin until the suite timeout and report nothing. A full pool without A held prints "A never held" and the
     // pids then match, failing below. Holders are killed at the end: a client still open in PgBouncer holds the
     // stack's teardown until Docker's stop timeout.
     const psqlArgs = `psql -X -tA -h pgbouncer -p 6432 -U ${SUPERUSER} -d postgres`;
@@ -111,7 +112,7 @@ try {
     const script = `SELECT pg_backend_pid() \\parse s1
 \\bind_named s1 \\g /tmp/a
 \\! cat /tmp/a
-\\! a=$(cat /tmp/a); n=0; until [ "$(${local} "${held} AND pid = $a")" = 1 ]; do [ $n -lt 20 ] || { echo "A never held" >&2; break; }; ${psqlArgs} -c 'BEGIN; SELECT pg_sleep(600); COMMIT' >/dev/null 2>&1 & echo $! >> /tmp/holders; n=$((n+1)); until [ "$(${local} "${held}")" = $n ]; do :; done; done
+\\! a=$(cat /tmp/a); n=0; until [ "$(${local} "${held} AND pid = $a")" = 1 ]; do [ $n -lt 20 ] || { echo "A never held" >&2; break; }; ${psqlArgs} -c 'BEGIN; SELECT pg_sleep(600); COMMIT' >/dev/null 2>&1 & echo $! >> /tmp/holders; h=$!; n=$((n+1)); until [ "$(${local} "${held}")" = $n ]; do kill -0 $h 2>/dev/null || { echo "holder $n exited before PostgreSQL showed it" >&2; break 2; }; done; done
 \\bind_named s1 \\g
 \\! kill $(cat /tmp/holders)
 `;

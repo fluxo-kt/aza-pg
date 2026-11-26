@@ -221,6 +221,11 @@ async function runChecksSequential(checks: ValidationCheck[]): Promise<Validatio
 /**
  * Main validation function
  */
+// Staged paths, NUL-separated, without symlinks: Prettier refuses an explicitly named symlink, and a link's target is
+// checked under its own path (every nested AGENTS.md has a CLAUDE.md link beside it).
+const STAGED_FILES_NO_SYMLINKS =
+  'git diff --cached --name-only -z --diff-filter=d | xargs -0 -r sh -c \'for f; do [ -L "$f" ] || printf "%s\\0" "$f"; done\' sh';
+
 async function validate(
   mode: "fast" | "all",
   parallel?: boolean,
@@ -358,14 +363,14 @@ async function validate(
           ? [
               "sh",
               "-c",
-              "git diff --cached --name-only -z --diff-filter=d | xargs -0 -r bun run prettier:write --ignore-unknown",
+              `${STAGED_FILES_NO_SYMLINKS} | xargs -0 -r bun run prettier:write --ignore-unknown`,
             ]
           : ["bun", "run", "prettier:write", "."]
         : stagedOnly
           ? [
               "sh",
               "-c",
-              "git diff --cached --name-only -z --diff-filter=d | xargs -0 -r bun run prettier:check --ignore-unknown",
+              `${STAGED_FILES_NO_SYMLINKS} | xargs -0 -r bun run prettier:check --ignore-unknown`,
             ]
           : ["bun", "run", "prettier:check", "."],
       description: fixMode

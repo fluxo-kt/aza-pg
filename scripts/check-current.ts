@@ -27,16 +27,20 @@ interface Line {
   detail: string;
 }
 
-/** Package rows of `bun outdated`'s table; it exits 0 whether or not anything is outdated, so only the table tells. */
-export function outdatedPackages(output: string): string[] {
-  return output
-    .split("\n")
-    .filter((line) => line.startsWith("| ") && !line.startsWith("| Package "))
-    .map((line) => line.split("|")[1]!.trim());
+/**
+ * Package names from `bun outdated`, which has no JSON mode and exits 0 whether or not anything is outdated, so only
+ * its text tells. Fail-closed: [] only when the output is nothing but its version banner; undefined for any other
+ * shape, so a changed format reads as "check failed", never as "current".
+ */
+function outdatedPackages(output: string): string[] | undefined {
+  const lines = output.split("\n").filter((line) => line.trim() !== "");
+  if (lines.every((line) => line.startsWith("bun outdated v"))) return [];
+  const rows = lines.filter((line) => line.startsWith("| ") && !line.startsWith("| Package "));
+  return rows.length > 0 ? rows.map((line) => line.split("|")[1]?.trim() ?? line) : undefined;
 }
 
 /** `actions-up --dry-run --json` counts proposed pin changes in `summary.totalUpdates`. */
-export function actionUpdates(json: string): number {
+function actionUpdates(json: string): number {
   const total = (JSON.parse(json) as { summary?: { totalUpdates?: unknown } }).summary
     ?.totalUpdates;
   if (typeof total !== "number") throw new Error("actions-up JSON has no summary.totalUpdates");
@@ -137,6 +141,7 @@ async function run(dir: string): Promise<Line[]> {
         const out = await $`bun outdated`.cwd(dir).nothrow().quiet();
         if (out.exitCode !== 0) return { verdict: "failed", detail: out.stderr.toString().trim() };
         const outdated = outdatedPackages(out.stdout.toString());
+        if (!outdated) return { verdict: "failed", detail: "unrecognised bun outdated output" };
         return outdated.length
           ? { verdict: "due", detail: outdated.join(", ") }
           : { verdict: "current", detail: "" };

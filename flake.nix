@@ -7,7 +7,6 @@
     # cargo-pgrx releases nixpkgs does not package, named pgrx-<version with _>. cargo-pgrx must equal the pgrx crate an
     # extension locks (nix/extensions.nix picks nixpkgs' attribute first); a pure build fetches only pinned sources,
     # so each missing release is an input that flake.lock pins. Drop one once nixpkgs packages it.
-    pgrx-0_18_1 = { url = "github:pgcentralfoundation/pgrx/v0.18.1"; flake = false; };
     pgrx-0_19_2 = { url = "github:pgcentralfoundation/pgrx/v0.19.2"; flake = false; };
     # The official image's docker-entrypoint.sh (initdb, POSTGRES_* variables, /docker-entrypoint-initdb.d), which
     # our entrypoint sources.

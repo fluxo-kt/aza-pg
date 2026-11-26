@@ -927,8 +927,8 @@
       "source": {
         "type": "git",
         "repository": "https://github.com/timescale/timescaledb-toolkit.git",
-        "tag": "1.28.0",
-        "commit": "4f3c7b1bb9ac244f6498d97bd98642c5c9619ab9"
+        "tag": "1.29.0",
+        "commit": "244096af67f674a00268f408eab7dcaeac2f1cca"
       },
       "build": {
         "type": "cargo-pgrx",

@@ -946,7 +946,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     source: {
       type: "git",
       repository: "https://github.com/timescale/timescaledb-toolkit.git",
-      tag: "1.28.0",
+      tag: "1.29.0",
     },
     build: {
       type: "cargo-pgrx",

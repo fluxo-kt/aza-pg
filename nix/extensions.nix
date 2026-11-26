@@ -90,7 +90,12 @@ let
     let
       src = sourceOf e;
       recipe = ps.${e.nix.package} or pkgs.${e.nix.package};
-      base = recipe.override (lib.intersectAttrs (lib.functionArgs recipe.override) libraries);
+      recipeArgs = lib.functionArgs recipe.override;
+      # A pgrx recipe takes its cargo-pgrx as a call argument (cargo-pgrx_0_18_0), which buildPgrxExtension puts on
+      # PATH at call time; overrideAttrs cannot reach it, so the recipe's pin would build a source locked to another
+      # pgrx ("cargo-pgrx and pgrx library versions must be identical"). Replace every such argument instead.
+      pgrxOverride = lib.genAttrs (lib.filter (lib.hasPrefix "cargo-pgrx") (lib.attrNames recipeArgs)) (_: pgrxFor src);
+      base = recipe.override (lib.intersectAttrs recipeArgs libraries // pgrxOverride);
     in
     base.overrideAttrs (old: {
       version = versionOf e;

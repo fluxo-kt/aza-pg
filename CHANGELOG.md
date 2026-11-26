@@ -26,6 +26,8 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
 
 - **plpgsql_check 2.11.0 → 2.11.1**: checks stack depth while walking deeply nested PL/pgSQL statements (was a possible backend crash), checks `FETCH` from a dynamic cursor as a dynamic query, keeps the dynamic SQL parser hook state alive as long as its plan, releases the error copies kept by the debugger API at the end of each call, and initializes all checker state fields. No SQL changes.
 
+- **timescaledb_toolkit 1.28.0 → 1.29.0** (updated automatically at first start): built on pgrx 0.19.1 (was 0.18.1). Upstream's changes otherwise add PostgreSQL 19 support and drop Debian 11 packages, neither of which reaches this image. pgrx 0.19.1 is still below 0.19.4, so PostgreSQL 18.7's composite-value check does not yet apply inside this extension.
+
 ### Compose deployments
 
 - **PgBouncer image ghcr.io/cloudnative-pg/pgbouncer 1.26.1, rebuild 202611121015 → 202611251233** (primary stack and `deployments/phase1-single-vps`): same PgBouncer, rebuilt on current Debian packages.

@@ -6,7 +6,9 @@
  * uncommitted changes. The image is current when IMAGE_INPUTS in the working tree equal that commit's; tracked files
  * only, as Nix's git fetcher reads them. A dirty build whose inputs differ from its commit cannot be told apart from a
  * stale one, so it is refused too: commit, then `bun run build`. An image whose commit this clone lacks (CI's shallow
- * checkout reusing a cached image, keyed by these same inputs) is not judged.
+ * checkout reusing a cached image, keyed by these same inputs) is not judged. Nor is a pulled image (it has a registry
+ * digest; a local build loaded from Nix has none): it is a published artifact named on purpose, and a `Fixed` changelog
+ * entry needs its check run against the last release, which this would refuse.
  */
 
 /**
@@ -23,12 +25,15 @@ export const IMAGE_INPUTS = [
 
 /** Why `image` must be rebuilt before testing, or null when it is current or cannot be judged. */
 export async function staleImageReason(image: string): Promise<string | null> {
-  const label = (
-    await Bun.$`docker image inspect --format ${'{{index .Config.Labels "org.opencontainers.image.revision"}}'} ${image}`
+  const [digests = "", label = ""] = (
+    await Bun.$`docker image inspect --format ${'{{len .RepoDigests}} {{index .Config.Labels "org.opencontainers.image.revision"}}'} ${image}`
       .nothrow()
       .quiet()
       .text()
-  ).trim();
+  )
+    .trim()
+    .split(" ");
+  if (digests !== "0") return null;
   const commit = label.replace(/-dirty$/, "");
   const known = await Bun.$`git cat-file -e ${commit}^{commit}`.nothrow().quiet();
   if (!/^[0-9a-f]{40}$/.test(commit) || known.exitCode !== 0) return null;

@@ -107,7 +107,7 @@ The entrypoint finds the previous major's cluster (`/var/lib/postgresql/18/docke
 
 The old cluster stays in the volume (the log names it). With `--clone` or `--copy` it is a complete rollback: start the previous image with `PGDATA` set to it. Once it has run, this image refuses to start on the upgraded PGDATA, since each may then hold writes the other lacks: delete PGDATA to upgrade the old cluster again (losing writes made in PGDATA since the upgrade), or delete the old cluster to keep PGDATA. With `--link` it is unusable once the new server has started. Delete it when you no longer need it.
 
-The container stops instead of upgrading, naming the reason, for a **replica** (upgrade the primary, then re-clone the replica from it) and on an image that does not carry the upgrade, and for a cluster of a major other than the one the image upgrades from.
+The container stops instead of upgrading, naming the reason, for a **replica** (upgrade the primary, then re-clone the replica from it) and on an image that does not carry the upgrade, for a cluster of a major other than the one the image upgrades from, and beside a cluster of a newer major (run the image that made it; this image only serves its own PGDATA beside one, as a rollback from that upgrade).
 
 **Option B: Backup → Restore** (slower, safer)
 

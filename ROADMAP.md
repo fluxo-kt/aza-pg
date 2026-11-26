@@ -21,10 +21,6 @@ Work:
 
 ## Medium
 
-### Restore after a --link failure past the linking point is unproven
-
-`docker/postgres/major-upgrade.sh` restores the old cluster when `pg_upgrade --link` fails after renaming its `pg_control` to `pg_control.old` (`restore_old`), so the previous image still starts on it. `test-major-upgrade.ts` fails the upgrade during pg_upgrade's checks, before anything is linked, and on a reflink filesystem (Docker Desktop on a Mac) the upgrade takes `--clone`, which never renames it. Unmeasured: whether CI's runners take `--link` (they reach it when `cp --reflink=always` fails there). Fix: a failure injected after the linking step on a filesystem without reflinks (a loop-mounted ext4 volume), then the previous image must start on the old cluster with its rows.
-
 ### The PgBouncer suites failed once in a full run, cause unknown
 
 `test-pgbouncer-healthcheck.ts` and `test-pgbouncer-failures.ts` both failed in one full `test-all` run (b953fd4, host load ~29 from another project's processes). They passed alone, as their `stacks` group in parallel, and in the next full run. Their error output was not kept. A flaky suite teaches readers to rerun instead of read. Fix: on the next failure, keep the run's whole output (`test-all` prints each failed suite's errors) and find the cause before rerunning.

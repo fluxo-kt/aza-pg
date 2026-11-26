@@ -13,11 +13,17 @@
  * Usage: bun scripts/test-all.ts scripts/test/test-major-upgrade.ts
  */
 
+import { dirname } from "node:path";
 import { $ } from "bun";
 import { afterAll, expect, test } from "bun:test";
 import { MANIFEST_METADATA } from "../extensions/manifest-data";
 import { sqlOk } from "../utils/psql";
-import { TEST_SERVER_MEMORY, generateUniqueContainerName, waitForPostgres } from "../utils/docker";
+import {
+  TEST_SERVER,
+  TEST_SERVER_MEMORY,
+  generateUniqueContainerName,
+  waitForPostgres,
+} from "../utils/docker";
 import { staleImageReason } from "../nix/image-inputs";
 import { resolveImageTag } from "./image-resolver";
 
@@ -186,6 +192,29 @@ test("the previous release's cluster is upgraded at start, refused where it must
   expect(await sqlOk(restored, "SELECT v FROM kept")).toBe("42");
   await sqlOk(restored, "DROP TABLE blocks");
   await $`docker stop ${restored}`.quiet();
+
+  // A failure after --link linked the files: pg_upgrade has renamed the old pg_control, and the old cluster starts again
+  // only if restore_old renames it back. tmpfs cannot reflink, so the mode ladder must take --link there. The wrapper
+  // lets the real pg_upgrade finish every step (the most linking any failure can leave) and only then fails; the old
+  // server, already fetched into the volume's store, must then open the old cluster and read its row.
+  const linked = (
+    await $`docker run --rm -u postgres ${TEST_SERVER} -v ${volume}:/src:ro --entrypoint bash ${upgradeImage} -c ${`
+      cp -a /src/.aza-old-store /var/lib/postgresql/ && mkdir -p ${dirname(oldData)} && cp -a /src${oldData.slice("/var/lib/postgresql".length)} ${oldData}
+      mkdir /tmp/shim && printf '#!/bin/bash\\n"%s" "$@" || exit\\nexit 1\\n' "$(command -v pg_upgrade)" > /tmp/shim/pg_upgrade && chmod +x /tmp/shim/pg_upgrade
+      spl=$(sed -n 's/^readonly DEFAULT_SHARED_PRELOAD_LIBRARIES="\\(.*\\)"$/\\1/p' /usr/local/bin/docker-auto-config-entrypoint.sh)
+      PATH=/tmp/shim:$PATH SHARED_PRELOAD_LIBRARIES=$spl PGSODIUM_GETKEY_PATH=/usr/share/postgresql/$PG_MAJOR/extension/pgsodium_getkey \\
+        aza-pg-major-upgrade ${oldData} ${newData} 2>&1
+      echo "upgrade-exit=$? new-entries=$(ls -A ${newData} | wc -l) control=$(ls ${oldData}/global | grep pg_control | paste -sd, -)"
+      touch /tmp/empty.conf
+      echo "SELECT v FROM kept" | /nix/store/$(sed -n 2p /usr/local/share/aza-pg/previous-layers)/bin/postgres --single \\
+        -c config_file=/tmp/empty.conf -c hba_file=/tmp/empty.conf -c ident_file=/tmp/empty.conf -D ${oldData} postgres 2>&1
+    `}`
+      .nothrow()
+      .quiet()
+  ).stdout.toString();
+  expect(linked).toContain("(pg_upgrade --link)");
+  expect(linked).toContain("upgrade-exit=1 new-entries=0 control=pg_control\n");
+  expect(linked).toContain('v = "42"');
 
   // POSTGRES_BIND_IP as the stacks set it, so a TCP login reaches the carried pg_hba.conf's scram rule.
   const upgraded = await start(upgradeImage, [...BACKREST, "POSTGRES_BIND_IP=0.0.0.0"]);

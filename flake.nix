@@ -198,18 +198,7 @@
             actionlint = pkgs.actionlint.override { inherit buildGoModule; };
             trivy = pkgs.trivy.override { buildGo127Module = buildGoModule; };
           }) actionlint trivy;
-          # nixpkgs still packages 1.37.1 (NixOS/nixpkgs#515973). The assert fails once nixpkgs reaches 1.38.0: drop
-          # the override then, or it would pin an old release.
-          yamllint = assert nixpkgs.lib.versionOlder pkgs.yamllint.version "1.38.0";
-            pkgs.yamllint.overridePythonAttrs (old: rec {
-              version = "1.38.0";
-              src = pkgs.fetchFromGitHub {
-                owner = "adrienverge";
-                repo = "yamllint";
-                tag = "v${version}";
-                hash = "sha256-4H8tbn2TRzTGIXmP9Hnmc93rGSLsWh5A5R9KAIz0mKM=";
-              };
-            });
+          inherit (pkgs) yamllint;
         };
     in
     {

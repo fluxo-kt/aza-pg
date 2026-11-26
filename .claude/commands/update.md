@@ -301,7 +301,7 @@ command grep -rn -E ":[Ll]atest\\b" .github/workflows/ .github/actions/ scripts/
 
 Scanners and linters run only through `scripts/nix/tools.ts` (flake.nix outputs), so CI and local runs use the same
 build. Their versions follow nixpkgs: `check-updates.ts` reports each against its upstream release. An outdated row
-waits for no one: override that output in `flake.nix` (as yamllint's is), with an assert that fails once nixpkgs
+waits for no one: override that output's version in `flake.nix`, with an assert that fails once nixpkgs
 catches up. Tool images still run by scripts (`nixos/nix`) are invisible to `actions-up` and `bun outdated`, so bump
 them here. List them:
 

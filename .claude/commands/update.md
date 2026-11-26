@@ -603,6 +603,9 @@ or point its service at our image: the image carries only what its own PostgreSQ
    a tag that never moves keeps every later base-OS CVE.
 2. Before switching, run the candidate's shell and check every binary our entrypoint, config template and
    healthcheck call, its user id against mounted file ownership, and its entrypoint/CMD and config path.
+   An unreleased build qualifies only when its compare range against the release changes nothing but dependencies,
+   toolchain and CI (read the range's files). Pin it as `<branch>@<digest>` and set `branch` and `base` on its
+   `IMAGE_SOURCES` entry in `check-updates.ts`, or the checker cannot see the next release.
 3. None clean: list the findings (scan output) in the round's report and wait for upstream's fix; open no upstream
    issue or request unless Art asks (AGENTS.md "CVE effort follows what we release").
 

@@ -29,6 +29,7 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
 ### Compose deployments
 
 - **PgBouncer image ghcr.io/cloudnative-pg/pgbouncer 1.26.1, rebuild 202611121015 → 202611251233** (primary stack and `deployments/phase1-single-vps`): same PgBouncer, rebuilt on current Debian packages.
+- **pgbouncer-exporter v0.12.1 → upstream's master build** (primary stack and `deployments/phase1-single-vps`): v0.12.1, the newest release, carries 29 fixable HIGH findings in its Go dependencies; master is the same exporter (no source changes since v0.12.1, only dependency and Go updates) with 2 left. Same flags, metrics, user and settings. A `PGBOUNCER_EXPORTER_IMAGE` override keeps whatever image it names.
 - **Grafana 13.3.1 → 13.3.2** (`deployments/phase1-single-vps`): fixes CVE-2026-107561 and CVE-2026-88960; provisioning keeps existing folder identities when it creates child folders.
 
 ## [v18.7-202611192045] - 2026-11-19

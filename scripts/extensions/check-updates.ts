@@ -532,26 +532,38 @@ async function checkExtensionUpdates(
  * what the repository puts before the image tag: Grafana tags images 13.2.3 but releases v13.2.3, and comparing
  * the bare form picks up Grafana's old unprefixed tags instead.
  */
-const IMAGE_SOURCES: Record<string, { repository: string; tagPrefix?: string; tags?: "registry" }> =
-  {
-    // Local Nix: its tag must equal CI's (the nix_version in install-nix-action's install-nix.sh), see /update.
-    "nixos/nix": { repository: "https://github.com/NixOS/nix", tags: "registry" },
-    "oven/bun": { repository: "https://github.com/oven-sh/bun", tags: "registry" },
-    // CloudNativePG rebuilds each PgBouncer release on patched Debian about weekly, as a new timestamped tag
-    // (1.26.1-<UTC stamp>-trixie): only the registry's tags show those rebuilds, the GitHub releases do not.
-    "cloudnative-pg/pgbouncer": {
-      repository: "https://github.com/cloudnative-pg/pgbouncer-containers",
-      tags: "registry",
-    },
-    "prometheuscommunity/pgbouncer-exporter": {
-      repository: "https://github.com/prometheus-community/pgbouncer_exporter",
-    },
-    "prometheuscommunity/postgres-exporter": {
-      repository: "https://github.com/prometheus-community/postgres_exporter",
-    },
-    "prom/prometheus": { repository: "https://github.com/prometheus/prometheus" },
-    "grafana/grafana": { repository: "https://github.com/grafana/grafana", tagPrefix: "v" },
-  };
+/**
+ * How to find each pinned image's upstream releases. `branch` and `base` cover a pin on upstream's own unreleased build
+ * (/update §5.6 "Vulnerable companion": taken only when its release scans worse and the branch differs from it only in
+ * dependencies). Such a tag names no version, so the pin is compared as if it were `base`, the release the build is
+ * newer than: any later release reports an update, which is the cue to move back to a released tag. Set `base` when
+ * pinning the branch; it stays true until the pin moves.
+ */
+const IMAGE_SOURCES: Record<
+  string,
+  { repository: string; tagPrefix?: string; tags?: "registry"; branch?: string; base?: string }
+> = {
+  // Local Nix: its tag must equal CI's (the nix_version in install-nix-action's install-nix.sh), see /update.
+  "nixos/nix": { repository: "https://github.com/NixOS/nix", tags: "registry" },
+  "oven/bun": { repository: "https://github.com/oven-sh/bun", tags: "registry" },
+  // CloudNativePG rebuilds each PgBouncer release on patched Debian about weekly, as a new timestamped tag
+  // (1.26.1-<UTC stamp>-trixie): only the registry's tags show those rebuilds, the GitHub releases do not.
+  "cloudnative-pg/pgbouncer": {
+    repository: "https://github.com/cloudnative-pg/pgbouncer-containers",
+    tags: "registry",
+  },
+  // v0.12.1's Go dependencies carry fixable HIGH CVEs; master differs from it only in dependency and Go bumps.
+  "prometheuscommunity/pgbouncer-exporter": {
+    repository: "https://github.com/prometheus-community/pgbouncer_exporter",
+    branch: "master",
+    base: "v0.12.1",
+  },
+  "prometheuscommunity/postgres-exporter": {
+    repository: "https://github.com/prometheus-community/postgres_exporter",
+  },
+  "prom/prometheus": { repository: "https://github.com/prometheus/prometheus" },
+  "grafana/grafana": { repository: "https://github.com/grafana/grafana", tagPrefix: "v" },
+};
 
 const RegistryTagList = type({ tags: "string[] | null" });
 const RegistryToken = type({ "token?": "string", "access_token?": "string" });
@@ -822,15 +834,21 @@ async function main() {
       continue;
     }
     const prefix = upstream.tagPrefix ?? "";
+    const onBranch = upstream.branch !== undefined && image.tag === upstream.branch;
+    if (onBranch && upstream.base === undefined)
+      throw new Error(
+        `IMAGE_SOURCES["${image.repo}"]: a branch pin needs base (the release it is newer than)`
+      );
+    const compared = onBranch ? upstream.base! : `${prefix}${image.tag}`;
     const update = await checkExtensionUpdates({
       name: image.repo,
-      source: { type: "git", repository: upstream.repository, tag: `${prefix}${image.tag}` },
+      source: { type: "git", repository: upstream.repository, tag: compared },
       enabled: true,
     });
     if (update)
       results.push({
         ...update,
-        current: image.tag,
+        current: onBranch ? `${image.tag} (after ${upstream.base})` : image.tag,
         files: image.files,
         notes: `${update.notes} (${pinnedIn})`,
       });

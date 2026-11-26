@@ -64,6 +64,7 @@ export const SUITES: Suite[] = [
   { path: "scripts/test/test-backup-restore.ts", group: "features" },
   { path: "scripts/test/test-negative-scenarios.ts", group: "features" },
   { path: "scripts/test/test-data-dir-lock.ts", group: "features" },
+  { path: "scripts/test/test-major-upgrade.ts", group: "features" },
   { path: "scripts/test/test-pg-cron-postgres-db.ts", group: "features" },
   { path: "scripts/test/test-pgflow.ts", group: "features" },
   { path: "scripts/test/test-pgflow-upgrade.ts", group: "features" },

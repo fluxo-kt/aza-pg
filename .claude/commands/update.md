@@ -301,7 +301,7 @@ command grep -rn -E ":[Ll]atest\\b" .github/workflows/ .github/actions/ scripts/
 
 Scanners and linters run only through `scripts/nix/tools.ts` (flake.nix outputs), so CI and local runs use the same
 build. Their versions follow nixpkgs: `check-updates.ts` reports each against its upstream release. An outdated row
-waits for no one: override that output in `flake.nix` (as yamllint's is), with an assert that fails once nixpkgs
+waits for no one: override that output's version in `flake.nix`, with an assert that fails once nixpkgs
 catches up. Tool images still run by scripts (`nixos/nix`) are invisible to `actions-up` and `bun outdated`, so bump
 them here. List them:
 
@@ -311,7 +311,7 @@ bun scripts/extensions/check-updates.ts                                         
 ```
 
 A digest pin without a tag gets a "could not check" row (exit 2): rewrite it as `repo:tag@sha256:…`.
-`nixos/nix` (local Nix, `scripts/nix/nix.ts`) must equal CI's Nix: set its tag to the `nix_version=` in the pinned `cachix/install-nix-action`'s `install-nix.sh` after every `actions-up` run. A newer Docker Hub tag waits until that action ships it. A wrapper image's tag versions the wrapper, not the tool, so also run the pinned binary's `--version`
+`nixos/nix` (local Nix, `scripts/nix/nix.ts`) must equal CI's Nix: set its tag to the `nix_version=` in the pinned `cachix/install-nix-action`'s `install-nix.sh` after every `actions-up` run, then `bun scripts/nix/nix.ts --version` must print that version. A newer Docker Hub tag waits until that action ships it. A wrapper image's tag versions the wrapper, not the tool, so also run the pinned binary's `--version`
 against the tool's upstream release: a wrapper that stopped publishing reads as "up to date".
 
 For each, read the latest release, resolve the index digest with `docker buildx imagetools inspect`,
@@ -390,6 +390,7 @@ container with `qemu-user` run `qemu-x86_64 -cpu Nehalem -L <rootfs> <rootfs><th
 postgres`> --single -D <pgdata> postgres` and feed it SQL on stdin.
 
 **⚠️ PG MAJOR version bump** (18→19): additional files need updating beyond manifest-data.ts:
+- Existing data directories must upgrade automatically at the first start on the new image (AGENTS.md "Data directories made by older images…"). Until the mechanism in ROADMAP "Major upgrades are not automatic yet" ships, building it is this round's first work, decided by you and never asked of Art. Then set the previous-image pin to the last old-major release, and ship the major as two releases: first a last old-major release whose extension versions equal the new major's, because `pg_upgrade --check` refuses an old cluster whose versioned libraries (`timescaledb-<version>.so`) the new image lacks
 - Tool checks need no edit: `testToolsPresent` finds each tool by its manifest entry's `binaryPath`/`soFileName` and takes PG-major paths from `pg_config`; still grep `scripts/` for hardcoded `postgresql/[0-9]+/` paths
 - pgrx feature flags in manifest-data.ts (e.g., `features: ["pg18"]` → `features: ["pg19"]`)
 - `pgMajorTags` entries (pgaudit): the checker now offers the new major's tags; set each such entry to its first stable tag of that major
@@ -511,7 +512,11 @@ bun scripts/test-all.ts --group features   # includes test-pgflow*.ts and test-p
 
 Review the local layers against the new upstream: `docker/postgres/pgflow/security-patches.sql` and the
 functions the generator overrides (aza-overrides). The generator stops when an expected upstream text
-is missing (`replaceRequired`); fix the replacement, never loosen it. `test-pgflow-upgrade.ts` upgrades a
+is missing (`replaceRequired`); fix the replacement, never loosen it. It also stops on any migration pgflow-upgrade
+can run that executes pg_cron or Vault at migration time (`migration-guard.ts`): guard that statement in
+`localMigrationContent` as its message says, because pgflow databases without pg_cron run it too and the upgrade
+suite has pg_cron. `aza-overrides.sql` is re-applied on every upgrade, so it carries
+function definitions only, never a statement with an effect (a schedule call resets operators' jobs). `test-pgflow-upgrade.ts` upgrades a
 database created by the last release in its `LEGACY` list with `pgflow-upgrade` and requires it to equal
 a fresh install: if it fails, the new migrations or overrides break existing databases. A release whose schema changes
 needs a CHANGELOG entry telling operators to run `docker exec <container> pgflow-upgrade` (stop pgflow
@@ -551,7 +556,9 @@ These extensions use Rust pgrx framework for building PostgreSQL extensions in R
 
 **Version alignment**: cargo-pgrx must equal the pgrx crate the source's `Cargo.lock` pins. `nix/extensions.nix`
 takes it from nixpkgs, or stops and prints the `pgrx-<version>` input to add to `flake.nix` (then
-`bun scripts/nix/nix.ts flake lock`); drop an input once nixpkgs packages its release. Feature flags must match the
+`bun scripts/nix/nix.ts flake lock`); drop an input once nixpkgs packages its release or no entry locks it. Prove it on
+the built derivation: `nix derivation show` of each changed pgrx extension must reference exactly one cargo-pgrx, the
+locked version (a build can pass with the wrong one). Feature flags must match the
 PostgreSQL major (e.g. `features: ["pg18"]`).
 
 ### 5.4: Disabling Unmaintained Extensions
@@ -602,6 +609,9 @@ or point its service at our image: the image carries only what its own PostgreSQ
    a tag that never moves keeps every later base-OS CVE.
 2. Before switching, run the candidate's shell and check every binary our entrypoint, config template and
    healthcheck call, its user id against mounted file ownership, and its entrypoint/CMD and config path.
+   An unreleased build qualifies only when its compare range against the release changes nothing but dependencies,
+   toolchain and CI (read the range's files). Pin it as `<branch>@<digest>` and set `branch` and `base` on its
+   `IMAGE_SOURCES` entry in `check-updates.ts`, or the checker cannot see the next release.
 3. None clean: list the findings (scan output) in the round's report and wait for upstream's fix; open no upstream
    issue or request unless Art asks (AGENTS.md "CVE effort follows what we release").
 
@@ -616,14 +626,14 @@ docker buildx imagetools inspect ORG/REPO:TAG --format '{{json .Manifest.Digest}
    removed (the exporter ignores unknown env vars, so a dead setting stays silent) and
    `pg_replication_slot_*` metrics became `pg_replication_slots_*`. Go through every change, deprecation and
    fix item in the range, not only those three kinds: each one touching a setting we pass, a metric or label
-   we expose, or behaviour under our config goes into the CHANGELOG entry (AGENTS.md "Entry rules").
+   we expose, or behaviour under our config goes into the CHANGELOG entry (docs/CHANGELOG-RULES.md "Entry rules").
    BEFORE writing any flag or env var into `stacks/` or `deployments/` (a new `command:`, a renamed
    variable, a flag the CHANGELOG tells operators to add), find it in the pinned binary's own flag list
    (`docker run --rm IMAGE --help`) and run a definitely-invalid flag as control: release notes name flags
    that a build lacks or spells differently, and an unknown flag only surfaces when the stack starts.
    Rename users of changed metrics (dashboards and queries in `deployments/`).
 2. Update the compose defaults; run `bun run validate` until the pin check is clean.
-3. CHANGELOG entry (operators see companion images); removed settings or renamed metrics go under Breaking.
+3. Record companion changes in the changelog's `### Compose deployments` section. Lead with any required action for removed settings or renamed metrics.
 4. Run the stack suites (`bun scripts/test-all.ts --group stacks`); each exporter's `/metrics` must show
    `pg_up 1` / `pgbouncer_up 1`.
    For shipped Prometheus/Grafana examples, also query the metrics through Prometheus and check Grafana's provisioned datasource: a healthy exporter does not prove scrape filters retain what its dashboard needs. Use disposable Compose state and remove it after the check.
@@ -736,7 +746,7 @@ updated before proceeding to Phase 10/12. No exceptions.
 2. **Breaking changes**: Separate section with "action required" flag
 3. **Development (non-image) changes**: One line max, or omit if trivial
 
-**Standard categories** (in impact order): `Breaking` | `Security` | `Fixed` | `Changed` | `Added` | `Deprecated` | `Removed` | `Development`. Do not invent categories beyond this set.
+Use the placement and category order in docs/CHANGELOG-RULES.md.
 
 **Format**:
 
@@ -881,6 +891,7 @@ due in this round, not the next:
 - GitHub Actions SHA pins, reusable workflow refs, and stale prose comments
 - Hardcoded test/doc version strings for every changed image-facing dependency
 - Generated files and `CHANGELOG.md` when any image-facing source changed
+- A fresh `check-updates.ts` run right before the final gate: a round takes hours, and a release published since pre-flight is this round's work
 
 After all candidate and guidance commits, run the full suite once on the committed inputs:
 

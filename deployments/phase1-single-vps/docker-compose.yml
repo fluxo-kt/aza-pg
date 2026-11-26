@@ -46,7 +46,7 @@ services:
   pgbouncer:
     # The stack's image (stacks/primary/compose.yml says why CloudNativePG's). It reads /etc/pgbouncer/pgbouncer.ini,
     # rendered by Compose from the `pgbouncer.ini` config at the end of this file.
-    image: ghcr.io/cloudnative-pg/pgbouncer:1.26.1-202611121015-trixie@sha256:6c91fd7383b8b098bc0c3b71dba4e98bd568c0d301b9fc66027fbc23259c6a7d
+    image: ghcr.io/cloudnative-pg/pgbouncer:1.26.1-202611251233-trixie@sha256:9f648625e11f67f5171f1edd31648c7d02a1a4a5e1b8adf7d4a9db30dce8c22b
     container_name: pgbouncer
     restart: unless-stopped
     # uid 70 owns pgbouncer/userlist.txt (setup.sh, mode 600); the image's own user (998) could not read it.
@@ -120,7 +120,7 @@ services:
 
   # PgBouncer Exporter
   pgbouncer-exporter:
-    image: prometheuscommunity/pgbouncer-exporter:v0.12.1@sha256:30f31b6c2efdad3647f8182cc7c1a3a19e42bae5d17387694989f969371c230d
+    image: prometheuscommunity/pgbouncer-exporter:master@sha256:6372098da3917faad5c8ecdf6564af01c26f5f16dcad1d97d8f12bff520711fa
     container_name: pgbouncer-exporter
     restart: unless-stopped
     environment:
@@ -170,7 +170,7 @@ services:
 
   # Grafana - Visualization
   grafana:
-    image: grafana/grafana:13.3.1@sha256:0615ec4fbd4072004b7d86b46ded63013a74b7d6eb1119273dd89e8fa25c13cf
+    image: grafana/grafana:13.3.2@sha256:81556409ba48b2b922e0adb69a2511337d8ba7578f11962eefa6149a2d815101
     container_name: grafana
     restart: unless-stopped
     environment:

@@ -93,11 +93,11 @@ git show refs/heads/dev:CHANGELOG.md
 
 **Audit rules**:
 
-1. **Consumer-first ordering**: Accept the standard CHANGELOG categories: `Breaking`, `Security`, `Fixed`, `Changed`, `Added`, `Deprecated`, `Removed`, `Development`. Reorder by impact: Breaking first, then Security/Fixed, then Changed, Added, Deprecated, Removed, then Development last. Do NOT invent categories beyond this set.
+1. **Consumer-first ordering**: Follow docs/CHANGELOG-RULES.md. Move every Compose-only bullet to the final `### Compose deployments` section. Check the rendered release notes: an image-only upgrade must show none of those bullets under “What’s Changed”.
 2. **Net-delta only**: If X went v1→v2→v3 during dev, entry must say "v1→v3"
 3. **Cancellation**: Entries added then reverted = omit entirely
-4. **Development section**: MAX 3 brief lines, no per-file detail
-5. **Cross-validation**: Every version change MUST match `git diff $ANCHOR..refs/heads/dev -- scripts/extensions/manifest-data.ts`
+4. **Development section**: Follow the limit in docs/CHANGELOG-RULES.md.
+5. **Cross-validation**: Check bundled extension versions against the manifest diff, PostgreSQL and runtime libraries against the locked build, and companion versions against the shipped Compose diff. Use the two release revisions for each comparison.
 6. **No phantoms**: Don't claim fixes for things not broken in the last released version
 7. **`[Unreleased]` holds only this release.** Each release commit carries its own dated section (Phase 4.4), so everything under `[Unreleased]` on dev is new since the newest `## [v…]` heading.
 8. **Re-measure every number** in `[Unreleased]` (image size, store paths, MB added) on the image being released: each was measured when its entry was written, and any later closure change makes it false in a section that freezes at release. Quote image sizes exactly as `docker images` prints them (decimal MB), never converted to 1024-based units: an operator checking with the same tool must see the same number.

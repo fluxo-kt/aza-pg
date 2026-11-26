@@ -105,7 +105,7 @@ The tables below are generated from `extensions.manifest.json`. Columns indicate
 
 | Extension                                                 | Version                                                                | Enabled by Default | Shared Preload | Documentation                                         | Notes                                                |
 | --------------------------------------------------------- | ---------------------------------------------------------------------- | ------------------ | -------------- | ----------------------------------------------------- | ---------------------------------------------------- |
-| [`plpgsql_check`](https://github.com/okbob/plpgsql_check) | [v2.11.0](https://github.com/okbob/plpgsql_check/releases/tag/v2.11.0) | No                 | No             | [Docs](https://github.com/okbob/plpgsql_check#readme) | Static analyzer for PL/pgSQL functions and triggers. |
+| [`plpgsql_check`](https://github.com/okbob/plpgsql_check) | [v2.11.1](https://github.com/okbob/plpgsql_check/releases/tag/v2.11.1) | No                 | No             | [Docs](https://github.com/okbob/plpgsql_check#readme) | Static analyzer for PL/pgSQL functions and triggers. |
 
 ### queueing
 
@@ -143,7 +143,7 @@ The tables below are generated from `extensions.manifest.json`. Columns indicate
 | Extension                                                                 | Version                                                                        | Enabled by Default | Shared Preload | Documentation                                                           | Notes                                                                                                                 |
 | ------------------------------------------------------------------------- | ------------------------------------------------------------------------------ | ------------------ | -------------- | ----------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
 | [`timescaledb`](https://github.com/timescale/timescaledb)                 | [2.32.1](https://github.com/timescale/timescaledb/releases/tag/2.32.1)         | Yes                | Yes            | [Docs](https://docs.timescale.com/)                                     | Hypertables, compression, and continuous aggregates for time-series workloads. Full version, Timescale License (TSL). |
-| [`timescaledb_toolkit`](https://github.com/timescale/timescaledb-toolkit) | [1.28.0](https://github.com/timescale/timescaledb-toolkit/releases/tag/1.28.0) | No                 | No             | [Docs](https://github.com/timescale/timescaledb-toolkit/tree/main/docs) | Analytical hyperfunctions and sketches extending TimescaleDB.                                                         |
+| [`timescaledb_toolkit`](https://github.com/timescale/timescaledb-toolkit) | [1.29.0](https://github.com/timescale/timescaledb-toolkit/releases/tag/1.29.0) | No                 | No             | [Docs](https://github.com/timescale/timescaledb-toolkit/tree/main/docs) | Analytical hyperfunctions and sketches extending TimescaleDB.                                                         |
 
 ### utilities
 
@@ -161,7 +161,7 @@ The tables below are generated from `extensions.manifest.json`. Columns indicate
 
 | Extension                                        | Version                                                                          | Enabled by Default | Shared Preload | Documentation              | Notes                                                                     |
 | ------------------------------------------------ | -------------------------------------------------------------------------------- | ------------------ | -------------- | -------------------------- | ------------------------------------------------------------------------- |
-| [`pgflow`](https://github.com/pgflow-dev/pgflow) | [pgflow@0.17.2](https://github.com/pgflow-dev/pgflow/releases/tag/pgflow@0.17.2) | Yes                | No             | [Docs](https://pgflow.dev) | DAG-based workflow orchestration engine with step-by-step task execution. |
+| [`pgflow`](https://github.com/pgflow-dev/pgflow) | [pgflow@0.18.0](https://github.com/pgflow-dev/pgflow/releases/tag/pgflow@0.18.0) | Yes                | No             | [Docs](https://pgflow.dev) | DAG-based workflow orchestration engine with step-by-step task execution. |
 
 <!-- extensions-table:end -->
 

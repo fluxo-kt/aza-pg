@@ -1,12 +1,12 @@
 #!/usr/bin/env bun
 /**
  * Every enabled manifest entry whose shipped code differs from the newest release must be named in
- * CHANGELOG.md's [Unreleased] (AGENTS.md "Changelog": one entry per component).
+ * the image notes in CHANGELOG.md's [Unreleased] (docs/CHANGELOG-RULES.md: one entry per component).
  *
  * Shipped code = the pinned source commit plus the content of every patch applied to it (build.patches).
  * Comparing versions alone is not enough: a patch-only change (a lockfile bump that clears a CVE) moves no
  * version, and it is exactly the change an author names for one extension and forgets for the next.
- * An entry names a component by its manifest name (case-insensitive), e.g. "Vault (supabase_vault) …".
+ * The bold bullet heading identifies the component, e.g. "Vault (supabase_vault) …".
  *
  * The baseline is the tag of the newest dated heading. A release commit dates its own heading before
  * publish.yml creates that tag, so when the newest tag is missing the previous heading's tag is the baseline
@@ -16,7 +16,7 @@
  */
 
 import { $ } from "bun";
-import { newestRelease } from "../release/changelog";
+import { newestRelease, releaseNoteSections } from "../release/changelog";
 
 type Entry = {
   name: string;
@@ -73,23 +73,41 @@ const byName = (entries: Entry[]) => new Map(entries.map((e) => [e.name, e]));
 const before = byName(JSON.parse(oldManifest.stdout.toString()).entries);
 const now = byName((await Bun.file(MANIFEST).json()).entries);
 const start = changelog.indexOf("## [Unreleased]");
-const unreleased = changelog.slice(start, changelog.indexOf(baselineHeading, start)).toLowerCase();
+const imageNotes = changelog
+  .slice(start, changelog.indexOf(baselineHeading, start))
+  .split(/^## /m)
+  .map((section) => releaseNoteSections(section).image)
+  .join("\n")
+  .toLowerCase();
+
+const names = new Set([...before.keys(), ...now.keys()]);
+const documented = new Set<string>();
+for (const [, heading] of imageNotes.matchAll(/^[-*] \*\*([^*\r\n]+)\*\*/gm)) {
+  // Prefer an explicit manifest alias in a display name. Ignore incidental prose and longer names.
+  const subject = heading?.replaceAll("`", "") ?? "";
+  const alias = /^[a-z][\w -]* \(([\w-]+)\)/.exec(subject)?.[1];
+  const name = alias && names.has(alias) ? alias : /^[\w-]+/.exec(subject)?.[0];
+  if (name) documented.add(name);
+}
 
 const missing: string[] = [];
-for (const name of new Set([...before.keys(), ...now.keys()])) {
+for (const name of names) {
+  // A component already named in the image notes cannot be missing coverage.
+  if (documented.has(name.toLowerCase())) continue;
   const changed = (await shipped(before.get(name), tag)) !== (await shipped(now.get(name), null));
-  if (changed && !unreleased.includes(name.toLowerCase())) missing.push(name);
+  if (changed) missing.push(name);
 }
 
 if (missing.length > 0) {
   console.error(
-    `CHANGELOG.md does not name, in the sections after ${tag}: ${missing.join(", ")}.\n` +
+    `CHANGELOG.md does not name these components in the image notes after ${tag}: ${missing.join(", ")}.\n` +
       `Their shipped code (pinned commit or build.patches content) differs from release ${tag}, so an operator ` +
       `upgrading from it gets a change the changelog does not mention. Add one entry per component as AGENTS.md ` +
       `"Changelog" says: "<name> <version in ${tag}> → <current>" with the concrete fix from upstream's notes for ` +
       `that range; for a patch-only change, name the patched dependency, its versions and the advisory. Write the ` +
-      `manifest name in the entry (e.g. "Vault (supabase_vault)") so this check can find it.`
+      `manifest name at the start of the bold bullet heading, or use a display name with the exact manifest name ` +
+      `in parentheses (e.g. "Vault (supabase_vault)").`
   );
   process.exit(1);
 }
-console.log(`Every component changed since ${tag} is named in the changelog sections after it.`);
+console.log(`Every component changed since ${tag} is named in the image notes after it.`);

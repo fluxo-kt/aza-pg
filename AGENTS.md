@@ -9,8 +9,10 @@ Before an update, read [.claude/commands/update.md](.claude/commands/update.md) 
 
 ## CRITICAL RULES
 
-- **Run affected local checks before each focused commit; commit before long verification, then repair any failure in a follow-up commit. Finish every edit a long run reads (build inputs, entrypoint, suites) BEFORE starting it: an edit landing after the start voids that run and costs another full round. Complete the full update procedure's committed-code gate before presenting the update.**
+- **Run affected local checks before each focused commit; commit before long verification, then repair any failure in a follow-up commit. Finish every edit a long run reads (build inputs, entrypoint, suites) BEFORE starting it: an edit landing after the start voids that run and costs another full round. A defect found while a run is going is fixed now anyway: the run is then void, and keeping a known defect to save a run is never an option. Complete the full update procedure's committed-code gate before presenting the update.**
 - **Run the full committed gate.** Before that, name the failure each probe can distinguish and what each result changes. Reuse evidence for the same inputs and decision.
+- **A pin, override or setting changed only when the running artifact reports the new value.** Read it back from what runs (the binary's `--version`, `nix derivation show` references, `pg_settings`), never from the edit or a green build: a Docker volume filled by an older image keeps its binaries, and `overrideAttrs` cannot replace a value a nixpkgs recipe takes as a call argument, while every check stays green.
+- **A warning on the release candidate is this round's defect.** Fix the code or the check that raises it, never let it repeat: a check that warns on every run (e.g. one measuring a loader stub instead of the library) teaches readers to skip it, so the run where it means something goes unread.
 - **Report the revision or artifact tested.** Distinguish completed checks, failed checks and gaps. A tool failure leaves the underlying state unknown.
 - **DOUBLE CHECK & CONFIRM ALL TESTS AND VERIFICATIONS ARE COMPLETE AND SUCCESSFUL BEFORE PUSHING**
 
@@ -21,7 +23,7 @@ Before an update, read [.claude/commands/update.md](.claude/commands/update.md) 
 - **Tools ≠ extensions** (no CREATE EXTENSION)
 - **No Bun in final image** (build-only dependency)
 - **Repository separation**: Production (`aza-pg`) vs Testing/Dev (`aza-pg-testing`) — ⚠️ NEVER use testing images in production
-- **Nothing ships that no shipped feature uses at runtime** (Nix image): every package, plugin, data file and server build option must name the feature and consumer needing it inside a container; anything else is attack surface and size, so remove it. The consumer is the aza-pg container itself (server, extensions, entrypoint, health check, backup tools): another Compose service running our image for its own program (pooler, exporter) is no consumer, and CVEs, tests, checks or maintenance convenience never justify adding anything. **Adding any component to the image is Art's decision**: bring him the runtime use case and wait for his explicit pick; a reply that picks no option approves nothing, so nothing gets built meanwhile. Reasons for each kept or dropped option sit at the option (`flake.nix`, `nix/*.nix`). `testNoBuildOnlyStorePaths` fails when a stray reference drags build-only outputs in (`pg_config` once added 2.3 GB unnoticed). Inspect the closure by size: `docker run --rm --entrypoint sh <image> -c 'du -sk /nix/store/* | sort -rn | head'`
+- **Nothing ships that no shipped feature uses at runtime** (Nix image): every package, plugin, data file and server build option must name the feature and consumer needing it inside a container; anything else is attack surface and size, so remove it. The consumer is the aza-pg container itself (server, extensions, entrypoint, health check, backup tools): another Compose service running our image for its own program (pooler, exporter) is no consumer, and CVEs, tests, checks or maintenance convenience never justify adding anything. **Adding any component to the image is Art's decision**, except what the automatic major upgrade runs (invariant "Data directories made by older images…"; it still names that consumer): bring him the runtime use case and wait for his explicit pick; a reply that picks no option approves nothing, so nothing gets built meanwhile. Reasons for each kept or dropped option sit at the option (`flake.nix`, `nix/*.nix`). `testNoBuildOnlyStorePaths` fails when a stray reference drags build-only outputs in (`pg_config` once added 2.3 GB unnoticed). Inspect the closure by size: `docker run --rm --entrypoint sh <image> -c 'du -sk /nix/store/* | sort -rn | head'`
 - **Exactly one published image, ever**: no companion, helper or intermediate images of ours. Whatever the release needs is built into it; upstream companion images the stacks pin are upstream's releases, not ours, and stay separate: this rule never moves a companion into our image ("CVE effort follows what we release" below says how to handle a vulnerable one)
 - **Build it ourselves when that is what fixes it**: a component already inside our image carrying fixable CVEs because upstream has not rebuilt it (e.g. an old Go or crate set) is rebuilt from nixpkgs or source with fixed dependencies, not waited for or ignored. An agent maintains the builds, so ownership cost lies only in what we publish
 - **Latest stable versions everywhere; we own the updates**: never hold a component back, for convenience or for caution. A new version that breaks something we ship is this round's work, not a reason to wait: upgrade or patch the broken dependant (an upstream fix merged but not yet tagged ships as `build.patches` until the tag lands) and plan the migration existing databases need. Keeping an old pin is never an option to offer; a hold that still looks unavoidable after that work goes to Art as a question, with the evidence
@@ -30,7 +32,7 @@ Before an update, read [.claude/commands/update.md](.claude/commands/update.md) 
 - **CVE effort follows what we release**: the image and its runtime closure are gated, so a fixable HIGH/CRITICAL there is fixed before release. Every companion image our `stacks/` and `deployments/` pin, and everything our tests, checks and CI run, is ours to keep clean within reason but blocks nothing: `bun run security:scan` scans them all (the checkers' flake outputs, `scripts/nix/tools.ts`; tool images pinned in `scripts/` and `.github/`; the Bun packages via the install-time OSV gate), and every `/update` round updates them. A fixable finding there takes its reasonable route this round: upstream's fixed tag, or another maintained image or build with the fix (`/update` §5.6). With no such route, list the findings in the round's report and wait for upstream's fix; open no upstream issue or request unless Art asks. NEVER fix it by building that component into our image ("Nothing ships…" says what may enter it and who decides)
 - **Local builds and checks run under CI's conditions** (Nix sandbox in `scripts/nix/nix.ts`): a local pass under looser conditions proves nothing about CI. The sandbox matches; the host does not: a CI runner is fresh Linux (a checkout owned by the runner's uid, empty volumes and caches, checks started in parallel), while a Mac reuses warm Docker volumes and Docker Desktop shows bind mounts as root-owned. A Mac pass therefore never proves a change to how scripts start Nix, containers or tools: for each workflow job that runs the changed script, name the path it takes there (CI jobs run native Nix via `setup-nix`; `nix.ts` refuses its Mac container fallback under `CI=true`), prove local behaviour from an empty volume with concurrent callers, and call it done only when the next CI run is green with job durations (`gh run view <id> --json jobs`) matching the run before. A job that suddenly needs a higher `timeout-minutes` is a regression to explain, never a knob to turn
 - **Everything we build compiles as optimally as we can control.** The floor is upstream's own release build: a packaging default below it is a defect to fix on the entry (nixpkgs' Meson hook passes `--buildtype=plain`, which drops upstream's release level and any flags upstream adds only there; a Makefile's `-O0`). Read what a build type means from the build system itself (Meson `release` = optimization 3; the configure summary prints `optimization : N`), never from memory. C code uses upstream's own release level (PostgreSQL and PGXS extensions `-O2`; pgBackRest and CMake `Release` builds `-O3`), because that is the build upstream tests: a miscompile at an untested level is a silent wrong result, which costs more than the speed. A component moves to `-O3` only when it measures faster on this workload and passes the full suite at `-O3`; record the measurement at the setting. `-march=native` stays forbidden: the image must run on any CPU meeting the baseline in `flake.nix` (x86-64-v3, Armv8.2-A with dot product), which the entrypoint checks at start
-- **Data directories made by older images are migrated at the first start on a new image, before clients connect** (entrypoint block above `_main`): an image change must never leave a database failing or silently wrong. Every installed extension whose shipped version changed is brought up to it there (`ALTER EXTENSION … UPDATE`; with no upstream update path, recreated when it owns no tables), and one the image no longer ships is dropped when its own tables are empty, so a CHANGELOG never tells operators to run extension updates. Only proven-safe steps run unattended (e.g. a bare collation version refresh only between glibc versions `scripts/nix/compare-en-us-order.ts` measured to sort en_US the same; any other glibc change rebuilds the libc-collated indexes first); anything unrepairable stops the container naming the fix
+- **Data directories made by older images are migrated at the first start on a new image, before clients connect** (entrypoint block above `_main`): an image change must never leave a database failing or silently wrong. This includes every PostgreSQL major change, with no operator step (design: ROADMAP "Major upgrades are not automatic yet"). Designing and building that upgrade, including what it runs inside the image, is the maintaining agent's job, never a question for Art. Every migration step keeps state the operator changed (a paused or re-timed job, a setting, a grant): a step re-applied on every upgrade carries definitions only, and one-time effects (scheduling, seeding) run once, where upstream runs them. Every installed extension whose shipped version changed is brought up to it there (`ALTER EXTENSION … UPDATE`; with no upstream update path, recreated when it owns no tables), and one the image no longer ships is dropped when its own tables are empty, so a CHANGELOG never tells operators to run extension updates. Only proven-safe steps run unattended (e.g. a bare collation version refresh only between glibc versions `scripts/nix/compare-en-us-order.ts` measured to sort en_US the same; any other glibc change rebuilds the libc-collated indexes first); anything unrepairable stops the container naming the fix
 - **A check runs in the lane only if it fits the lane's budget and guards something a routine change can break**; evidence for a rare event is gathered in that event's `/update` step, not paid on every run
 
 ## AI Agent Knowledge Updates (Post-Training Facts)
@@ -126,7 +128,7 @@ Enable/disable: Edit `scripts/extensions/manifest-data.ts` → `bun run generate
 
 **Detection**: POSTGRES_MEMORY → cgroup v2 → /proc/meminfo | CPU via `nproc`
 
-**Workload** (`POSTGRES_WORKLOAD_TYPE`): `mixed` (default, 120 conn) | `web` (200) | `oltp` (300) | `dw` (100)
+**Workload**: `POSTGRES_WORKLOAD_TYPE` selects a profile. The entrypoint sizes connections for the memory available. See README “Auto-Config”.
 
 **Storage** (`POSTGRES_STORAGE_TYPE`): `ssd` (default) | `hdd` | `san`
 
@@ -140,7 +142,7 @@ Enable/disable: Edit `scripts/extensions/manifest-data.ts` → `bun run generate
 
 **Linting**: oxlint (fast) + prettier + shellcheck + yamllint | TS strict mode
 
-**Hooks**: bun-git-hooks — pre-commit auto-fixes + regenerates if manifest changed, then runs `bun run validate`; a failing check blocks the commit
+**Hooks**: bun-git-hooks — pre-commit auto-fixes + regenerates if manifest changed, then runs `validate.ts --staged`: lint/format take the staged files, and a check declaring `affects` runs only when a staged path can change its verdict (declare it for every check whose inputs are listable). A failing check blocks the commit; success is silent
 
 **CI**: `ci.yml` (pushes, PRs) | `publish.yml` (releases: amd64+arm64 build, test gate, Cosign signing; a failed gate publishes nothing)
 
@@ -152,7 +154,7 @@ Enable/disable: Edit `scripts/extensions/manifest-data.ts` → `bun run generate
 - ❌ Hardcoded counts in docs → ✅ Reference `docs/.generated/docs-data.json`
 - ❌ KiB/MiB/GiB labels, or a size converted between 1000 and 1024 bases → ✅ our own sizes read KB/MB/GB and mean 1024-based units (`formatSize`, `scripts/utils/logger.ts`; `Size Units` in `validate` refuses IEC labels). Exception: public surfaces (changelog, release notes) quote a size a standard tool reports, Docker first of all (`docker images`, `docker system df`), exactly as it prints it (decimal), so an operator running that tool sees our number; scripts produce that form with `formatDockerSize`
 - ❌ Complex bash in YAML → ✅ Extract to TypeScript script
-- ❌ Skip validation → ✅ pre-commit runs `bun run validate`; run `bun run validate:all` (what CI runs) yourself when the change touches a `.sh` or YAML file: ShellCheck (info level) and yamllint run only there
+- ❌ Skip validation → ✅ pre-commit runs `validate.ts --staged`; run `bun run validate:all` (what CI runs) yourself when the change touches a `.sh` or YAML file: ShellCheck (info level) and yamllint run only there
 - ❌ A suite giving a shipped input a value no real deployment writes (bigger memory limits, an explicit default preload list, a mounted getkey) → it hides the defect it works around → ✅ suites run shipped defaults; an override carries the reason inline (e.g. it is the subject under test)
 - ❌ A workflow step running a suite file (`bun scripts/test/test-<name>.ts`) → ✅ `bun scripts/test-all.ts --group <g> --image <ref>`: `SUITES` is the only suite list, so a hand-listed step drifts (`validate` refuses it)
 
@@ -206,51 +208,13 @@ Enable/disable: Edit `scripts/extensions/manifest-data.ts` → `bun run generate
 
 **Annotated Tags Have TWO SHAs**: `git ls-remote ... refs/tags/vX.Y` returns the tag OBJECT SHA (not usable for `rev-parse HEAD`). Use `refs/tags/vX.Y^{}` (caret-brace) to get the peeled COMMIT SHA — this is what `HEAD` resolves to after `git clone --branch vX.Y`. Always verify with both: `git ls-remote URL 'refs/tags/TAG' 'refs/tags/TAG^{}'`.
 
-**BuildKit SBOM Shape**: `docker/build-push-action sbom:true` emits per-platform SBOMs as `unknown/unknown` OCI attestation manifests with `application/vnd.in-toto+json` SPDX layers. Do NOT verify with deprecated `cosign download sbom`; verify every runnable platform has a matching attestation manifest.
+**Release SBOM**: Verify SPDX attestations for each runnable platform with `scripts/release/verify-sbom.ts`. Read the publish workflow before describing how it builds, signs, or attaches them.
 
 **Bun OSV install gate**: `bun install` exits 1 when the `bunfig.toml` scanner finds a CVE, even in a transitive dev dependency. Fix it with a `package.json` `overrides` entry pinning a patched version; add an expiring `.bun-osv.json` ignore only when no patched version exists; never bypass the scanner by env. Read `docs/TOOLING.md#Bun OSV install gate` (full procedure, what `validate-bun-osv.ts` enforces) before changing an install site or bumping the scanner.
 
 ## Changelog
 
-**File**: `CHANGELOG.md` — Keep a Changelog format, user-facing, integrated with GitHub releases
-
-The changelog covers operator-visible changes to the release Docker image and shipped Compose companion images.
-**Audience**: Image consumers (ops, developers deploying aza-pg). NOT developers of aza-pg tooling.
-
-**Workflow**:
-
-1. Track image-affecting changes in `[Unreleased]` section
-2. Focus on: extension updates, nixpkgs (server, glibc, library) changes, breaking changes, security fixes
-3. The release commit dates itself: `/release` runs `bun scripts/release/date-changelog.ts`, which moves `[Unreleased]` under `## [v<pg>-<UTC timestamp>] - <date>`. publish.yml takes the tag name and the GitHub notes from that newest heading, so every branch shows the release dated the moment it ships and the anchor merge brings it to dev
-4. Non-image changes: 1-2 brief bullets max in `### Development` — omit if trivial
-
-**Entry rules** (`[Unreleased]` is read by someone upgrading from the last release):
-
-- One entry per component: `<name> <version in the last release> → <current>`. Read the old version from the tag (`git show <tag>:docker/postgres/extensions.manifest.json`), never from changelog text. A second bump before release edits that entry. A patch-only change (a lockfile bump for a CVE) moves no version and still needs its entry; `Changelog Coverage` in `validate` refuses any component whose pinned commit or patches changed since the last release and whose manifest name `[Unreleased]` lacks
-- A dated `## [<tag>]` section is what shipped: never edit it
-- Every claim comes from the component's own release notes for exactly that range; a feature from an earlier release is not news. Name the concrete fix, never "bug fixes". Completeness too: go through EVERY item of that range's notes (changes, deprecations, breaking, fixes) and decide per item whether it reaches what we ship (settings we pass, metrics and labels, defaults, behaviour under our config); name each one that does. Writing from the headline items alone omits exactly the changes an operator trips over
-- A `Fixed` entry for our own defect lands in the same change as a check that reproduces the defect: it must fail on the image or code before the fix (run it against the last release when that one has the bug) and pass after. A fix whose proof is still pending is unproven, not Fixed; never park the proof on ROADMAP while the entry claims the fix
-- A change that needs operator action is Breaking; state the action, and the setting that restores old behaviour when upstream offers one
-- Every image change is stated with its cost as well as its gain: removed features, lost hardening (e.g. arm64 BTI), changed library versions, size. An operator must never discover a loss the changelog did not name
-
-**The ONLY test that matters**: Would the change appear in `docker inspect`, `\dx`, extension behaviour, `psql --version`, or change a shipped Compose service's authentication, settings, metrics or operation? Yes → belongs. No → NEVER belongs.
-
-**What NEVER belongs in the changelog**:
-
-- Build fixes (`flake.nix`, `nix/*.nix`, generators) — even if they fixed a build bug, the fix itself is invisible; only the **resulting extension change** (if any) belongs
-- Agent commands (`.claude/commands/`), skills, test scripts — invisible to image consumers
-- Individual kaizen/audit passes, validate check improvements, internal refactors
-- CI infra fixes (timeouts, retry logic, credentials) — operators can't see these
-- Anything a user running `docker run` cannot observe or act on
-
-**Development section rules** (when it's worth including at all):
-
-- Max 1-2 bullets total, no technical detail, user-impact framing only
-- OK: "Test coverage hardened; CI updated to Node.js 24 runners"
-- NOT OK: "testPgStatStatements now executes a tracked query after reset..."
-- NOT OK: "Fixed ensureCleanDir to use node:fs instead of Bun shell rm..."
-
-**Categories**: Breaking | Security | Fixed | Changed | Added | Deprecated | Removed | Development
+Before writing or reviewing `CHANGELOG.md` or release notes, read [docs/CHANGELOG-RULES.md](docs/CHANGELOG-RULES.md): which section a change goes in (by what the operator must update), one entry per component, entry rules, and what never belongs.
 
 ## References
 

@@ -19,6 +19,7 @@ Quick navigation for aza-pg documentation.
 | [REGRESSION-TESTING.md](REGRESSION-TESTING.md) | Regression test framework (2 tiers)  |
 | [TOOLING.md](TOOLING.md)                       | Tech decisions, Bun-first approach   |
 | [VERSION-MANAGEMENT.md](VERSION-MANAGEMENT.md) | Version procedures, manifest updates |
+| [CHANGELOG-RULES.md](CHANGELOG-RULES.md)       | What goes in CHANGELOG.md, and where |
 
 ## Deployment
 

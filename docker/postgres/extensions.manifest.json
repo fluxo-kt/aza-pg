@@ -532,8 +532,8 @@
       "source": {
         "type": "git",
         "repository": "https://github.com/pgflow-dev/pgflow.git",
-        "tag": "pgflow@0.17.2",
-        "commit": "baa9e43f5f9122133deacbc3e8ffc80e284b4f50"
+        "tag": "pgflow@0.18.0",
+        "commit": "045681b713a4fa4a4d28a23dc673e4975b3297cc"
       },
       "runtime": {
         "sharedPreload": false,
@@ -738,8 +738,8 @@
       "source": {
         "type": "git",
         "repository": "https://github.com/okbob/plpgsql_check.git",
-        "tag": "v2.11.0",
-        "commit": "e8bbdc6f5923c1096c6de52f93db83aa693e64d0"
+        "tag": "v2.11.1",
+        "commit": "08fe12edb7a2ea4de15a43722729948414fce136"
       },
       "build": {
         "type": "pgxs"
@@ -927,8 +927,8 @@
       "source": {
         "type": "git",
         "repository": "https://github.com/timescale/timescaledb-toolkit.git",
-        "tag": "1.28.0",
-        "commit": "4f3c7b1bb9ac244f6498d97bd98642c5c9619ab9"
+        "tag": "1.29.0",
+        "commit": "244096af67f674a00268f408eab7dcaeac2f1cca"
       },
       "build": {
         "type": "cargo-pgrx",

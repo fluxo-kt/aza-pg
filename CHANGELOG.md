@@ -5,10 +5,36 @@ All notable changes to the aza-pg Docker image will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-**Focus**: This changelog tracks operator-visible changes to the release Docker image and shipped Compose companion images.
+**Focus**: This changelog tracks operator-visible changes to the release Docker image. Changes to shipped Compose files go under **Compose deployments** within the same release.
 Development tooling, test infrastructure, and CI/CD changes are noted briefly if relevant.
 
 ## [Unreleased]
+
+## [v18.7-202611261839] - 2026-11-26
+
+### Breaking
+
+- **pgflow 0.17.2 → 0.18.0: run `docker exec <container> pgflow-upgrade` on each pgflow database, then deploy `@pgflow/client`/workers 0.18.0.** Stop pgflow workers first: 0.18.0 workers start through a new invocation handshake (`ensure_workers()` reserves one `invocation_id` per function; duplicate cron starts and manual requests share it), which needs the migration applied first. New: tasks marked permanently stalled are terminalized through the step's `whenExhausted` policy by `pgflow.escalate_permanently_stalled()`, scheduled as its own `pgflow_escalate_permanently_stalled` cron job beside `pgflow_requeue_stalled_tasks` (the upgrade gives it the recovery job's interval and paused state). Workers keep handler results when logging or settlement fails, and store falsy outputs (`0`, `false`, `""`) as given and null outputs as JSON null.
+
+### Security
+
+- **msgpack-c 7.0.2** (used by PGroonga through Groonga 16.1.4): patched for CVE-2026-130065, a missing destination-capacity check in `msgpack_vrefbuffer_migrate`. Versions are unchanged; Groonga and PGroonga are rebuilt against the fixed library. No other library in the image changed (PostgreSQL stays 18.7, glibc 2.44).
+
+### Fixed
+
+- **pgflow-upgrade (pgflow)** no longer re-activates a paused `pgflow_requeue_stalled_tasks` job or resets its interval: it re-scheduled the job at the default 15 seconds after every upgrade. The upgrade's pg_cron steps are also skipped in databases without pg_cron instead of failing.
+
+### Changed
+
+- **plpgsql_check 2.11.0 → 2.11.1**: checks stack depth while walking deeply nested PL/pgSQL statements (was a possible backend crash), checks `FETCH` from a dynamic cursor as a dynamic query, keeps the dynamic SQL parser hook state alive as long as its plan, releases the error copies kept by the debugger API at the end of each call, and initializes all checker state fields. No SQL changes.
+
+- **timescaledb_toolkit 1.28.0 → 1.29.0** (updated automatically at first start): built on pgrx 0.19.1 (was 0.18.1). Upstream's changes otherwise add PostgreSQL 19 support and drop Debian 11 packages, neither of which reaches this image. pgrx 0.19.1 is still below 0.19.4, so PostgreSQL 18.7's composite-value check does not yet apply inside this extension.
+
+### Compose deployments
+
+- **PgBouncer image ghcr.io/cloudnative-pg/pgbouncer 1.26.1, rebuild 202611121015 → 202611251233** (primary stack and `deployments/phase1-single-vps`): same PgBouncer, rebuilt on current Debian packages.
+- **pgbouncer-exporter v0.12.1 → upstream's master build** (primary stack and `deployments/phase1-single-vps`): v0.12.1, the newest release, carries 29 fixable HIGH findings in its Go dependencies; master is the same exporter (no source changes since v0.12.1, only dependency and Go updates) with 2 left. Same flags, metrics, user and settings. A `PGBOUNCER_EXPORTER_IMAGE` override keeps whatever image it names.
+- **Grafana 13.3.1 → 13.3.2** (`deployments/phase1-single-vps`): fixes CVE-2026-107561 and CVE-2026-88960; provisioning keeps existing folder identities when it creates child folders.
 
 ## [v18.7-202611192045] - 2026-11-19
 

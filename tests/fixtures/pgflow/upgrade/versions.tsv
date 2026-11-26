@@ -10,3 +10,4 @@
 0.16.0	20260907082520_pgflow_remove_legacy_flow_compilation.sql
 0.17.1	20260920093533_pgflow_telemetry.sql
 0.17.2	20261001194538_pgflow_telemetry_endpoint_fix.sql
+0.18.0	20261124094756_pgflow_escalate_permanently_stalled.sql

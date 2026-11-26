@@ -56,6 +56,22 @@ function nixEnv(): Record<string, string | undefined> {
   };
 }
 
+// CI's Nix: the tag is the nix_version that setup-nix's cachix/install-nix-action pin installs (its install-nix.sh),
+// so a local build runs the same Nix. Bump both together.
+const NIX_IMAGE =
+  "nixos/nix:2.36.0@sha256:746280551ddc1c72177d1a597c05eacac86dfaa18d5d649bf86411278bcd5470";
+const NIX_VERSION = NIX_IMAGE.match(/:([^@]+)@/)![1];
+
+/**
+ * The store volume carries the Nix version because Docker copies the image's /nix into a named volume only while the
+ * volume is empty: a volume filled by an older image keeps that image's Nix on PATH, so bumping NIX_IMAGE alone would
+ * leave local Nix behind CI's while the pin claimed otherwise. A new version therefore gets a new volume (one full
+ * rebuild per Nix bump), and ensureStore deletes the superseded ones.
+ */
+function storeVolume(arch: string) {
+  return `aza-pg-nix-${arch}-${NIX_VERSION}`;
+}
+
 /**
  * argv that runs `command` (a nix invocation, or a store path such as the image's stream script) where the store is.
  * `dockerArgs` reach only the container (e.g. the Docker socket a scanner needs); natively the host already has them.
@@ -91,7 +107,14 @@ export function nixCommand(
     "-e",
     "NIX_CONFIG",
     "-v",
-    `aza-pg-nix-${arch}:/nix`,
+    `${storeVolume(arch)}:/nix`,
+    // Nix 2.35 unpacks and compiles every derivation under /nix/var/nix/builds (build-dir unset), which here is the
+    // store volume on the Mac's SSD. Measured: 1 GB of build scratch wrote 3.0 GB to the Docker VM's disk there and
+    // 12 MB on this tmpfs, and the build ran faster; Nix runs in this container wrote ~20 GB each. Scratch is deleted
+    // when each build ends, so RAM is all it needs. No size: Linux gives tmpfs half the VM's memory, and an overflow
+    // fails the build with ENOSPC instead of corrupting anything. `exec` because builds run what they compile.
+    "--tmpfs",
+    "/nix/var/nix/builds:rw,exec",
     // builtins.fetchGit (every source in nix/extensions.nix) caches its clones here, outside the store; without the
     // volume each run re-clones every extension repository before evaluation can finish.
     "-v",
@@ -104,9 +127,7 @@ export function nixCommand(
     "-v",
     `${path.resolve(import.meta.dir, "container.gitconfig")}:/etc/gitconfig:ro`,
     ...dockerArgs,
-    // CI's Nix: the tag is the nix_version that setup-nix's cachix/install-nix-action pin installs (its
-    // install-nix.sh), so a local build runs the same Nix. Bump both together.
-    "nixos/nix:2.35.6@sha256:b49cb33f3a7e5cf3933ad8774529de0e3807ec5cf54987aa7ccdfb49f2fc55ed",
+    NIX_IMAGE,
     ...command,
   ];
 }
@@ -128,18 +149,41 @@ let storeReady = native;
  */
 function ensureStore() {
   const arch = nixPlatform.replace("linux/", "");
-  const volume = ["docker", "volume", "inspect", `aza-pg-nix-${arch}`];
+  const volume = ["docker", "volume", "inspect", storeVolume(arch)];
   storeReady ||= Bun.spawnSync(volume, { stdout: "ignore", stderr: "ignore" }).exitCode === 0;
   const lock = `aza-pg-nix-${arch}-init`;
   while (!storeReady) {
     const run = Bun.spawnSync(nixCommand(["true"], lock), { stdout: "ignore", stderr: "pipe" });
     storeReady = run.exitCode === 0;
-    if (storeReady) return;
+    if (storeReady) return removeSupersededStores(arch);
     const err = run.stderr.toString();
     // Any other failure is the next Nix run's to report; this only orders the first fill.
     if (!err.includes("Conflict")) return void process.stderr.write(err);
     Bun.sleepSync(200);
   }
+}
+
+/**
+ * Deletes this arch's store volumes left by other Nix versions (and the unversioned name used before), right after the
+ * current one is filled: no later run would know their names. A volume still mounted by a running build refuses
+ * removal; it is left for the next version's fill rather than breaking that build.
+ */
+function removeSupersededStores(arch: string) {
+  const ls = Bun.spawnSync(
+    ["docker", "volume", "ls", "-q", "--filter", `name=^aza-pg-nix-${arch}`],
+    {
+      stdout: "pipe",
+      stderr: "ignore",
+    }
+  );
+  const stale = ls.stdout
+    .toString()
+    .split("\n")
+    // Exact shape only: the fetchGit cache (`-cache`) and the fill lock (`-init`) are not stores.
+    .filter((name) => new RegExp(`^aza-pg-nix-${arch}(-\\d+\\.\\d+\\.\\d+)?$`).test(name))
+    .filter((name) => name !== storeVolume(arch));
+  if (stale.length)
+    Bun.spawnSync(["docker", "volume", "rm", ...stale], { stdout: "ignore", stderr: "ignore" });
 }
 
 let spawns = 0;

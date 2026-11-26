@@ -39,7 +39,7 @@ import {
   loadManifest,
   type Manifest,
 } from "./config-generator/manifest-loader";
-import { newestRelease } from "./release/changelog";
+import { newestRelease, releaseNoteSections } from "./release/changelog";
 import { warning } from "./utils/logger";
 
 const PROJECT_ROOT = join(import.meta.dir, "..");
@@ -429,7 +429,7 @@ function generateConfigurationSection(): string[] {
     "| `POSTGRES_BIND_IP` | No | `127.0.0.1` | Address PostgreSQL listens on inside the container. The default accepts connections only from inside this container; set `0.0.0.0` to use a published port or connect from other containers |"
   );
   lines.push(
-    "| `POSTGRES_WORKLOAD_TYPE` | No | `mixed` | `web` (200 conn), `oltp` (300 conn), `dw` (100 conn, analytics), `mixed` (120 conn, balanced) |"
+    "| `POSTGRES_WORKLOAD_TYPE` | No | `mixed` | Workload profile: `web`, `oltp`, `dw` (analytics), or `mixed`. Connection limits depend on available memory. |"
   );
   lines.push(
     "| `POSTGRES_STORAGE_TYPE` | No | `ssd` | `ssd` (local NVMe/SSD), `san` (network volumes like Hetzner Volumes), `hdd` (spinning disks) |"
@@ -637,12 +637,15 @@ function generateMarkdown(
   );
   lines.push("");
 
-  // What's Changed section from CHANGELOG.md (if available)
-  if (changelogContent) {
+  // Compose users need these upgrade notes, but pulling the database image cannot change companion services.
+  const { image: imageChanges, compose: composeChanges } = releaseNoteSections(
+    changelogContent ?? ""
+  );
+  if (imageChanges) {
     lines.push("## 📋 What's Changed");
     lines.push("");
     // Add changelog content as blockquote for visual distinction
-    const changelogLines = changelogContent.split("\n");
+    const changelogLines = imageChanges.split("\n");
     for (const line of changelogLines) {
       // Convert ### headings to bold text within the blockquote
       if (line.startsWith("### ")) {
@@ -654,6 +657,10 @@ function generateMarkdown(
       }
     }
     lines.push("");
+  }
+  if (composeChanges) {
+    lines.push("## Compose deployment changes", "");
+    lines.push("Applies when updating the shipped Compose files.", "", composeChanges, "");
   }
 
   // GHCR Package Link (prominent)
@@ -682,7 +689,6 @@ function generateMarkdown(
   lines.push(`- **Extensions**: ${args.catalogEnabled - toolCount}, plus ${toolCount} tools`);
   lines.push(`- **Preloaded**: ${preloadedCount} (default shared_preload_libraries)`);
   lines.push(`- **Auto-Created**: ${autoCreatedCount} (created by default in new databases)`);
-  lines.push(`- **Build**: Single-node optimized`);
 
   // Add size metrics if provided
   if (args.compressedSize || args.uncompressedSize || args.layerCount !== undefined) {
@@ -809,7 +815,7 @@ function generateMarkdown(
   lines.push("# View embedded version info");
   lines.push(`docker run --rm ${REGISTRY}:${args.tag} cat /etc/postgresql/version-info.txt`);
   lines.push("");
-  lines.push("# Verify BuildKit SBOM attestations (run from a clone of this repository)");
+  lines.push("# Verify SPDX SBOM attestations (run from a clone of this repository)");
   lines.push("bun scripts/release/verify-sbom.ts \\");
   lines.push(`  --image ${REGISTRY}:${args.tag}`);
   lines.push("```");

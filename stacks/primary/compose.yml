@@ -59,7 +59,7 @@ services:
     # while edoburu/pgbouncer stopped rebuilding and kept fixable musl, libpq and zlib CVEs. Only pgbouncer, sh,
     # sed and psql (healthcheck) are used, through the stack's own entrypoint below.
     image: >-
-      ${PGBOUNCER_IMAGE:-ghcr.io/cloudnative-pg/pgbouncer:1.26.1-202611121015-trixie@sha256:6c91fd7383b8b098bc0c3b71dba4e98bd568c0d301b9fc66027fbc23259c6a7d}
+      ${PGBOUNCER_IMAGE:-ghcr.io/cloudnative-pg/pgbouncer:1.26.1-202611251233-trixie@sha256:9f648625e11f67f5171f1edd31648c7d02a1a4a5e1b8adf7d4a9db30dce8c22b}
     container_name: ${COMPOSE_PROJECT_NAME:-aza-pg}-pgbouncer-primary
     restart: unless-stopped
 
@@ -147,7 +147,7 @@ services:
 
   pgbouncer_exporter:
     image: >-
-      ${PGBOUNCER_EXPORTER_IMAGE:-prometheuscommunity/pgbouncer-exporter:v0.12.1@sha256:30f31b6c2efdad3647f8182cc7c1a3a19e42bae5d17387694989f969371c230d}
+      ${PGBOUNCER_EXPORTER_IMAGE:-prometheuscommunity/pgbouncer-exporter:master@sha256:6372098da3917faad5c8ecdf6564af01c26f5f16dcad1d97d8f12bff520711fa}
     container_name: ${COMPOSE_PROJECT_NAME:-aza-pg}-pgbouncer-exporter-primary
     restart: unless-stopped
 

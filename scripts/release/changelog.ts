@@ -7,6 +7,17 @@
 
 const RELEASE_HEADING = /^## \[v(\d+\.\d+)-(\d{12})\] - \d{4}-\d{2}-\d{2}$/;
 
+export function releaseNoteSections(notes: string) {
+  // Use the same audience boundary for image coverage and the public release notes.
+  const composeHeading = /^### Compose deployments[ \t]*\r?$/m.exec(notes);
+  return {
+    image: notes.slice(0, composeHeading?.index).trim(),
+    compose: composeHeading
+      ? notes.slice(composeHeading.index + composeHeading[0].length).trim()
+      : "",
+  };
+}
+
 export type Release = {
   /** Tag without the leading `v`, e.g. `18.6-202611101530`. */
   version: string;

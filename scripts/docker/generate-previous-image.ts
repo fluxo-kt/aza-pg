@@ -67,7 +67,11 @@ for (const arch of ARCHES) {
     const comment = config.history[i]!.comment ?? "";
     if (!comment.startsWith("store paths: "))
       throw new Error(`${arch} layer ${i}: no store paths in "${comment}"`);
-    const paths = [...comment.matchAll(/'\/nix\/store\/([^'/]+)'/g)].map((m) => m[1]!);
+    // The customisation layer carries the image's root files (/etc, /usr/local/bin), not a store path the old server
+    // runs from; recording it would fetch it at every upgrade and leave a dangling symlink.
+    const paths = [...comment.matchAll(/'\/nix\/store\/([^'/]+)'/g)]
+      .map((m) => m[1]!)
+      .filter((p) => !p.endsWith("-customisation-layer"));
     return { digest: layer.digest, paths };
   });
 }

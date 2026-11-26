@@ -121,7 +121,11 @@
           # that moves the minor must update the manifest in the same change, or the image would claim a version it lacks.
           extensions = assert postgresql.version == manifest.metadata.pgVersion
             || throw "nixpkgs ships PostgreSQL ${postgresql.version}, manifest-data.ts says ${manifest.metadata.pgVersion}: set pgVersion to nixpkgs' version";
-            import ./nix/extensions.nix { inherit pkgs postgresql manifest inputs hardeningEnable stripUnneeded targetCpu; inherit (pkgs) lib; };
+            import ./nix/extensions.nix { inherit pkgs postgresql manifest inputs hardeningEnable stripUnneeded targetCpu curl; inherit (pkgs) lib; };
+          # The image's one curl: pg_net and http link it, the major upgrade runs its binary. HTTP(S) only: each protocol
+          # left out (GSSAPI, SCP/SFTP, plus the HTTP/3, brotli and PSL that full curl adds) is parsing code reachable
+          # from SQL. One value for both, or the image ships two libcurls.
+          curl = pkgs.curlMinimal.override { gssSupport = false; scpSupport = false; };
           # jit is a separate output (llvmjit.so plus bitcode) that withPackages leaves out; without it jit=on does nothing.
           # withPackages also links postgresql.man for desktop installs; a container has no man reader. The env is
           # symlinks, so dropping the link drops the store reference (buildEnv keeps `paths` out of overrideAttrs' reach).
@@ -133,7 +137,7 @@
           # Entries with nix.buildUnshipped stay out of the image but are built by the same recipe (/update builds
           # this output), so shipping one later finds it current instead of broken by months of nixpkgs changes.
           unshippedExtensions = import ./nix/extensions.nix {
-            inherit pkgs postgresql inputs hardeningEnable stripUnneeded targetCpu;
+            inherit pkgs postgresql inputs hardeningEnable stripUnneeded targetCpu curl;
             inherit (pkgs) lib;
             manifest = manifest // {
               entries = map (e: e // { enabled = true; })
@@ -151,7 +155,7 @@
           postgresql = server;
           # A script that streams the image tarball: scripts/nix/build-image.ts pipes it into `docker load`.
           image = import ./nix/image.nix {
-            inherit pkgs manifest;
+            inherit pkgs manifest curl;
             source = inputs.self;
             inherit (pkgs) lib;
             postgresql = server;

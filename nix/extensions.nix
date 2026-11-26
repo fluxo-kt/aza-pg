@@ -6,7 +6,7 @@
 # Without it the entry is built from `build.type`, linking `nix.inputs`. Sources come from builtins.fetchGit at the
 # pinned commit, which needs no stored hash: the commit is the content address. Rust crates come from the source's
 # own Cargo.lock for the same reason.
-{ pkgs, lib, postgresql, manifest, inputs, hardeningEnable, stripUnneeded, targetCpu }:
+{ pkgs, lib, postgresql, manifest, inputs, hardeningEnable, stripUnneeded, targetCpu, curl }:
 let
   ps = postgresql.pkgs;
   # The PGXS builder exists only inside the extension scope, not as an attribute of it.
@@ -83,9 +83,8 @@ let
   } // lib.optionalAttrs ((e.build or { }) ? subdir) { buildAndTestSubdir = e.build.subdir; };
 
   # Replace nixpkgs' default libraries in every recipe that takes them. libpq is the server's own, without nixpkgs'
-  # Kerberos and OAuth client. curl speaks HTTP(S) only: pg_net and http need nothing more, and each protocol left
-  # out (GSSAPI, SCP/SFTP, plus the HTTP/3, brotli and PSL that full curl adds) is parsing code reachable from SQL.
-  libraries = { libpq = postgresql; curl = pkgs.curlMinimal.override { gssSupport = false; scpSupport = false; }; };
+  # Kerberos and OAuth client; curl is flake.nix's HTTP(S)-only build, shared with the image's curl binary.
+  libraries = { libpq = postgresql; inherit curl; };
 
   fromNixpkgs = e:
     let

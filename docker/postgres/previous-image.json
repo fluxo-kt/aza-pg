@@ -324,7 +324,7 @@
       },
       {
         "digest": "sha256:8b66abd96d665dc1fb59353feec463d70fcafecf8be0791a209f4711b0d36a7c",
-        "paths": ["iigs8whw3kq9zk51axzfd5wcic2i941d-aza-pg-customisation-layer"]
+        "paths": []
       }
     ],
     "arm64": [
@@ -650,7 +650,7 @@
       },
       {
         "digest": "sha256:b6d01f7cb1dafe4e9c29e519bc67422a047d7320aec6ee0fa5d4f55f77fbbe31",
-        "paths": ["rcgy2awrvby3qdml8b2z8yyjzy31clgs-aza-pg-customisation-layer"]
+        "paths": []
       }
     ]
   }

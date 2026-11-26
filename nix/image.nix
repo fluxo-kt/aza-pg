@@ -14,11 +14,13 @@
 #   mountpoint (ours)     upstream entrypoint; nix/bin/mountpoint, instead of util-linux
 #   flock (util-linux)    entrypoint: one server per data directory across containers. The binary alone: it
 #                         references only glibc, so util-linux's other outputs stay out
-#   gzip xz zstd          upstream entrypoint: /docker-entrypoint-initdb.d/*.sql.gz|.xz|.zst
+#   gzip xz zstd          upstream entrypoint: /docker-entrypoint-initdb.d/*.sql.gz|.xz|.zst; zstd also unpacks the
+#                         previous release's layers for a major upgrade
+#   curl gnutar           major upgrade: fetch and unpack the previous release's layers (entrypoint)
 #   su-exec (as gosu)     `--user root`: upstream and ours drop to postgres with `gosu postgres`
 #   cacert                pg_net and http make HTTPS requests
 #   locales               lc_monetary/lc_numeric/lc_time per session (MANIFEST_METADATA.locales)
-{ pkgs, lib, postgresql, manifest, upstreamEntrypoint, source }:
+{ pkgs, lib, postgresql, manifest, upstreamEntrypoint, source, curl }:
 let
   meta = manifest.metadata;
   pgMajor = lib.versions.major meta.pgVersion;
@@ -128,7 +130,16 @@ let
     pkgs.gzip
     pkgs.xz
     pkgs.zstd
+    curl.bin
+    pkgs.gnutar
   ];
+  # Major upgrade: pg_upgrade needs the previous major's server, which only runs from its own absolute /nix/store
+  # paths, and postgres cannot write the root-owned store. So every store path of the previous release missing from
+  # this image is a symlink into the data volume, which the entrypoint fills from that release's layers at first
+  # start (docker/postgres/previous-image.json, generate-previous-image.ts). Paths both images share are already here.
+  previous = builtins.fromJSON (builtins.readFile (src "docker/postgres/previous-image.json"));
+  previousPaths = pkgs.writeText "previous-store-paths" (lib.concatLines (lib.concatMap (l: l.paths)
+    previous.platforms.${if pkgs.stdenv.hostPlatform.isAarch64 then "arm64" else "amd64"}));
   # pgConfig reports the combined installation's paths (sharedir, pkglibdir), which the entrypoint,
   # the pg_repack wrapper and the image checks read; the server package itself ships no pg_config.
   contents = [ postgresql pgConfig files pkgs.cacert ] ++ tools;
@@ -149,6 +160,11 @@ pkgs.dockerTools.streamLayeredImage {
     ln -sf ${pkgs.bashNonInteractive}/bin/bash bin/bash
     ln -sf ${pkgs.bashNonInteractive}/bin/bash bin/sh
     chmod 1777 tmp
+    mkdir -p nix/store
+    while read -r p; do
+      grep -qxF "/nix/store/$p" ${pkgs.closureInfo { rootPaths = contents; }}/store-paths ||
+        ln -s "/var/lib/postgresql/.aza-old-store/$p" "nix/store/$p"
+    done < ${previousPaths}
   '';
   fakeRootCommands = ''
     chown -R 999:999 run/postgresql var/lib/postgresql backup

@@ -10,6 +10,8 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
 
 ## [Unreleased]
 
+## [v18.7-202611261839] - 2026-11-26
+
 ### Breaking
 
 - **pgflow 0.17.2 → 0.18.0: run `docker exec <container> pgflow-upgrade` on each pgflow database, then deploy `@pgflow/client`/workers 0.18.0.** Stop pgflow workers first: 0.18.0 workers start through a new invocation handshake (`ensure_workers()` reserves one `invocation_id` per function; duplicate cron starts and manual requests share it), which needs the migration applied first. New: tasks marked permanently stalled are terminalized through the step's `whenExhausted` policy by `pgflow.escalate_permanently_stalled()`, scheduled as its own `pgflow_escalate_permanently_stalled` cron job beside `pgflow_requeue_stalled_tasks` (the upgrade gives it the recovery job's interval and paused state). Workers keep handler results when logging or settlement fails, and store falsy outputs (`0`, `false`, `""`) as given and null outputs as JSON null.

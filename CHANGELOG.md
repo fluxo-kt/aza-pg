@@ -14,6 +14,10 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
 
 - **pgflow 0.17.2 → 0.18.0: run `docker exec <container> pgflow-upgrade` on each pgflow database, then deploy `@pgflow/client`/workers 0.18.0.** Stop pgflow workers first: 0.18.0 workers start through a new invocation handshake (`ensure_workers()` reserves one `invocation_id` per function; duplicate cron starts and manual requests share it), which needs the migration applied first. New: tasks marked permanently stalled are terminalized through the step's `whenExhausted` policy by `pgflow.escalate_permanently_stalled()`, scheduled as its own `pgflow_escalate_permanently_stalled` cron job beside `pgflow_requeue_stalled_tasks` (the upgrade gives it the recovery job's interval and paused state). Workers keep handler results when logging or settlement fails, and store falsy outputs (`0`, `false`, `""`) as given and null outputs as JSON null.
 
+### Security
+
+- **msgpack-c 7.0.2** (used by PGroonga through Groonga 16.1.4): patched for CVE-2026-130065, a missing destination-capacity check in `msgpack_vrefbuffer_migrate`. Versions are unchanged; Groonga and PGroonga are rebuilt against the fixed library. No other library in the image changed (PostgreSQL stays 18.7, glibc 2.44).
+
 ### Fixed
 
 - **pgflow-upgrade (pgflow)** no longer re-activates a paused `pgflow_requeue_stalled_tasks` job or resets its interval: it re-scheduled the job at the default 15 seconds after every upgrade. The upgrade's pg_cron steps are also skipped in databases without pg_cron instead of failing.

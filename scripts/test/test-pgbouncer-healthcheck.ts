@@ -95,6 +95,54 @@ try {
     if (who !== "pgbouncer_auth") throw new Error(`server session user was "${who}"`);
   });
 
+  await step("a named prepared statement survives a pooled backend switch", async () => {
+    // The docs once told clients to turn prepared statements off behind the pooler. PgBouncer tracks protocol-level
+    // ones in transaction mode (max_prepared_statements, on by default since 1.24), so a statement parsed on one server
+    // must still run after the client lands on another. The second client takes the backend just released (PgBouncer
+    // reuses the most recent server first), so the second execution must run on a different pid.
+    const script = `SELECT pg_backend_pid() \\parse s1
+\\bind_named s1 \\g
+\\! PGPASSWORD='${POSTGRES_PASSWORD}' psql -X -h pgbouncer -p 6432 -U ${SUPERUSER} -d postgres -c 'BEGIN; SELECT pg_sleep(2); COMMIT' >/dev/null &
+\\! sleep 0.5
+\\bind_named s1 \\g
+`;
+    const proc = Bun.spawn(
+      [
+        "docker",
+        "exec",
+        "-i",
+        "-e",
+        `PGPASSWORD=${POSTGRES_PASSWORD}`,
+        postgres,
+        "psql",
+        "-X",
+        "-tA",
+        "-v",
+        "ON_ERROR_STOP=1",
+        "-h",
+        "pgbouncer",
+        "-p",
+        "6432",
+        "-U",
+        SUPERUSER,
+        "-d",
+        "postgres",
+      ],
+      { stdin: new Blob([script]), stdout: "pipe", stderr: "pipe" }
+    );
+    const [out, err, code] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ]);
+    const pids = out.trim().split("\n");
+    if (code !== 0 || pids.length !== 2 || pids[0] === pids[1]) {
+      throw new Error(
+        `expected two runs on different backends (exit ${code}): ${out.trim()} ${err.trim()}`
+      );
+    }
+  });
+
   await step("wrong password is refused by PgBouncer", async () => {
     const r = await sqlOk(postgres, "SELECT 1", {
       ...viaPgbouncer,

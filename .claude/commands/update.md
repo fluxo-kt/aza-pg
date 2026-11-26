@@ -474,6 +474,8 @@ nothing until you edit the tag; to pick up a re-pushed tag, delete that entry's 
 generated manifest and regenerate. Review the `commit` diff of every tag you bump (annotated tags:
 `git ls-remote URL 'refs/tags/TAG^{}'` gives the commit).
 
+**Annotated Tags Have TWO SHAs**: `git ls-remote ... refs/tags/vX.Y` returns the tag OBJECT SHA (not usable for `rev-parse HEAD`). Use `refs/tags/vX.Y^{}` (caret-brace) to get the peeled COMMIT SHA — this is what `HEAD` resolves to after `git clone --branch vX.Y`. Always verify with both: `git ls-remote URL 'refs/tags/TAG' 'refs/tags/TAG^{}'`.
+
 **Portable, optimised builds**: nixpkgs' compiler wrapper drops `-march/-mtune/-mcpu=native`
 (`NIX_ENFORCE_NO_NATIVE`), which would tie a binary to the build host's CPU. Every C compile of the server and
 extensions keeps upstream's release `-O` level and adds the CPU baseline (`targetCpu` in `flake.nix`). A make build whose own compile lines end below `-O2` (e.g.

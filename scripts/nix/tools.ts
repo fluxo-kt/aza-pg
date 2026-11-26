@@ -19,7 +19,12 @@ export const TOOLS = {
 export type Tool = keyof typeof TOOLS;
 export const TOOL_NAMES = Object.keys(TOOLS) as Tool[];
 
-/** Runs `tool args…` from this checkout's flake output; the exit code is the tool's. */
+/**
+ * Runs `tool args…` from this checkout's flake output; the exit code is the tool's.
+ * Parallel runs on the first evaluation after a flake change print `error (ignored): SQLite database … is busy`: both
+ * write the fresh eval cache and Nix lets the loser evaluate uncached, which a cold cache does anyway. Harmless; a warm
+ * cache never prints it.
+ */
 export function runTool(tool: Tool, args: string[], options: Parameters<typeof spawnNix>[1] = {}) {
   return spawnNix(
     ["nix", "shell", `.#packages.${nixSystem}.${tool}`, "--command", tool, ...args],

@@ -80,7 +80,3 @@ BTI does nothing on current hosts (Hetzner CAX: Ampere Altra, Armv8.2, which tre
 ### Layer order makes hosts re-unpack unchanged layers
 
 Docker reuses a downloaded layer by digest wherever it sits, but it unpacks each layer on top of the ones below it, so a changed layer makes every layer above it unpack again (download size is unaffected). `streamLayeredImage` orders layers by how many store paths reference them, which leaves often-changing extensions under the large stable ones (the JIT layer, ICU, Groonga). On a release that bumps one extension and not nixpkgs, putting extensions and `aza-pg-files` on top cuts the re-unpacked bytes from most of the image to the changed layers (measured on v18.6-202610311330: 423 MB to about 29 MB). A nixpkgs bump changes every layer whatever the order. Waits on nixpkgs: the only control is `layeringPipeline`, which its own code marks highly experimental and subject to change; adopt it once nixpkgs declares it stable.
-
-### Parallel checker runs print Nix eval-cache "busy" errors
-
-`validate:all` starts two Nix checker processes at once in the shared store container, and both open the same `~/.cache/nix/eval-cache-v6/*.sqlite`; Nix prints `error (ignored): SQLite database … is busy` and the run still passes. A line reading "error" on a green run teaches readers to skip errors. Fix in `scripts/nix/nix.ts`: give concurrent callers separate eval caches, or evaluate once and share the result; prove with two concurrent callers that the line is gone.

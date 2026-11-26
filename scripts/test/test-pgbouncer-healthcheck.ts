@@ -96,9 +96,9 @@ try {
   });
 
   await step("a named prepared statement survives a pooled backend switch", async () => {
-    // The docs once told clients to turn prepared statements off behind the pooler. PgBouncer tracks protocol-level
-    // ones in transaction mode (max_prepared_statements, on by default since 1.24), so a statement parsed on one server
-    // must still run after the client lands on another. The second client takes the backend just released (PgBouncer
+    // The docs tell clients to keep driver prepared statements behind the pooler: PgBouncer tracks protocol-level ones
+    // in transaction mode (max_prepared_statements, on by default since 1.24), so a statement parsed on one server
+    // must still run after the client lands on another. A config setting it to 0 makes that advice false. The second client takes the backend just released (PgBouncer
     // reuses the most recent server first), so the second execution must run on a different pid.
     const script = `SELECT pg_backend_pid() \\parse s1
 \\bind_named s1 \\g

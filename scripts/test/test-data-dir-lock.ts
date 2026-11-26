@@ -2,8 +2,8 @@
 /**
  * One server per data directory, and a stop that never costs crash recovery.
  *
- * PostgreSQL's own guard cannot see a server in another container, so a second container on a live volume used to
- * start a second postmaster on the same files. The entrypoint now holds a flock on the data directory for the server's
+ * PostgreSQL's own guard cannot see a server in another container, so without a lock a second container on a live
+ * volume starts a second postmaster on the same files and corrupts them. The entrypoint holds a flock on the data directory for the server's
  * life: a second container must wait without starting a server, then start by itself once the first one stops.
  * The stop itself must be PostgreSQL's fast shutdown (StopSignal SIGINT): with Docker's default SIGTERM the server
  * waits for every client, so the open session below would run `docker stop` into its timeout and SIGKILL (exit 137),

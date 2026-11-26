@@ -88,8 +88,12 @@ for entry in "$old_data"/*; do
 done
 shopt -u dotglob nullglob
 cd /tmp # pg_upgrade writes its logs and delete_old_cluster.sh to the working directory
+# --clone (reflinks: OLD_PGDATA stays a usable rollback, no extra space) needs the filesystem to clone between the two
+# directories, which is what cp --reflink=always does; --link otherwise. A file probe costs milliseconds, a
+# pg_upgrade --check probe a second full consistency pass.
 mode=--link
-pg_upgrade -b "$old_bin" -B "$new_bin" -d "$old_data" -D "$new_data" -U "$superuser" -o "$server_opts" -O "$server_opts" --check --clone >/dev/null 2>&1 && mode=--clone
+cp --reflink=always "$old_data/PG_VERSION" "$new_data/.clone-probe" 2>/dev/null && mode=--clone
+rm -f "$new_data/.clone-probe"
 log "upgrading ${old_data} into ${new_data} (pg_upgrade ${mode})"
 pg_upgrade -b "$old_bin" -B "$new_bin" -d "$old_data" -D "$new_data" -U "$superuser" -o "$server_opts" -O "$server_opts" "$mode" >&2
 trap - ERR

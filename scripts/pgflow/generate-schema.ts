@@ -14,6 +14,7 @@ import { mkdir, rm } from "node:fs/promises";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { format as formatSql } from "sql-formatter";
+import { migrationTimeOptionalRefs } from "./migration-guard";
 import { PGFLOW_TAG, PGFLOW_VERSION } from "./version";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -571,6 +572,20 @@ async function writeUpgradeFixtures(
   );
   if (!releases.includes(options.version)) {
     throw new Error(`pgflow@${options.version} is not among upstream release tags`);
+  }
+
+  // Only migrations after the oldest shipped release's last one ever run (pgflow-upgrade starts there); older ones may
+  // keep upstream's unguarded statements because no database of ours executes them.
+  const firstRun = lastMigrations[0]!.split("\t")[1]!;
+  for (const f of migrationFiles.filter((name) => name > firstRun)) {
+    const refs = migrationTimeOptionalRefs(localMigrationContent(f, migrations.get(f) ?? ""));
+    if (refs.length > 0)
+      throw new Error(
+        `pgflow migration ${f} runs ${refs.join(", ")} at migration time, which fails pgflow-upgrade in every database ` +
+          "without pg_cron (only cron.database_name has it) or Vault. Guard the statement in localMigrationContent as " +
+          "the requeue and escalation migrations are: a DO $aza$ block that runs it only when to_regclass/to_regprocedure " +
+          "finds the object, keeping upstream's effect wherever pg_cron exists."
+      );
   }
 
   const overrides = overrideFiles(schemas)

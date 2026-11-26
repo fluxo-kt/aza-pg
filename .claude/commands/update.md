@@ -512,10 +512,10 @@ bun scripts/test-all.ts --group features   # includes test-pgflow*.ts and test-p
 
 Review the local layers against the new upstream: `docker/postgres/pgflow/security-patches.sql` and the
 functions the generator overrides (aza-overrides). The generator stops when an expected upstream text
-is missing (`replaceRequired`); fix the replacement, never loosen it. Anchors catch only changed text, never new
-statements: read every NEW migration for statements that run pg_cron or Vault at migration time (outside function
-bodies) and guard them in `localMigrationContent` like the existing ones, because pgflow databases without pg_cron
-run them too and the upgrade suite has pg_cron. `aza-overrides.sql` is re-applied on every upgrade, so it carries
+is missing (`replaceRequired`); fix the replacement, never loosen it. It also stops on any migration pgflow-upgrade
+can run that executes pg_cron or Vault at migration time (`migration-guard.ts`): guard that statement in
+`localMigrationContent` as its message says, because pgflow databases without pg_cron run it too and the upgrade
+suite has pg_cron. `aza-overrides.sql` is re-applied on every upgrade, so it carries
 function definitions only, never a statement with an effect (a schedule call resets operators' jobs). `test-pgflow-upgrade.ts` upgrades a
 database created by the last release in its `LEGACY` list with `pgflow-upgrade` and requires it to equal
 a fresh install: if it fails, the new migrations or overrides break existing databases. A release whose schema changes

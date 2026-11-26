@@ -141,7 +141,7 @@ jobs:
       # The same file set as setup-nix's store key: what the flake reads, nixpkgs included through flake.lock.
       - name: Compute image input key
         id: key
-        run: echo "key=ci-image-nix-${{ hashFiles('flake.lock', 'flake.nix', 'nix/**', 'docker/postgres/**', 'scripts/extensions/manifest-data.ts') }}" >> "$GITHUB_OUTPUT"
+        run: echo "key=ci-image-nix-${{ hashFiles('flake.lock', 'flake.nix', 'nix/**', 'docker/postgres/**', 'scripts/extensions/manifest-data.ts', '!**/*.md') }}" >> "$GITHUB_OUTPUT"
 
       # lookup-only: on a hit the test jobs restore the tarball; this job needs only to know it exists.
       - name: Look up cached image

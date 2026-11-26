@@ -21,6 +21,9 @@ export const IMAGE_INPUTS = [
   "nix",
   "docker/postgres",
   "scripts/extensions/manifest-data.ts",
+  // Guidance (AGENTS.md beside the scripts) is no build input: Nix names every file it installs. Without this, a guide
+  // edit voided every local image and CI's image cache. hashFiles syntax; the git diff below translates it.
+  "!**/*.md",
 ];
 
 /** Why `image` must be rebuilt before testing, or null when it is current or cannot be judged. */
@@ -37,8 +40,11 @@ export async function staleImageReason(image: string): Promise<string | null> {
   const commit = label.replace(/-dirty$/, "");
   const known = await Bun.$`git cat-file -e ${commit}^{commit}`.nothrow().quiet();
   if (!/^[0-9a-f]{40}$/.test(commit) || known.exitCode !== 0) return null;
-  const diff = await Bun.$`git diff --quiet ${commit} -- ${IMAGE_INPUTS}`.nothrow().quiet();
+  const pathspecs = IMAGE_INPUTS.map((p) =>
+    p.startsWith("!") ? `:(exclude,glob)${p.slice(1)}` : p
+  );
+  const diff = await Bun.$`git diff --quiet ${commit} -- ${pathspecs}`.nothrow().quiet();
   return diff.exitCode === 0
     ? null
-    : `${image} was built from ${label}, and image inputs changed since (\`git diff ${commit.slice(0, 7)} -- ${IMAGE_INPUTS.join(" ")}\`): commit, then \`bun run build\`, or every suite tests the old image`;
+    : `${image} was built from ${label}, and image inputs changed since (\`git diff ${commit.slice(0, 7)} -- ${pathspecs.map((p) => `'${p}'`).join(" ")}\`): commit, then \`bun run build\`, or every suite tests the old image`;
 }

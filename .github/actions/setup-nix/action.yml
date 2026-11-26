@@ -31,7 +31,7 @@ runs:
       uses: nix-community/cache-nix-action@7df957e333c1e5da7721f60227dbba6d06080569 # v7.0.2
       with:
         # Cache only stores pruned with the PostgreSQL root installed by build-image.ts.
-        primary-key: nix-store-v3-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('flake.lock', 'flake.nix', 'nix/**', 'docker/postgres/**', 'scripts/extensions/manifest-data.ts') }}
+        primary-key: nix-store-v3-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('flake.lock', 'flake.nix', 'nix/**', 'docker/postgres/**', 'scripts/extensions/manifest-data.ts', '!**/*.md') }}
         restore-prefixes-first-match: nix-store-v3-${{ runner.os }}-${{ runner.arch }}-
         # Bounds the saved store: build-only paths of older runs go first, so the cache stays within the repo quota.
         gc-max-store-size-linux: 6G

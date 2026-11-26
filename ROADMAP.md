@@ -37,6 +37,8 @@ PostgreSQL's `postmaster.pid` check compares PIDs, which cannot see a server in 
 
 Option A in `docs/UPGRADING.md` needs the old and new PostgreSQL binaries, and every extension built for both, in one image; none is built. Needed before the next major upgrade.
 
+The PostgreSQL 19 round starts only when two things hold: every shipped extension has a tagged release that builds on 19 (TimescaleDB 2.32.1 refuses PostgreSQL above 18; its main branch supports 19), and Art has decided how existing PostgreSQL 18 data directories reach 19. That decision is his because it puts a second server, or a separate upgrade path, into or beside the one published image ("Nothing ships…", "Exactly one published image" in `AGENTS.md`). nixpkgs packages `postgresql_19`, and pgrx 0.20 builds `pg19`.
+
 ## Low
 
 ### Report an unavailable image size check as skipped

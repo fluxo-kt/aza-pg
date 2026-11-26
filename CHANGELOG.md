@@ -10,6 +10,11 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
 
 ## [Unreleased]
 
+### Fixed
+
+- **A second container on a live data volume no longer starts a second server on it.** PostgreSQL's own guard cannot see a server in another container, so a second `docker run`/`compose run` of the server on the same volume ran two postmasters on the same files and corrupted them. The entrypoint now holds a lock on the data directory for the server's life: a second container on the same host logs `another container runs a server on …` and waits, then starts by itself once the first stops. Not covered: two hosts sharing one network disk. A filesystem that cannot lock logs a warning and starts as before. Cost: the image gains util-linux's `flock` binary (77 KB).
+- **`docker stop` uses PostgreSQL's fast shutdown again (`StopSignal` SIGINT).** The image declared no stop signal, so Docker sent SIGTERM, PostgreSQL's smart shutdown, which waits for every client to disconnect: with a pooler or any open session the stop ran into Docker's timeout, the server was killed, and the next start replayed WAL. Open transactions are now rolled back and the server stops cleanly.
+
 ## [v18.7-202611261839] - 2026-11-26
 
 ### Breaking

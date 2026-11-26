@@ -21,14 +21,6 @@ Work:
 
 ## Medium
 
-### Two containers on one data volume both start a server
-
-PostgreSQL's `postmaster.pid` check compares PIDs, which cannot see a server in another container (separate PID and IPC namespaces), so a second `docker run`/`compose run` on a live volume starts a second postmaster on the same data and corrupts it; the entrypoint's stale-lock removal relies on the same blindness. Fix: the entrypoint takes a non-blocking `flock` on a file in the data directory and keeps the descriptor open through `exec postgres`, so the kernel holds it host-wide for the server's lifetime and frees it on any death; a held lock stops the second container naming the other one. Needs a `flock` binary in the image (util-linux or a small static helper); prove with two containers on one volume, and that local-driver volumes honour it.
-
-### Restore PostgreSQL's fast stop signal in the Nix image
-
-`nix/image.nix` omits `StopSignal`; the published Nix image reports no value, while the retained Debian image reports `SIGINT`. Preserve that shutdown contract in the Nix configuration rather than requiring every consumer to override it. Verify clean stop with an open client and committed-data recovery before release. Karakuri's review timeout does not establish this omission as its cause.
-
 ### Docs say prepared statements fail through PgBouncer; the pinned PgBouncer supports them
 
 `README.md` (Limitations; "Why PgBouncer transaction mode?") says transaction mode allows "No prepared statements", and `QUICK_START.md` and `deployments/phase1-single-vps/scripts/setup.sh` give clients `?pgbouncer=true`, Prisma's flag that turns client prepared statements off. The stacks pin `ghcr.io/cloudnative-pg/pgbouncer` (PgBouncer 1.26.1). PgBouncer tracks protocol-level (Parse/Bind) prepared statements in transaction mode since 1.21 and enables it by default since 1.24.0 (`max_prepared_statements = 200`; pgbouncer.org config and changelog, read 2026-11-04); SQL-level `PREPARE`/`EXECUTE` is still forwarded untracked. `pgbouncer.ini.template` does not set the value, so the effective value comes from the image's defaults — unobserved. Why it matters: every query sent unprepared through the pooler is parsed and planned on each call. Fix: read `SHOW CONFIG` for `max_prepared_statements` in the running primary stack, prove a driver's named prepared statement survives a pooled transaction switching backends, then correct both claims and the client advice (which `pgbouncer=true` effects Prisma still needs is unverified).

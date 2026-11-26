@@ -28,12 +28,19 @@ const retag = flagValue("--tag");
 const push = flagValue("--push");
 if (retag === "" || push === "" || (retag && push) || (push && !native)) {
   console.error(
-    "Usage: bun scripts/nix/build-image.ts [--tag <image-ref> | --push <image-ref>] (--push needs native Nix)"
+    "Usage: bun scripts/nix/build-image.ts [--major-upgrade] [--tag <image-ref> | --push <image-ref>] (--push needs native Nix)"
   );
   process.exit(64);
 }
 const build = spawnNix(
-  ["nix", "build", `.#packages.${nixSystem}.image`, "--no-link", "--print-out-paths"],
+  // --major-upgrade: the image with the upgrade machinery even while shipMajorUpgrade is off, for the upgrade suite.
+  [
+    "nix",
+    "build",
+    `.#packages.${nixSystem}.${Bun.argv.includes("--major-upgrade") ? "image-major-upgrade" : "image"}`,
+    "--no-link",
+    "--print-out-paths",
+  ],
   { stdout: "pipe" }
 );
 const [built, buildExit] = await Promise.all([new Response(build.stdout).text(), build.exited]);

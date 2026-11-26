@@ -29,7 +29,15 @@ export const MANIFEST_METADATA = {
    * index digest (a tag can move). A data directory from an older major is upgraded with pg_upgrade by this release's
    * server, fetched at first start (generate-previous-image.ts records its layers and store paths). `/update` repins it
    * in the round that bumps the major; within one major it stays the newest release, so the upgrade path is testable.
+   * Shipped only when shipMajorUpgrade is true; the flake's image-major-upgrade output always includes it, so the
+   * upgrade suite proves it on every change either way.
    */
+  /**
+   * Ship the major-upgrade machinery (previous-release symlinks, curl, tar, the upgrade step) in the released image.
+   * Off while every data directory it can meet is this major's (minor releases): off, those parts have no consumer in
+   * the image, so they stay out. Turn on in the release that bumps the major.
+   */
+  shipMajorUpgrade: false,
   previousImage:
     "ghcr.io/fluxo-kt/aza-pg:18.7-202611261839-single-node@sha256:4f9649bf84a00cfb586ae0bdd2bb648ba962bc717d714abf5e57fe94c4f2b8d3",
   /**

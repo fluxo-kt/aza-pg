@@ -16,11 +16,11 @@
 #                         references only glibc, so util-linux's other outputs stay out
 #   gzip xz zstd          upstream entrypoint: /docker-entrypoint-initdb.d/*.sql.gz|.xz|.zst; zstd also unpacks the
 #                         previous release's layers for a major upgrade
-#   curl gnutar           major upgrade: fetch and unpack the previous release's layers (entrypoint)
+#   curl gnutar           major upgrade (only when majorUpgrade): fetch and unpack the previous release's layers
 #   su-exec (as gosu)     `--user root`: upstream and ours drop to postgres with `gosu postgres`
 #   cacert                pg_net and http make HTTPS requests
 #   locales               lc_monetary/lc_numeric/lc_time per session (MANIFEST_METADATA.locales)
-{ pkgs, lib, postgresql, manifest, upstreamEntrypoint, source, curl }:
+{ pkgs, lib, postgresql, manifest, upstreamEntrypoint, source, curl, majorUpgrade ? manifest.metadata.shipMajorUpgrade }:
 let
   meta = manifest.metadata;
   pgMajor = lib.versions.major meta.pgVersion;
@@ -130,9 +130,7 @@ let
     pkgs.gzip
     pkgs.xz
     pkgs.zstd
-    curl.bin
-    pkgs.gnutar
-  ];
+  ] ++ lib.optionals majorUpgrade [ curl.bin pkgs.gnutar ];
   # Major upgrade: pg_upgrade needs the previous major's server, which only runs from its own absolute /nix/store
   # paths, and postgres cannot write the root-owned store. So every store path of the previous release missing from
   # this image is a symlink into the data volume, which the entrypoint fills from that release's layers at first
@@ -160,6 +158,7 @@ pkgs.dockerTools.streamLayeredImage {
     ln -sf ${pkgs.bashNonInteractive}/bin/bash bin/bash
     ln -sf ${pkgs.bashNonInteractive}/bin/bash bin/sh
     chmod 1777 tmp
+  '' + lib.optionalString majorUpgrade ''
     mkdir -p nix/store
     while read -r p; do
       grep -qxF "/nix/store/$p" ${pkgs.closureInfo { rootPaths = contents; }}/store-paths ||

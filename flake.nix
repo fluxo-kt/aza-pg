@@ -154,7 +154,7 @@
             (pkgs.lib.mapAttrsToList (name: path: { inherit name path; }) unshippedExtensions);
           postgresql = server;
           # A script that streams the image tarball: scripts/nix/build-image.ts pipes it into `docker load`.
-          image = import ./nix/image.nix {
+          image = pkgs.lib.makeOverridable (import ./nix/image.nix) {
             inherit pkgs manifest curl;
             source = inputs.self;
             inherit (pkgs) lib;
@@ -165,6 +165,9 @@
           # config references every layer's store paths, the ones only Env names (the locales) included. `image`
           # itself is the stream script, whose closure adds the Python streamer that never ships.
           contents = image.conf;
+          # The image with the major-upgrade machinery whatever shipMajorUpgrade says: the upgrade suite runs it on
+          # every change, so the feature is proven before the release that turns it on.
+          image-major-upgrade = image.override { majorUpgrade = true; };
           # The scanner: vulnix 1.12.5 fails its NVD update when NVD serves only the .json.zip feed; upstream PR 183
           # falls back to it and keeps an older feed from replacing newer cached data. Keep the exact upstream
           # patch in Git so a cold build can run the CVE gate when GitHub's patch download is unavailable.
@@ -205,6 +208,6 @@
         };
     in
     {
-      packages = nixpkgs.lib.genAttrs systems (s: let r = perSystem s; in { inherit (r) postgresql postgresql-server image contents vulnix unshipped actionlint trivy yamllint; } // r.extensions);
+      packages = nixpkgs.lib.genAttrs systems (s: let r = perSystem s; in { inherit (r) postgresql postgresql-server image image-major-upgrade contents vulnix unshipped actionlint trivy yamllint; } // r.extensions);
     };
 }

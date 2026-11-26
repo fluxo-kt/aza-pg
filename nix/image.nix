@@ -12,6 +12,8 @@
 #   diffutils             cmp: is pgsodium_getkey the image's own (entrypoint)
 #   getent                upstream entrypoint (is the running uid in /etc/passwd?)
 #   mountpoint (ours)     upstream entrypoint; nix/bin/mountpoint, instead of util-linux
+#   flock (util-linux)    entrypoint: one server per data directory across containers. The binary alone: it
+#                         references only glibc, so util-linux's other outputs stay out
 #   gzip xz zstd          upstream entrypoint: /docker-entrypoint-initdb.d/*.sql.gz|.xz|.zst
 #   su-exec (as gosu)     `--user root`: upstream and ours drop to postgres with `gosu postgres`
 #   cacert                pg_net and http make HTTPS requests
@@ -63,6 +65,7 @@ let
     install -Dm0755 ${src "docker/postgres/pgflow/pgflow-upgrade.sh"} $out/usr/local/bin/pgflow-upgrade
     install -Dm0755 ${src "docker/postgres/pg_repack-wrapper.sh"} $out/usr/local/bin/pg_repack
     install -Dm0755 ${./bin/mountpoint} $out/usr/local/bin/mountpoint
+    install -Dm0755 ${pkgs.util-linuxMinimal.bin}/bin/flock $out/usr/local/bin/flock
     ln -s ${pkgs.su-exec}/bin/su-exec $out/usr/local/bin/gosu
     # PID 1. A process orphaned inside the container (a docker exec child whose shell exited first, a healthcheck
     # killed on timeout) is re-parented to PID 1; when the postmaster is PID 1 and such an orphan dies by a signal, it
@@ -159,6 +162,10 @@ pkgs.dockerTools.streamLayeredImage {
     User = "postgres";
     Entrypoint = [ "/usr/local/bin/tini" "--" "/usr/local/bin/docker-auto-config-entrypoint.sh" ];
     Cmd = [ "postgres" ];
+    # PostgreSQL's fast shutdown: SIGTERM (Docker's default) is its smart shutdown, which waits for every client to
+    # disconnect, so a pooler's open connections run `docker stop` into its timeout and the SIGKILL that follows
+    # costs crash recovery at the next start. tini forwards it to the postmaster.
+    StopSignal = "SIGINT";
     ExposedPorts."5432/tcp" = { };
     Env = [
       "PATH=/usr/local/bin:${lib.makeBinPath ([ postgresql pgConfig ] ++ tools)}"

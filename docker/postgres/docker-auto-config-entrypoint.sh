@@ -1078,12 +1078,35 @@ migrate_database() {
     migrate_sql "$1" -c "$REBUILD_FOR_GLIBC"
     [ -z "${REINDEX_FOR_18_7:-}" ] || migrate_sql "$1" -c "$REINDEX_FOR_18_7"
 }
+# One server per data directory, across containers. PostgreSQL's own guard (postmaster.pid and a System V shared memory
+# key) compares PIDs and IPC keys, which another container's namespaces hide, so a second container on the same volume
+# started a second postmaster on the same files and corrupted them. A flock lives in the host kernel, so it reaches
+# every container on this host (not other hosts sharing a network disk). The descriptor stays open through upstream's
+# exec into postgres, so the server holds the lock for its whole life and the kernel frees it on any death. The
+# directory itself is locked: a file inside it would make initdb refuse the directory as not empty. A filesystem that
+# cannot lock keeps the old behaviour with a warning rather than refusing a deployment that ran before.
+if [ "$STARTS_SERVER" = true ] && [ -n "$DATA_DIR" ]; then
+    mkdir -p "$DATA_DIR"
+    exec {data_dir_lock}<"$DATA_DIR"
+    lock_rc=0
+    flock -n -E 100 "$data_dir_lock" || lock_rc=$?
+    if [ "$lock_rc" = 100 ]; then
+        echo "[POSTGRES] [AUTO-CONFIG] another container runs a server on ${DATA_DIR}; waiting until it stops, since two servers on one data directory corrupt it" >&2
+        # In the background: tini signals only this shell, and a shell waiting on a foreground child acts on SIGINT or
+        # SIGTERM only once that child exits, so `docker stop` would hang to its timeout. The lock belongs to the open
+        # descriptor this shell shares, so it stays held after flock exits.
+        flock "$data_dir_lock" &
+        wait "$!"
+    elif [ "$lock_rc" != 0 ]; then
+        echo "[POSTGRES] [AUTO-CONFIG] WARNING: this filesystem cannot lock ${DATA_DIR}, so a second container started on it would not be held back" >&2
+    fi
+fi
 # A postmaster.pid left by an unclean stop (OOM kill, docker kill, stop timeout) names a PID that a fresh container
 # reuses: tini is PID 1, which older images' postmaster recorded, and later PIDs come back in the same order.
 # PostgreSQL ignores a stale lock only when that PID is its own or its parent's, so the temporary server below (a
-# pg_ctl child) refused to start on every such data directory. Nothing in this container runs postgres yet, and a
-# server in another container is invisible to the lock's PID check anyway, so a lock not naming a live postgres here
-# is stale.
+# pg_ctl child) refused to start on every such data directory. Nothing in this container runs postgres yet, and the
+# flock above keeps any other container's server off this directory, so a lock not naming a live postgres here is
+# stale.
 if [ "$STARTS_SERVER" = true ] && [ -f "${DATA_DIR}/postmaster.pid" ]; then
     lock_pid="" lock_comm=""
     read -r lock_pid <"${DATA_DIR}/postmaster.pid" || true

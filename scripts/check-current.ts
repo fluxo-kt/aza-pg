@@ -62,7 +62,7 @@ async function run(dir: string): Promise<Line[]> {
           .cwd(dir)
           .nothrow()
           .quiet();
-        if (out.exitCode === 2 || out.exitCode > 2)
+        if (out.exitCode >= 2)
           return {
             verdict: "failed",
             detail: out.stderr.toString().trim().split("\n").slice(-3).join(" | "),
@@ -89,8 +89,11 @@ async function run(dir: string): Promise<Line[]> {
     [
       "nixpkgs",
       async () => {
-        const locked = (JSON.parse(await read("flake.lock")) as any).nodes.nixpkgs.locked
-          .rev as string;
+        const lock = JSON.parse(await read("flake.lock")) as {
+          nodes?: { nixpkgs?: { locked?: { rev?: string } } };
+        };
+        const locked = lock.nodes?.nixpkgs?.locked?.rev;
+        if (!locked) return { verdict: "failed", detail: "flake.lock has no nixpkgs revision" };
         const out =
           await $`git ls-remote https://github.com/NixOS/nixpkgs refs/heads/nixos-unstable`
             .nothrow()
@@ -197,9 +200,18 @@ async function run(dir: string): Promise<Line[]> {
 }
 
 async function main(): Promise<number> {
-  const i = Bun.argv.indexOf("--rev");
-  const rev = i > 0 ? Bun.argv[i + 1] : "HEAD";
-  if (!rev) throw new Error("--rev needs a commit");
+  // Strict: an unrecognised argument (a typo like `--revv dev`) must not silently judge HEAD instead.
+  const [flag, value, ...rest] = Bun.argv.slice(2);
+  const rev =
+    flag === undefined
+      ? "HEAD"
+      : flag === "--rev" && value && rest.length === 0
+        ? value
+        : undefined;
+  if (!rev) {
+    console.error("Usage: bun scripts/check-current.ts [--rev <commit>]");
+    return 2;
+  }
   const sha = (await $`git rev-parse --verify ${rev}^{commit}`.quiet()).stdout.toString().trim();
   const dir = await mkdtemp(join(tmpdir(), "aza-pg-check-current-"));
   try {

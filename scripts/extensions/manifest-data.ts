@@ -25,6 +25,14 @@ export const MANIFEST_METADATA = {
   bunImage:
     "oven/bun:1.4.5-alpine@sha256:da816670775f4c2b4e990b6b1847cf5540dcdc721a42033dd331ce7a88ba6a3b",
   /**
+   * Ship the major-upgrade machinery (previous-release symlinks, curl, tar, the upgrade step) in the released image.
+   * Off while every data directory it can meet is this major's (minor releases): off, those parts have no consumer in
+   * the image, so they stay out. Turn on in the release that bumps the major. A release with it off stops, naming the
+   * cluster, when it meets an older-major data directory, so an operator reaches the new major through a release that
+   * carries it.
+   */
+  shipMajorUpgrade: false,
+  /**
    * The release whose server upgrades older data directories: the last release of the previous PostgreSQL major, by
    * index digest (a tag can move). A data directory from an older major is upgraded with pg_upgrade by this release's
    * server, fetched at first start (generate-previous-image.ts records its layers and store paths). `/update` repins it
@@ -32,12 +40,6 @@ export const MANIFEST_METADATA = {
    * Shipped only when shipMajorUpgrade is true; the flake's image-major-upgrade output always includes it, so the
    * upgrade suite proves it on every change either way.
    */
-  /**
-   * Ship the major-upgrade machinery (previous-release symlinks, curl, tar, the upgrade step) in the released image.
-   * Off while every data directory it can meet is this major's (minor releases): off, those parts have no consumer in
-   * the image, so they stay out. Turn on in the release that bumps the major.
-   */
-  shipMajorUpgrade: false,
   previousImage:
     "ghcr.io/fluxo-kt/aza-pg:18.7-202611261839-single-node@sha256:4f9649bf84a00cfb586ae0bdd2bb648ba962bc717d714abf5e57fe94c4f2b8d3",
   /**

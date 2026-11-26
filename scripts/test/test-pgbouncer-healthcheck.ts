@@ -99,18 +99,21 @@ try {
     // The docs tell clients to keep driver prepared statements behind the pooler: PgBouncer tracks protocol-level ones
     // in transaction mode (max_prepared_statements, on by default since 1.24), so a statement parsed on one server
     // must still run after the client lands on another. A config setting it to 0 makes that advice false.
-    // A second client takes the backend just released (PgBouncer reuses the most recent server first) and holds it,
-    // so the second execution must run on another pid. The script waits until the holder's query is visible, never
-    // a delay; the long hold outlasts any host stall and is killed right after, since a client still open in PgBouncer
-    // holds the stack's teardown until Docker's stop timeout.
+    // The first execution's backend A must be busy when the second runs, so the second lands on another server. Which
+    // server PgBouncer hands a new client is its choice (other connections, polls included, reorder it under load), so
+    // holders are started until one is SEEN holding A. Those checks use the local socket, which takes no pooled server;
+    // each holder is awaited until visible, never a delay. A full pool without A held prints "A never held" and the
+    // pids then match, failing below. Holders are killed at the end: a client still open in PgBouncer holds the
+    // stack's teardown until Docker's stop timeout.
     const psqlArgs = `psql -X -tA -h pgbouncer -p 6432 -U ${SUPERUSER} -d postgres`;
-    const holding = `SELECT count(*) FROM pg_stat_activity WHERE query LIKE 'BEGIN; SELECT pg_sleep%'`;
+    const local = `psql -X -tA -U ${SUPERUSER} -d postgres -c`;
+    const held = `SELECT count(*) FROM pg_stat_activity WHERE query LIKE 'BEGIN; SELECT pg_sleep%'`;
     const script = `SELECT pg_backend_pid() \\parse s1
+\\bind_named s1 \\g /tmp/a
+\\! cat /tmp/a
+\\! a=$(cat /tmp/a); n=0; until [ "$(${local} "${held} AND pid = $a")" = 1 ]; do [ $n -lt 20 ] || { echo "A never held" >&2; break; }; ${psqlArgs} -c 'BEGIN; SELECT pg_sleep(600); COMMIT' >/dev/null 2>&1 & echo $! >> /tmp/holders; n=$((n+1)); until [ "$(${local} "${held}")" = $n ]; do :; done; done
 \\bind_named s1 \\g
-\\! ${psqlArgs} -c 'BEGIN; SELECT pg_sleep(600); COMMIT' >/dev/null 2>&1 & echo $! > /tmp/holder.pid
-\\! until [ "$(${psqlArgs} -c "${holding}")" = 1 ]; do :; done
-\\bind_named s1 \\g
-\\! kill "$(cat /tmp/holder.pid)"
+\\! kill $(cat /tmp/holders)
 `;
     const proc = Bun.spawn(
       [
@@ -147,6 +150,7 @@ try {
         `expected two runs on different backends (exit ${code}): ${out.trim()} ${err.trim()}`
       );
     }
+    console.log(`   prepared statement ran on backend ${pids[0]}, then ${pids[1]}`);
   });
 
   await step("wrong password is refused by PgBouncer", async () => {

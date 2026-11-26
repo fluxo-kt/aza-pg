@@ -12,7 +12,6 @@ services:
     environment:
       PGBACKREST_STANZA: main
       PGBACKREST_REPO1_PATH: /backup/pgbackrest
-      PGBACKREST_PG1_PATH: /var/lib/postgresql/18/docker # the image's PGDATA
       PGBACKREST_REPO1_RETENTION_FULL: "7"
       PGBACKREST_REPO1_RETENTION_DIFF: "4"
       PGBACKREST_COMPRESS_TYPE: lz4

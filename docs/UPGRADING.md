@@ -89,49 +89,25 @@ docker compose exec postgres psql -U postgres -c "\dx"
 
 #### Step 5: Perform pg_upgrade (Production)
 
-**Option A: In-Place Upgrade** (faster, more complex)
+**Option A: Automatic upgrade at start** (recommended)
 
-pg_upgrade starts both the old and the new server, so the container running it needs the PostgreSQL 18 and 19 binaries and every extension the old cluster uses built for both. An aza-pg image ships one major (`ls /usr/lib/postgresql/` in it lists only that major), so build an image holding both before following this option, or use Option B.
-
-Data directories created by earlier aza-pg images refuse connections to `template1`, and `pg_upgrade --check` stops on any database other than `template0` that does ("All non-template0 databases must allow connections"). Allow them once before stopping the old server:
+Point `POSTGRES_IMAGE` at the new major's release and start the stack on the same data volume:
 
 ```bash
-docker compose exec postgres psql -U postgres -c "ALTER DATABASE template1 ALLOW_CONNECTIONS true"
+docker compose pull && docker compose up -d
+docker compose logs -f postgres   # [MAJOR-UPGRADE] and [AUTO-CONFIG] lines report each step
 ```
 
-```bash
-# Stop current stack
-docker compose down
+The entrypoint finds the previous major's cluster (`/var/lib/postgresql/18/docker`) beside an empty PGDATA and upgrades it before any client connects:
 
-# Create pg_upgrade container. Mount the data volume at /var/lib/postgresql, as the stacks do: the old
-# cluster is 18/docker inside it and the new one goes to 19/docker in the same volume.
-docker run -it --rm \
-  -v postgres_data:/var/lib/postgresql \
-  aza-pg:pg19 bash
+- It downloads the previous release's server from its registry (digest-checked, removed when done) and runs `pg_upgrade`, with `--clone` where the filesystem supports reflinks, else `--link`: neither copies data files (reflinks or hard links), so its time does not grow with the data.
+- It carries everything else in the old data directory: `pg_hba.conf`, `ALTER SYSTEM` settings, the pgsodium root key, TLS files.
+- Its first-start migration then updates every extension, analyses statistics `pg_upgrade` does not carry, and runs `pgbackrest stanza-upgrade` for each configured stanza. The repository must be reachable; the stanza's next backup is a full one.
+- On any failure the container stops and the old cluster is left as it was: the previous image still starts on it.
 
-# Inside container: create the new cluster (pg_upgrade needs it to exist, with the old cluster's encoding,
-# locale and data-checksum setting), then run pg_upgrade
-su - postgres
-/usr/lib/postgresql/19/bin/initdb -D /var/lib/postgresql/19/docker
-/usr/lib/postgresql/19/bin/pg_upgrade \
-  --old-datadir=/var/lib/postgresql/18/docker \
-  --new-datadir=/var/lib/postgresql/19/docker \
-  --old-bindir=/usr/lib/postgresql/18/bin \
-  --new-bindir=/usr/lib/postgresql/19/bin \
-  --check  # Dry run first
+The old cluster stays in the volume (the log names it). With `--clone` it is a complete rollback: start the previous image with `PGDATA` set to it. With `--link` it is unusable once the new server has started. Delete it when you no longer need it.
 
-# If check passes, run actual upgrade
-/usr/lib/postgresql/19/bin/pg_upgrade \
-  --old-datadir=/var/lib/postgresql/18/docker \
-  --new-datadir=/var/lib/postgresql/19/docker \
-  --old-bindir=/usr/lib/postgresql/18/bin \
-  --new-bindir=/usr/lib/postgresql/19/bin
-
-# pg_upgrade copies only PostgreSQL's own files: carry the pgsodium key files over, or the new cluster starts
-# under another key and Vault secrets cannot be decrypted (skip any file that does not exist)
-cp -p /var/lib/postgresql/18/docker/pgsodium_root.key /var/lib/postgresql/18/docker/pgsodium_key_source \
-  /var/lib/postgresql/19/docker/
-```
+The container stops instead of upgrading, naming the reason, for a **replica** (upgrade the primary, then re-clone the replica from it) and on an image that does not carry the upgrade.
 
 **Option B: Backup → Restore** (slower, safer)
 

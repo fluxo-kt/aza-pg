@@ -28,7 +28,8 @@ log-level-file=detail
 log-path=/var/log/pgbackrest
 
 [main]
-pg1-path=/var/lib/postgresql/18/docker
+# No pg1-path: the image sets PGBACKREST_PG1_PATH to its PGDATA, which overrides this file, so the path follows the
+# next PostgreSQL major after the automatic upgrade. A path written here would be ignored.
 pg1-port=5432
 pg1-socket-path=/var/run/postgresql
 

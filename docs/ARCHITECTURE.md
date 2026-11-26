@@ -104,7 +104,7 @@ High-level overview of the aza-pg PostgreSQL deployment system.
 
 **Output:** One image per architecture (amd64, arm64, each built natively), joined into a multi-arch tag with an SBOM of its exact closure
 
-**Caching:** every package is its own store path keyed by its inputs, so a manifest edit rebuilds only that extension and the image. On a host without Nix the store lives in a Docker volume (`aza-pg-nix-<arch>`, `scripts/nix/nix.ts`), and in `.github/actions/setup-nix`'s cache in CI.
+**Caching:** every package is its own store path keyed by its inputs, so a manifest edit rebuilds only that extension and the image. On a host without Nix the store lives in a Docker volume (`aza-pg-nix-<arch>-<nix version>`, `scripts/nix/nix.ts`), and in `.github/actions/setup-nix`'s cache in CI.
 
 **Security:** SHA pinning prevents tag mutation attacks (immutable commits)
 

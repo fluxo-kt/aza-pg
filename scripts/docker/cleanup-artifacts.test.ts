@@ -32,16 +32,23 @@ describe("isAzaImageTitle — foreign images must never match", () => {
 });
 
 describe("parseImageInspectLine", () => {
-  test("splits title|size and coerces size", () => {
-    expect(parseImageInspectLine("aza-pg PostgreSQL 18|524288000")).toEqual({
+  test("splits title|size|tag count and coerces size", () => {
+    expect(parseImageInspectLine("aza-pg PostgreSQL 18|524288000|0")).toEqual({
       title: "aza-pg PostgreSQL 18",
       size: 524288000,
+      tagged: false,
     });
   });
 
+  test("an image any name still refers to, or an unreadable tag count, is tagged: never reclaimed", () => {
+    expect(parseImageInspectLine("aza-pg|1|1").tagged).toBe(true);
+    expect(parseImageInspectLine("aza-pg|1").tagged).toBe(true);
+    expect(parseImageInspectLine("aza-pg|1|").tagged).toBe(true);
+  });
+
   test("missing/blank label yields undefined title and 0 size (never NaN)", () => {
-    expect(parseImageInspectLine("|")).toEqual({ title: undefined, size: 0 });
-    expect(parseImageInspectLine("aza-pg|notanumber")).toEqual({ title: "aza-pg", size: 0 });
+    expect(parseImageInspectLine("|")).toMatchObject({ title: undefined, size: 0 });
+    expect(parseImageInspectLine("aza-pg|notanumber")).toMatchObject({ title: "aza-pg", size: 0 });
   });
 });
 

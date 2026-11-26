@@ -55,9 +55,16 @@ export function isAzaImageTitle(title: string | undefined): boolean {
 }
 
 /** Parse the `title|size` line emitted by `docker image inspect --format`. */
-export function parseImageInspectLine(output: string): { title: string | undefined; size: number } {
-  const [title, sizeStr] = output.trim().split("|");
-  return { title: title || undefined, size: Number(sizeStr) || 0 };
+// tagged: some name still refers to the image. Unmeasured: on a containerd image store the untagged record a moved tag
+// leaves shares its ID with images other names still hold, so rmi by that ID deletes them too (CI lost aza-pg-ci:test so).
+// Anything but a literal 0 counts as tagged, so a malformed line never selects an image.
+export function parseImageInspectLine(output: string): {
+  title: string | undefined;
+  size: number;
+  tagged: boolean;
+} {
+  const [title, sizeStr, tagCount] = output.trim().split("|");
+  return { title: title || undefined, size: Number(sizeStr) || 0, tagged: tagCount !== "0" };
 }
 
 /**
@@ -95,11 +102,11 @@ async function azaDanglingImages(): Promise<Array<{ id: string; size: number }>>
       "inspect",
       id,
       "--format",
-      '{{index .Config.Labels "org.opencontainers.image.title"}}|{{.Size}}',
+      '{{index .Config.Labels "org.opencontainers.image.title"}}|{{.Size}}|{{len .RepoTags}}',
     ]);
     if (!insp.success) continue;
-    const { title, size } = parseImageInspectLine(insp.output);
-    if (isAzaImageTitle(title)) {
+    const { title, size, tagged } = parseImageInspectLine(insp.output);
+    if (isAzaImageTitle(title) && !tagged) {
       matched.push({ id, size });
     }
   }

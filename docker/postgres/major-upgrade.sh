@@ -8,7 +8,7 @@
 # old binaries run from their own absolute /nix/store paths although postgres cannot write the store.
 # Data safety: nothing touches OLD_PGDATA until pg_upgrade's consistency checks passed; --clone keeps it intact, and when only
 # --link works, a failure after linking restores its pg_control so the previous image still starts on it.
-set -Eeuo pipefail # -E: the ERR traps below also fire inside functions
+set -euo pipefail
 
 old_data=${1:?usage: aza-pg-major-upgrade OLD_PGDATA NEW_PGDATA}
 new_data=${2:?usage: aza-pg-major-upgrade OLD_PGDATA NEW_PGDATA}
@@ -24,19 +24,21 @@ server_opts="-c shared_preload_libraries=${SHARED_PRELOAD_LIBRARIES:?} -c pgsodi
 log() { echo "[POSTGRES] [MAJOR-UPGRADE] $*" >&2; }
 
 fetch_old_store() {
-  local image ref digest path token tmp
+  local image ref digest path token="" tmp
   read -r image <"$LAYERS"
   ref=${image%%@*} && ref=${ref%:*} # registry/repo: the tag and digest dropped
   mkdir -p "$STORE"
-  trap 'fetch_failed "$ref" "$image"' ERR
   tmp=$(mktemp -d -p "$STORE")
   trap 'rm -rf "$tmp"' RETURN
-  token=$(curl -fsS "https://${ref%%/*}/token?scope=repository:${ref#*/}:pull" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
   while read -r digest path; do
     # A real directory: this image ships the same path. Already in $STORE: fetched by an earlier, interrupted run.
     [ -L "/nix/store/$path" ] && [ ! -e "$STORE/$path" ] || continue
+    # The registry is asked only for paths still missing, so a store filled by hand needs no network.
+    [ -n "$token" ] || token=$(curl -fsS "https://${ref%%/*}/token?scope=repository:${ref#*/}:pull" |
+      grep -o '"token":"[^"]*"' | cut -d'"' -f4) || fetch_failed "$ref" "$image"
     log "fetching ${path} from ${ref}"
-    curl -fsSL -H "Authorization: Bearer $token" -o "$tmp/layer" "https://${ref%%/*}/v2/${ref#*/}/blobs/$digest"
+    curl -fsSL -H "Authorization: Bearer $token" -o "$tmp/layer" "https://${ref%%/*}/v2/${ref#*/}/blobs/$digest" ||
+      fetch_failed "$ref" "$image"
     echo "${digest#sha256:}  $tmp/layer" | sha256sum -c --quiet
     mkdir "$tmp/x"
     zstd -dcq "$tmp/layer" | tar -x -C "$tmp/x" --strip-components=2
@@ -45,7 +47,6 @@ fetch_old_store() {
     mv "$tmp/x/$path" "$STORE/$path"
     rm -rf "$tmp/x" "$tmp/layer"
   done < <(tail -n +3 "$LAYERS")
-  trap - ERR
 }
 
 # Store paths this image links to $STORE that are not there yet.

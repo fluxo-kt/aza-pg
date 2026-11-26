@@ -1,7 +1,7 @@
 #!/bin/bash
 # aza-pg-major-upgrade OLD_PGDATA NEW_PGDATA: upgrades a data directory made by the previous release's PostgreSQL
-# major into NEW_PGDATA (empty or absent) with pg_upgrade, run as the server user. The entrypoint calls it when it
-# finds an older-major cluster; the upgrade suite calls it directly.
+# major into NEW_PGDATA (empty or absent) with pg_upgrade, run as the server user. Only the entrypoint calls it, when it
+# finds an older-major cluster beside an empty PGDATA, passing the server settings it owns (below).
 #
 # The old server comes from the release pinned in MANIFEST_METADATA.previousImage. Every store path of it that this
 # image lacks is a symlink into $STORE (nix/image.nix); this script fills $STORE from that release's layers, so the
@@ -17,9 +17,8 @@ STORE=/var/lib/postgresql/.aza-old-store
 LAYERS=/usr/local/share/aza-pg/previous-layers
 superuser=${POSTGRES_USER:-postgres}
 # pg_upgrade starts both servers itself; timescaledb and pgaudit refuse to load unless preloaded, and pgsodium needs
-# its key script. The entrypoint exports its list; a direct call reads the image default from the entrypoint, its owner.
-preload=${SHARED_PRELOAD_LIBRARIES:-$(sed -n "s/^readonly DEFAULT_SHARED_PRELOAD_LIBRARIES=\"\(.*\)\"$/\1/p" /usr/local/bin/docker-auto-config-entrypoint.sh)}
-server_opts="-c shared_preload_libraries=${preload:?no preload list} -c pgsodium.getkey_script=/usr/share/postgresql/${PG_MAJOR:?}/extension/pgsodium_getkey"
+# its key script; the entrypoint passes the values the server will run with.
+server_opts="-c shared_preload_libraries=${SHARED_PRELOAD_LIBRARIES:?} -c pgsodium.getkey_script=${PGSODIUM_GETKEY_PATH:?}"
 log() { echo "[POSTGRES] [MAJOR-UPGRADE] $*" >&2; }
 
 fetch_old_store() {
@@ -51,13 +50,17 @@ set_template1_connections() { # bindir datadir true|false
 }
 
 restore_old() {
-  rm -rf "$new_data"
+  find "$new_data" -mindepth 1 -delete # the directory itself is the entrypoint's lock
   [ -f "$old_data/global/pg_control.old" ] && [ ! -f "$old_data/global/pg_control" ] &&
     mv "$old_data/global/pg_control.old" "$old_data/global/pg_control"
   [ "${template1_closed:-no}" = no ] || set_template1_connections "$old_bin" "$old_data" false
   log "ERROR: upgrade failed; ${old_data} is unchanged and the previous image still starts on it"
 }
 
+# A previous-image container still running on OLD_PGDATA (releases before the entrypoint flock never lock it) would see
+# its files change under it; pg_upgrade checks only postmaster.pid, which the other container may not have written yet.
+exec {old_lock}<"$old_data"
+flock -n "$old_lock" || { log "ERROR: another container uses ${old_data}; stop it first"; exit 1; }
 fetch_old_store
 old_bin="/nix/store/$(sed -n 2p "$LAYERS")/bin"
 new_bin=$(dirname "$(readlink -f "$(command -v postgres)")")
@@ -69,11 +72,16 @@ template1_closed=$(echo "SELECT datallowconn FROM pg_database WHERE datname = 't
   "$old_bin/postgres" --single -D "$old_data" -j postgres | grep -q 'datallowconn = "f"' && echo yes || echo no)
 [ "$template1_closed" = no ] || set_template1_connections "$old_bin" "$old_data" true
 initdb -D "$new_data" -U "$superuser" "$checksums" >/dev/null
-cd "$new_data"
+cd /tmp # pg_upgrade writes its logs and delete_old_cluster.sh to the working directory
 mode=--link
 pg_upgrade -b "$old_bin" -B "$new_bin" -d "$old_data" -D "$new_data" -U "$superuser" -o "$server_opts" -O "$server_opts" --check --clone >/dev/null 2>&1 && mode=--clone
 log "upgrading ${old_data} into ${new_data} (pg_upgrade ${mode})"
 pg_upgrade -b "$old_bin" -B "$new_bin" -d "$old_data" -D "$new_data" -U "$superuser" -o "$server_opts" -O "$server_opts" "$mode" >&2
 trap - ERR
 [ "$template1_closed" = no ] || set_template1_connections "$new_bin" "$new_data" false
-log "done: ${new_data} holds the upgraded cluster"
+# The marker holds the server the data last ran on; the entrypoint's first-start migration reads it.
+[ ! -f "$old_data/aza-pg-image" ] || cp "$old_data/aza-pg-image" "$new_data/"
+chmod -R u+w "$STORE" && rm -rf "$STORE" # the old server is never needed again: OLD_PGDATA rolls back with the previous image
+# OLD_PGDATA stays: --clone and --link share its blocks or files with NEW_PGDATA, so deleting it frees little, and until
+# the new server starts it is the rollback (pg_upgrade docs, --link).
+log "done: ${new_data} holds the upgraded cluster; ${old_data} is kept (the rollback with --clone; unusable with --link once the new server starts): delete it when done"

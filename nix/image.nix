@@ -147,13 +147,8 @@ let
   # pgConfig reports the combined installation's paths (sharedir, pkglibdir), which the entrypoint,
   # the pg_repack wrapper and the image checks read; the server package itself ships no pg_config.
   contents = [ postgresql pgConfig files pkgs.cacert ] ++ tools;
-in
-pkgs.dockerTools.streamLayeredImage {
-  name = "aza-pg";
-  tag = "pg${pgMajor}";
-  inherit contents;
   # /bin/sh, /bin/bash and /usr/bin/env: script shebangs (ours, operators') and `docker exec … sh -c`.
-  extraCommands = ''
+  baseCommands = ''
     # /var/run is a link to /run as on Debian: Nix's server defaults its socket to /run/postgresql, the entrypoint
     # and operators use /var/run/postgresql.
     mkdir -p bin usr/bin tmp run/postgresql var/lib/postgresql backup ${lib.escapeShellArgs relative}
@@ -164,12 +159,22 @@ pkgs.dockerTools.streamLayeredImage {
     ln -sf ${pkgs.bashNonInteractive}/bin/bash bin/bash
     ln -sf ${pkgs.bashNonInteractive}/bin/bash bin/sh
     chmod 1777 tmp
-  '' + lib.optionalString majorUpgrade ''
+  '';
+in
+pkgs.dockerTools.streamLayeredImage rec {
+  name = "aza-pg";
+  tag = "pg${pgMajor}";
+  inherit contents;
+  extraCommands = baseCommands + lib.optionalString majorUpgrade ''
     install -Dm0755 ${src "docker/postgres/major-upgrade.sh"} usr/local/bin/aza-pg-major-upgrade
     install -Dm0644 ${previousLayers} usr/local/share/aza-pg/previous-layers
     mkdir -p nix/store
+    # A previous-release path the image itself holds keeps its real directory. "Holds" means the closure of contents
+    # and of every path config and baseCommands reference: LOCALE_ARCHIVE's locales and /etc/localtime's tzdata reach
+    # the image only that way, and a link over them would point into a store the upgrade deletes when done.
     while read -r p; do
-      grep -qxF "/nix/store/$p" ${pkgs.closureInfo { rootPaths = contents; }}/store-paths ||
+      grep -qxF "/nix/store/$p" ${pkgs.closureInfo { rootPaths = contents ++ [
+        (pkgs.writeText "image-references" (baseCommands + builtins.toJSON config)) ]; }}/store-paths ||
         ln -s "/var/lib/postgresql/.aza-old-store/$p" "nix/store/$p"
     done < ${previousPaths}
   '';

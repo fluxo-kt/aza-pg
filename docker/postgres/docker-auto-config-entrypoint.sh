@@ -954,17 +954,25 @@ fi
 # An empty data directory beside another major's cluster (PGDATA paths carry the major) is an upgrade, never a fresh
 # initdb that would leave the operator's data behind. Images built with shipMajorUpgrade (manifest) carry the upgrade;
 # others stop instead. A standby is never upgraded: pg_upgrade cannot carry its replication state, it is re-cloned.
-# The newest other cluster is the one to upgrade: older ones are rollback copies earlier upgrades kept.
+# Clusters are told apart by the major in their path, against this image's: the highest one below it is the upgrade
+# source (lower ones are rollback copies earlier upgrades kept); one above it was made by a newer image, so this image is
+# the rollback of that upgrade and must never treat it as its own past. The path, not PG_VERSION, so a test can place a
+# same-major cluster at the major-below path.
 if [ "$STARTS_SERVER" = true ] && [ -n "$DATA_DIR" ]; then
-    old_data=""
+    old_data="" old_major=0 newer=""
     for dir in /var/lib/postgresql/*/docker; do
+        major=${dir#/var/lib/postgresql/} && major=${major%/docker}
+        case $major in '' | *[!0-9]*) continue ;; esac
         [ "$dir" != "$DATA_DIR" ] && [ -f "${dir}/PG_VERSION" ] || continue
-        if [ -z "$old_data" ] || [ "$(cat "${dir}/PG_VERSION")" -gt "$(cat "${old_data}/PG_VERSION")" ]; then old_data=$dir; fi
+        if [ "$major" -gt "$PG_MAJOR" ]; then newer=$dir; elif [ "$major" -gt "$old_major" ]; then old_data=$dir old_major=$major; fi
     done
-    die() { echo "[POSTGRES] [MAJOR-UPGRADE] ERROR: found the PostgreSQL $(cat "${old_data}/PG_VERSION") cluster ${old_data} beside ${DATA_DIR}: $*" >&2; exit 1; }
+    die() { echo "[POSTGRES] [MAJOR-UPGRADE] ERROR: found the PostgreSQL $(cat "${1}/PG_VERSION") cluster ${1} beside ${DATA_DIR}: ${2}" >&2; exit 1; }
+    # With PGDATA empty, a newer cluster holds the newest data: upgrading an older copy or running initdb would hide it.
+    [ -z "$newer" ] || [ -f "${DATA_DIR}/PG_VERSION" ] ||
+        die "$newer" "it is newer than this PostgreSQL ${PG_MAJOR} image; run the image that made it"
     if [ -n "$old_data" ] && [ ! -f "${DATA_DIR}/PG_VERSION" ]; then
-        [ ! -f "${old_data}/standby.signal" ] || die "a standby is not upgraded; upgrade the primary, then re-clone this replica from it"
-        command -v aza-pg-major-upgrade >/dev/null || die "this image does not upgrade from that major; keep running the image that made it"
+        [ ! -f "${old_data}/standby.signal" ] || die "$old_data" "a standby is not upgraded; upgrade the primary, then re-clone this replica from it"
+        command -v aza-pg-major-upgrade >/dev/null || die "$old_data" "this image does not upgrade from that major; keep running the image that made it"
         as_postgres env SHARED_PRELOAD_LIBRARIES="$SHARED_PRELOAD_LIBRARIES" PGSODIUM_GETKEY_PATH="$PGSODIUM_GETKEY_PATH" \
             aza-pg-major-upgrade "$old_data" "$DATA_DIR" || exit 1
     elif [ -n "$old_data" ] && [ "${old_data}/global/pg_control" -nt "${DATA_DIR}/global/pg_control" ]; then
@@ -972,7 +980,7 @@ if [ "$STARTS_SERVER" = true ] && [ -n "$DATA_DIR" ]; then
         # copy taken at the upgrade, silently missing every write made since the rollback. (--link leaves no pg_control there to
         # compare.) File times, not a recorded checkpoint (Unmeasured: tar and rsync -a copies keep them); a false
         # refusal costs one choice the message names, while a recorded LSN needs stored state and an old-major control reader.
-        die "it ran after ${DATA_DIR} was upgraded from it, so each may hold writes the other lacks. To upgrade it again, delete ${DATA_DIR} (losing writes made there since the upgrade); to keep ${DATA_DIR}, delete ${old_data}"
+        die "$old_data" "it ran after ${DATA_DIR} was upgraded from it, so each may hold writes the other lacks. To upgrade it again, delete ${DATA_DIR} (losing writes made there since the upgrade); to keep ${DATA_DIR}, delete ${old_data}"
     fi
 fi
 # The first start on a different image fixes, before the server serves clients, what an image change breaks in an

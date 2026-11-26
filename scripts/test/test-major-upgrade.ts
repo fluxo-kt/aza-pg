@@ -213,19 +213,32 @@ test("the previous release's cluster is upgraded at start, refused where it must
       .text();
   expect(state.trim().split("\n").at(-1)).toBe(server.trim());
 
+  // A cluster of a newer major (the next release, after a rollback from it) is never this image's upgrade source: its
+  // pg_control is the freshest, so a selection by recency or by PG_VERSION would name it below.
+  const newer = "/var/lib/postgresql/99/docker";
+  await $`docker stop ${upgraded}`.quiet();
   // Rollback: the previous release runs on the kept cluster, as an operator returning to it would; this image must then
   // refuse to serve the copy taken at the upgrade. With --link the kept cluster is unusable by design, so no rollback.
   if (upgradedLog.includes("(--link)")) {
     console.log(
       "pg_upgrade --link: the kept cluster is no rollback, so the rollback guard is not exercised"
     );
-    return;
+  } else {
+    const back = await start(PREVIOUS, oldEnv);
+    await waitForPostgres({ container: back, timeout: 120 });
+    await $`docker stop ${back}`.quiet();
+    await onVolume(
+      `mkdir -p ${newer}/global && echo 99 > ${newer}/PG_VERSION && touch ${newer}/global/pg_control`
+    );
+    const refused = await stopped(await start(upgradeImage));
+    expect(refused.code).toBe(1);
+    expect(refused.log).toContain(`cluster ${oldData} beside ${newData}: it ran after`);
   }
-  await $`docker stop ${upgraded}`.quiet();
-  const back = await start(PREVIOUS, oldEnv);
-  await waitForPostgres({ container: back, timeout: 120 });
-  await $`docker stop ${back}`.quiet();
-  const refused = await stopped(await start(upgradeImage));
-  expect(refused.code).toBe(1);
-  expect(refused.log).toContain(`so each may hold writes the other lacks`);
+  // With PGDATA empty, a newer cluster holds the newest data: neither the older cluster is upgraded nor initdb runs.
+  await onVolume(`mkdir -p ${newer} && echo 99 > ${newer}/PG_VERSION && rm -rf ${newData}`);
+  const hidden = await stopped(await start(upgradeImage));
+  expect(hidden.code).toBe(1);
+  expect(hidden.log).toContain(
+    `cluster ${newer} beside ${newData}: it is newer than this PostgreSQL`
+  );
 }, 280_000);

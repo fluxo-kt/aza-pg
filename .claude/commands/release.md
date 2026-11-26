@@ -93,10 +93,10 @@ git show refs/heads/dev:CHANGELOG.md
 
 **Audit rules**:
 
-1. **Consumer-first ordering**: Follow AGENTS.md § Changelog. Move every Compose-only bullet to the final `### Compose deployments` section. Check the rendered release notes: an image-only upgrade must show none of those bullets under “What’s Changed”.
+1. **Consumer-first ordering**: Follow docs/CHANGELOG-RULES.md. Move every Compose-only bullet to the final `### Compose deployments` section. Check the rendered release notes: an image-only upgrade must show none of those bullets under “What’s Changed”.
 2. **Net-delta only**: If X went v1→v2→v3 during dev, entry must say "v1→v3"
 3. **Cancellation**: Entries added then reverted = omit entirely
-4. **Development section**: Follow the limit in AGENTS.md § Changelog.
+4. **Development section**: Follow the limit in docs/CHANGELOG-RULES.md.
 5. **Cross-validation**: Check bundled extension versions against the manifest diff, PostgreSQL and runtime libraries against the locked build, and companion versions against the shipped Compose diff. Use the two release revisions for each comparison.
 6. **No phantoms**: Don't claim fixes for things not broken in the last released version
 7. **`[Unreleased]` holds only this release.** Each release commit carries its own dated section (Phase 4.4), so everything under `[Unreleased]` on dev is new since the newest `## [v…]` heading.

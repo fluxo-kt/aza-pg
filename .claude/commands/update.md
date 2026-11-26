@@ -390,6 +390,7 @@ container with `qemu-user` run `qemu-x86_64 -cpu Nehalem -L <rootfs> <rootfs><th
 postgres`> --single -D <pgdata> postgres` and feed it SQL on stdin.
 
 **⚠️ PG MAJOR version bump** (18→19): additional files need updating beyond manifest-data.ts:
+- Existing data directories must upgrade automatically at the first start on the new image (AGENTS.md "Data directories made by older images…"). Until the mechanism in ROADMAP "Major upgrades are not automatic yet" ships, building it is this round's first work, decided by you and never asked of Art. Then set the previous-image pin to the last old-major release, and ship the major as two releases: first a last old-major release whose extension versions equal the new major's, because `pg_upgrade --check` refuses an old cluster whose versioned libraries (`timescaledb-<version>.so`) the new image lacks
 - Tool checks need no edit: `testToolsPresent` finds each tool by its manifest entry's `binaryPath`/`soFileName` and takes PG-major paths from `pg_config`; still grep `scripts/` for hardcoded `postgresql/[0-9]+/` paths
 - pgrx feature flags in manifest-data.ts (e.g., `features: ["pg18"]` → `features: ["pg19"]`)
 - `pgMajorTags` entries (pgaudit): the checker now offers the new major's tags; set each such entry to its first stable tag of that major
@@ -616,7 +617,7 @@ docker buildx imagetools inspect ORG/REPO:TAG --format '{{json .Manifest.Digest}
    removed (the exporter ignores unknown env vars, so a dead setting stays silent) and
    `pg_replication_slot_*` metrics became `pg_replication_slots_*`. Go through every change, deprecation and
    fix item in the range, not only those three kinds: each one touching a setting we pass, a metric or label
-   we expose, or behaviour under our config goes into the CHANGELOG entry (AGENTS.md "Entry rules").
+   we expose, or behaviour under our config goes into the CHANGELOG entry (docs/CHANGELOG-RULES.md "Entry rules").
    BEFORE writing any flag or env var into `stacks/` or `deployments/` (a new `command:`, a renamed
    variable, a flag the CHANGELOG tells operators to add), find it in the pinned binary's own flag list
    (`docker run --rm IMAGE --help`) and run a definitely-invalid flag as control: release notes name flags
@@ -736,7 +737,7 @@ updated before proceeding to Phase 10/12. No exceptions.
 2. **Breaking changes**: Separate section with "action required" flag
 3. **Development (non-image) changes**: One line max, or omit if trivial
 
-Use the placement and category order in AGENTS.md § Changelog.
+Use the placement and category order in docs/CHANGELOG-RULES.md.
 
 **Format**:
 

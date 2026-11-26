@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 /**
  * Every enabled manifest entry whose shipped code differs from the newest release must be named in
- * the image notes in CHANGELOG.md's [Unreleased] (AGENTS.md "Changelog": one entry per component).
+ * the image notes in CHANGELOG.md's [Unreleased] (docs/CHANGELOG-RULES.md: one entry per component).
  *
  * Shipped code = the pinned source commit plus the content of every patch applied to it (build.patches).
  * Comparing versions alone is not enough: a patch-only change (a lockfile bump that clears a CVE) moves no

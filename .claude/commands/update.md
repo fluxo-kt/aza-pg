@@ -570,7 +570,7 @@ PostgreSQL major (e.g. `features: ["pg18"]`).
 own pgrx in its `Cargo.lock`, so one entry on the fixed pgrx proves nothing about the others. For every enabled pgrx entry, read the pgrx releases newer
 than its locked version (`gh release list -R pgcentralfoundation/pgrx`, then `gh release view <tag>`), and apply
 AGENTS.md "Choosing or keeping a component" to each security fix: `rg` the pinned source (a tarball per entry, see the
-PG-minor step above) for the API the fix patched, and fix or record the result as that invariant says.
+PG-minor step above) for the API the fix patched, and act on the result as that invariant says.
 
 ### 5.4: Disabling Unmaintained Extensions
 

@@ -311,7 +311,7 @@ bun scripts/extensions/check-updates.ts                                         
 ```
 
 A digest pin without a tag gets a "could not check" row (exit 2): rewrite it as `repo:tag@sha256:…`.
-`nixos/nix` (local Nix, `scripts/nix/nix.ts`) must equal CI's Nix: set its tag to the `nix_version=` in the pinned `cachix/install-nix-action`'s `install-nix.sh` after every `actions-up` run. A newer Docker Hub tag waits until that action ships it. A wrapper image's tag versions the wrapper, not the tool, so also run the pinned binary's `--version`
+`nixos/nix` (local Nix, `scripts/nix/nix.ts`) must equal CI's Nix: set its tag to the `nix_version=` in the pinned `cachix/install-nix-action`'s `install-nix.sh` after every `actions-up` run, then `bun scripts/nix/nix.ts --version` must print that version. A newer Docker Hub tag waits until that action ships it. A wrapper image's tag versions the wrapper, not the tool, so also run the pinned binary's `--version`
 against the tool's upstream release: a wrapper that stopped publishing reads as "up to date".
 
 For each, read the latest release, resolve the index digest with `docker buildx imagetools inspect`,
@@ -512,7 +512,11 @@ bun scripts/test-all.ts --group features   # includes test-pgflow*.ts and test-p
 
 Review the local layers against the new upstream: `docker/postgres/pgflow/security-patches.sql` and the
 functions the generator overrides (aza-overrides). The generator stops when an expected upstream text
-is missing (`replaceRequired`); fix the replacement, never loosen it. `test-pgflow-upgrade.ts` upgrades a
+is missing (`replaceRequired`); fix the replacement, never loosen it. Anchors catch only changed text, never new
+statements: read every NEW migration for statements that run pg_cron or Vault at migration time (outside function
+bodies) and guard them in `localMigrationContent` like the existing ones, because pgflow databases without pg_cron
+run them too and the upgrade suite has pg_cron. `aza-overrides.sql` is re-applied on every upgrade, so it carries
+function definitions only, never a statement with an effect (a schedule call resets operators' jobs). `test-pgflow-upgrade.ts` upgrades a
 database created by the last release in its `LEGACY` list with `pgflow-upgrade` and requires it to equal
 a fresh install: if it fails, the new migrations or overrides break existing databases. A release whose schema changes
 needs a CHANGELOG entry telling operators to run `docker exec <container> pgflow-upgrade` (stop pgflow
@@ -552,7 +556,9 @@ These extensions use Rust pgrx framework for building PostgreSQL extensions in R
 
 **Version alignment**: cargo-pgrx must equal the pgrx crate the source's `Cargo.lock` pins. `nix/extensions.nix`
 takes it from nixpkgs, or stops and prints the `pgrx-<version>` input to add to `flake.nix` (then
-`bun scripts/nix/nix.ts flake lock`); drop an input once nixpkgs packages its release. Feature flags must match the
+`bun scripts/nix/nix.ts flake lock`); drop an input once nixpkgs packages its release or no entry locks it. Prove it on
+the built derivation: `nix derivation show` of each changed pgrx extension must reference exactly one cargo-pgrx, the
+locked version (a build can pass with the wrong one). Feature flags must match the
 PostgreSQL major (e.g. `features: ["pg18"]`).
 
 ### 5.4: Disabling Unmaintained Extensions
@@ -885,6 +891,7 @@ due in this round, not the next:
 - GitHub Actions SHA pins, reusable workflow refs, and stale prose comments
 - Hardcoded test/doc version strings for every changed image-facing dependency
 - Generated files and `CHANGELOG.md` when any image-facing source changed
+- A fresh `check-updates.ts` run right before the final gate: a round takes hours, and a release published since pre-flight is this round's work
 
 After all candidate and guidance commits, run the full suite once on the committed inputs:
 

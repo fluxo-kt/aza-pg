@@ -101,14 +101,16 @@ try {
     // must still run after the client lands on another. A config setting it to 0 makes that advice false.
     // A second client takes the backend just released (PgBouncer reuses the most recent server first) and holds it,
     // so the second execution must run on another pid. The script waits until the holder's query is visible, never
-    // a delay; the long hold outlasts any host stall and dies with the stack.
+    // a delay; the long hold outlasts any host stall and is killed right after, since a client still open in PgBouncer
+    // holds the stack's teardown until Docker's stop timeout.
     const psqlArgs = `psql -X -tA -h pgbouncer -p 6432 -U ${SUPERUSER} -d postgres`;
     const holding = `SELECT count(*) FROM pg_stat_activity WHERE query LIKE 'BEGIN; SELECT pg_sleep%'`;
     const script = `SELECT pg_backend_pid() \\parse s1
 \\bind_named s1 \\g
-\\! ${psqlArgs} -c 'BEGIN; SELECT pg_sleep(600); COMMIT' >/dev/null &
+\\! ${psqlArgs} -c 'BEGIN; SELECT pg_sleep(600); COMMIT' >/dev/null 2>&1 & echo $! > /tmp/holder.pid
 \\! until [ "$(${psqlArgs} -c "${holding}")" = 1 ]; do :; done
 \\bind_named s1 \\g
+\\! kill "$(cat /tmp/holder.pid)"
 `;
     const proc = Bun.spawn(
       [

@@ -25,9 +25,9 @@ Work:
 
 `test-pgbouncer-healthcheck.ts` and `test-pgbouncer-failures.ts` both failed in one full `test-all` run (b953fd4, host load ~29 from another project's processes). They passed alone, as their `stacks` group in parallel, and in the next full run. Their error output was not kept. A flaky suite teaches readers to rerun instead of read. Fix: on the next failure, keep the run's whole output (`test-all` prints each failed suite's errors) and find the cause before rerunning.
 
-### PostgreSQL 19 waits for a TimescaleDB release that builds on it
+### PostgreSQL 19 waits for its stable release and for TimescaleDB support
 
-The upgrade from 18 is built and proven every round (`test-major-upgrade.ts`); the 19 round itself follows `/update` "PG MAJOR version bump". It starts when every shipped extension has a tagged release that builds on 19: TimescaleDB 2.32.1 refuses PostgreSQL above 18 (its main branch supports 19); nixpkgs packages `postgresql_19`, and pgrx 0.20 builds `pg19`.
+The upgrade from 18 is built and proven every round (`test-major-upgrade.ts`); the 19 round itself follows `/update` "PG MAJOR version bump". It starts when every shipped extension has a tagged release that builds on 19: TimescaleDB 2.32.1's CMake stops with "TimescaleDB only supports PostgreSQL 15, 16, 17 and 18" unless built `EXPERIMENTAL`, although its `src/compat/compat.h` already accepts 19, and its release notes name 18.7 as the newest compatible server, beside the PostgreSQL announcement of 19 RC 2 (read 2026-11-26). The round starts once PostgreSQL 19 is a stable release (we ship only stable ones); if TimescaleDB still has no release that builds on it then, its main-branch support ships as `build.patches` per root `AGENTS.md` "Latest stable versions everywhere". nixpkgs packages `postgresql_19`, and pgrx 0.20 builds `pg19`.
 
 ## Low
 

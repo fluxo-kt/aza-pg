@@ -35,14 +35,14 @@
   "devDependencies": {
     "@pgflow/client": "0.17.2",
     "@pgflow/dsl": "0.17.2",
-    "@types/bun": "^1.4.4",
+    "@types/bun": "^1.4.5",
     "arktype": "^2.2.10",
     "bun-git-hooks": "^0.3.3",
     "bun-osv-scanner-extended": "^1.0.0",
-    "oxlint": "^1.94.0",
+    "oxlint": "^1.95.0",
     "prettier": "^3.10.1",
-    "sql-formatter": "^15.9.1",
-    "squawk-cli": "^2.73.0",
+    "sql-formatter": "^15.10.0",
+    "squawk-cli": "^2.74.0",
     "typescript": "^7.0.2",
     "yaml": "^2.9.1"
   },

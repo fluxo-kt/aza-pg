@@ -64,18 +64,27 @@ async function start(
   return name;
 }
 
-/** Waits for the container to stop and returns its exit code with its log. */
+/**
+ * Waits for a container that must stop by itself (a refusal, a failed upgrade) and returns its exit code with its log.
+ * A regressed guard lets the server start instead, and a bare `docker wait` then blocks until the suite times out,
+ * naming nothing; the freeze guard (10x the slowest such stop, a failed pg_upgrade at about 10 s) fails with the log.
+ */
 async function stopped(name: string): Promise<{ code: number; log: string }> {
-  const code = Number((await $`docker wait ${name}`.quiet().text()).trim());
+  const wait = Bun.spawn(["docker", "wait", name], { stdout: "pipe", stderr: "ignore" });
+  const guard = setTimeout(() => wait.kill(), 120_000);
+  const [out, exit] = await Promise.all([new Response(wait.stdout).text(), wait.exited]);
+  clearTimeout(guard);
   const r = await $`docker logs ${name}`.nothrow().quiet();
-  return { code, log: r.stdout.toString() + r.stderr.toString() };
+  const log = r.stdout.toString() + r.stderr.toString();
+  if (exit !== 0) throw new Error(`${name} kept running where it must stop by itself:\n${log}`);
+  return { code: Number(out.trim()), log };
 }
 
 const pgbackrest = (container: string, command: string) =>
   $`docker exec -u postgres ${container} pgbackrest ${command}`.quiet();
 
-/** psql over TCP, so pg_hba.conf's host rules decide (local socket connections are trusted). */
-/** Returns psql's error text, empty on success: a failure must name its cause (refused, no pg_hba entry, password). */
+/** psql over TCP, so pg_hba.conf's host rules decide (local socket connections are trusted). Returns psql's error
+ * text, empty on success: a failure must name its cause (refused, no pg_hba entry, password). */
 async function tcpLogin(container: string, password: string): Promise<string> {
   const ip = (
     await $`docker inspect -f ${"{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}"} ${container}`
@@ -276,5 +285,8 @@ test("the previous release's cluster is upgraded at start, refused where it must
   expect(hidden.code).toBe(1);
   expect(hidden.log).toContain(
     `cluster ${newer} beside ${newData}: it is newer than this PostgreSQL`
+  );
+  expect(await onVolume(`test -f ${newData}/PG_VERSION && echo initdb ran || echo none`)).toBe(
+    "none\n"
   );
 }, 280_000);

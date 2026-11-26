@@ -79,8 +79,10 @@ initdb -D "$new_data" -U "$superuser" "$checksums" >/dev/null
 # inside pg_upgrade, which rolls back. PostgreSQL's own directories and runtime files stay behind.
 shopt -s dotglob nullglob
 for entry in "$old_data"/*; do
+  # PostgreSQL's directories are base, global and pg_*; pg_hba.conf and pg_ident.conf share the prefix but are files.
+  [ -d "$entry" ] && case ${entry##*/} in base | global | pg_*) true ;; *) false ;; esac && continue
   case ${entry##*/} in
-    base | global | pg_* | PG_VERSION | postmaster.pid | postmaster.opts | current_logfiles) ;;
+    PG_VERSION | postmaster.pid | postmaster.opts | current_logfiles) ;;
     *) cp -a "$entry" "$new_data/" ;;
   esac
 done

@@ -65,7 +65,8 @@ const pgbackrest = (container: string, command: string) =>
   $`docker exec -u postgres ${container} pgbackrest ${command}`.quiet();
 
 /** psql over TCP, so pg_hba.conf's host rules decide (local socket connections are trusted). */
-async function tcpLogin(container: string, password: string): Promise<number> {
+/** Returns psql's error text, empty on success: a failure must name its cause (refused, no pg_hba entry, password). */
+async function tcpLogin(container: string, password: string): Promise<string> {
   const ip = (
     await $`docker inspect -f ${"{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}"} ${container}`
       .quiet()
@@ -75,7 +76,7 @@ async function tcpLogin(container: string, password: string): Promise<number> {
     await $`docker exec -e PGPASSWORD=${password} ${container} psql -X -h ${ip} -U postgres -tAc ${"SELECT 1"}`
       .nothrow()
       .quiet();
-  return r.exitCode;
+  return r.exitCode === 0 ? "" : r.stderr.toString().trim() || `psql exited ${r.exitCode}`;
 }
 
 /** Shell as postgres on the volume, through the image's own tools. */
@@ -119,8 +120,7 @@ test("the previous release's cluster is upgraded at start, refused where it must
     "ALTER SYSTEM SET archive_command = 'pgbackrest archive-push %p'",
     `SELECT vault.create_secret('${SECRET}')`,
   ]);
-  await $`docker restart ${old}`.quiet();
-  await waitForPostgres({ container: old, timeout: 120 });
+  // No restart for archive_mode: stanza-create needs no archiving, and the upgraded server reads it from the carried file.
   await $`docker exec -u postgres ${old} mkdir -p /var/lib/postgresql/repo`.quiet();
   await pgbackrest(old, "stanza-create");
   await $`docker stop ${old}`.quiet();
@@ -148,7 +148,8 @@ test("the previous release's cluster is upgraded at start, refused where it must
   await sqlOk(restored, "DROP TABLE blocks");
   await $`docker stop ${restored}`.quiet();
 
-  const upgraded = await start(upgradeImage, BACKREST);
+  // POSTGRES_BIND_IP as the stacks set it, so a TCP login reaches the carried pg_hba.conf's scram rule.
+  const upgraded = await start(upgradeImage, [...BACKREST, "POSTGRES_BIND_IP=0.0.0.0"]);
   await waitForPostgres({ container: upgraded, timeout: 180 });
   expect(await sqlOk(upgraded, "SELECT v FROM kept")).toBe("42");
   expect(await sqlOk(upgraded, "SHOW server_version_num")).toStartWith(String(major));
@@ -156,8 +157,8 @@ test("the previous release's cluster is upgraded at start, refused where it must
     SECRET
   );
   expect(await sqlOk(upgraded, "SHOW log_min_duration_statement")).toBe("4321ms");
-  expect(await tcpLogin(upgraded, "upgrade-test")).toBe(0);
-  expect(await tcpLogin(upgraded, "wrong-password")).not.toBe(0);
+  expect(await tcpLogin(upgraded, "upgrade-test")).toBe("");
+  expect(await tcpLogin(upgraded, "wrong-password")).toContain("password authentication failed");
   // check switches WAL and waits for the archive: the stanza was upgraded and archive_command works on the new major.
   await pgbackrest(upgraded, "check");
   // The fetched old server is gone; the marker names this image's server, so the next start migrates nothing.

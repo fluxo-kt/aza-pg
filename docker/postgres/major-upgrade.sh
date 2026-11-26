@@ -93,6 +93,10 @@ pg_upgrade -b "$old_bin" -B "$new_bin" -d "$old_data" -D "$new_data" -U "$superu
 log "upgrading ${old_data} into ${new_data} (pg_upgrade ${mode})"
 pg_upgrade -b "$old_bin" -B "$new_bin" -d "$old_data" -D "$new_data" -U "$superuser" -o "$server_opts" -O "$server_opts" "$mode" >&2
 trap - ERR
+# The carried marker tells the entrypoint's first-start migration which server the data last ran on. A cluster pg_upgrade
+# just made has never been migrated by this image, so a marker naming this very server (previous release built from the
+# same server, as in the same-major upgrade suite) would skip that migration: drop it, and the migration runs.
+[ "$(cat "$new_data/aza-pg-image" 2>/dev/null)" != "$(readlink -f "$(command -v postgres)")" ] || rm "$new_data/aza-pg-image"
 [ "$template1_closed" = no ] || set_template1_connections "$new_bin" "$new_data" false
 chmod -R u+w "$STORE" && rm -rf "$STORE" # the old server is never needed again: OLD_PGDATA rolls back with the previous image
 # OLD_PGDATA stays: --clone and --link share its blocks or files with NEW_PGDATA, so deleting it frees little, and until

@@ -21,6 +21,19 @@ COMMENT ON FUNCTION f IS 'follows the pg_cron pattern; it''s vault.decrypted_sec
     expect(migrationTimeOptionalRefs(sql)).toEqual([]);
   });
 
+  // PostgreSQL lexing the guard must follow: an E'' string ends only at an unescaped quote (\' does not end it, so
+  // mis-ending it early would swallow a real top-level statement), and a dollar tag may contain digits after its
+  // first character.
+  test("an escaped quote in an E-string does not hide a following statement", () => {
+    const sql = `SELECT E'it\\'s fine';\nSELECT cron.schedule('a', 'b', 'c');`;
+    expect(migrationTimeOptionalRefs(sql)).toEqual(["cron.schedule"]);
+  });
+
+  test("a dollar tag with digits quotes its body", () => {
+    const sql = `CREATE FUNCTION f() RETURNS void LANGUAGE plpgsql AS $fn1$ BEGIN PERFORM cron.schedule('a','b','c'); END $fn1$;`;
+    expect(migrationTimeOptionalRefs(sql)).toEqual([]);
+  });
+
   test("a tag closes only its own dollar quote", () => {
     // $$ inside $aza$ must not end the outer body early and expose what follows.
     const sql = `DO $aza$ BEGIN EXECUTE $$ SELECT 1 $$; PERFORM cron.schedule('a','b','c'); END $aza$;`;

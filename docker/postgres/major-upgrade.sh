@@ -80,9 +80,15 @@ restore_old() {
   done
   find "$new_data" -mindepth 1 -delete # the directory itself is the entrypoint's lock
   [ -f "$old_data/global/pg_control.old" ] && [ ! -f "$old_data/global/pg_control" ] &&
-    mv "$old_data/global/pg_control.old" "$old_data/global/pg_control"
+    mv "$old_data/global/pg_control.old" "$old_data/global/pg_control" || true # under set -e a failed mv would end the script before the verdict below
   [ "${template1_closed:-no}" = no ] || set_template1_connections "$old_bin" "$old_data" false
-  log "ERROR: upgrade failed; ${old_data} is unchanged and the previous image still starts on it"
+  # Say what the cluster's state is, never what the restore meant to do: a rename that failed leaves a cluster no
+  # server opens, and the operator then needs the one manual step, not a promise.
+  if [ -f "$old_data/global/pg_control" ]; then
+    log "ERROR: upgrade failed; ${old_data} is unchanged and the previous image still starts on it"
+  else
+    log "ERROR: upgrade failed and ${old_data}/global/pg_control.old was not renamed back; rename it to pg_control, then start the previous image"
+  fi
 }
 
 # A previous-image container still running on OLD_PGDATA (releases before the entrypoint flock never lock it) would see

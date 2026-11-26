@@ -62,7 +62,9 @@ runs:
         # Parse docker load output to get exact loaded image reference (deterministic)
         # Avoids race condition from grepping image list when multiple matches exist
         LOAD_OUTPUT=$(docker load < "$TARBALL")
-        LOADED_IMAGE=$(echo "$LOAD_OUTPUT" | grep -oP 'Loaded image: \K.*' | head -1)
+        # The CI tarball also holds the <image>-major-upgrade variant: take the requested name when it was loaded as is.
+        LOADED_IMAGE=$(echo "$LOAD_OUTPUT" | grep -oP 'Loaded image: \K.*' | grep -xF "$IMAGE_NAME" ||
+          echo "$LOAD_OUTPUT" | grep -oP 'Loaded image: \K.*' | head -1)
 
         if [ -z "$LOADED_IMAGE" ]; then
           echo "❌ ERROR: Failed to extract loaded image reference from output"

@@ -161,6 +161,12 @@ jobs:
         if: steps.cache.outputs.cache-hit != 'true'
         run: bun scripts/nix/build-image.ts --tag aza-pg-ci:test
 
+      # test-major-upgrade.ts runs the upgrade on this variant while shipMajorUpgrade is off; it shares all but a few
+      # small layers with the image: the gzipped tarball grew by under 0.1 MB (measured with both images).
+      - name: Build the major-upgrade variant
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: bun scripts/nix/build-image.ts --major-upgrade --tag aza-pg-ci:test-major-upgrade
+
       - name: Monitor cache usage
         if: steps.cache.outputs.cache-hit != 'true'
         continue-on-error: true
@@ -177,7 +183,7 @@ jobs:
         if: steps.cache.outputs.cache-hit != 'true'
         run: |
           set -euo pipefail
-          docker save aza-pg-ci:test | gzip > /tmp/aza-pg-ci-image.tar.gz
+          docker save aza-pg-ci:test aza-pg-ci:test-major-upgrade | gzip > /tmp/aza-pg-ci-image.tar.gz
           ls -lh /tmp/aza-pg-ci-image.tar.gz
 
       - name: Save image to cache

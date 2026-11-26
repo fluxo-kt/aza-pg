@@ -948,16 +948,23 @@ fi
 # An empty data directory beside another major's cluster (PGDATA paths carry the major) is an upgrade, never a fresh
 # initdb that would leave the operator's data behind. Images built with shipMajorUpgrade (manifest) carry the upgrade;
 # others stop instead. A standby is never upgraded: pg_upgrade cannot carry its replication state, it is re-cloned.
-if [ "$STARTS_SERVER" = true ] && [ -n "$DATA_DIR" ] && [ ! -f "${DATA_DIR}/PG_VERSION" ]; then
-    for old_data in /var/lib/postgresql/*/docker ""; do
-        [ -n "$old_data" ] && [ "$old_data" != "$DATA_DIR" ] && [ -f "${old_data}/PG_VERSION" ] && break
+# The newest other cluster is the one to upgrade: older ones are rollback copies earlier upgrades kept.
+if [ "$STARTS_SERVER" = true ] && [ -n "$DATA_DIR" ]; then
+    old_data=""
+    for dir in /var/lib/postgresql/*/docker; do
+        [ "$dir" != "$DATA_DIR" ] && [ -f "${dir}/PG_VERSION" ] || continue
+        if [ -z "$old_data" ] || [ "$(cat "${dir}/PG_VERSION")" -gt "$(cat "${old_data}/PG_VERSION")" ]; then old_data=$dir; fi
     done
-    if [ -n "$old_data" ]; then
-        die() { echo "[POSTGRES] [MAJOR-UPGRADE] ERROR: found the PostgreSQL $(cat "${old_data}/PG_VERSION") cluster ${old_data} and an empty ${DATA_DIR}: $*" >&2; exit 1; }
+    die() { echo "[POSTGRES] [MAJOR-UPGRADE] ERROR: found the PostgreSQL $(cat "${old_data}/PG_VERSION") cluster ${old_data} beside ${DATA_DIR}: $*" >&2; exit 1; }
+    if [ -n "$old_data" ] && [ ! -f "${DATA_DIR}/PG_VERSION" ]; then
         [ ! -f "${old_data}/standby.signal" ] || die "a standby is not upgraded; upgrade the primary, then re-clone this replica from it"
         command -v aza-pg-major-upgrade >/dev/null || die "this image does not upgrade from that major; keep running the image that made it"
         as_postgres env SHARED_PRELOAD_LIBRARIES="$SHARED_PRELOAD_LIBRARIES" PGSODIUM_GETKEY_PATH="$PGSODIUM_GETKEY_PATH" \
             aza-pg-major-upgrade "$old_data" "$DATA_DIR" || exit 1
+    elif [ -n "$old_data" ] && [ "${old_data}/global/pg_control" -nt "${DATA_DIR}/global/pg_control" ]; then
+        # The older cluster ran after this one was made: a rollback to the previous image. Starting here would serve the
+        # copy taken at the upgrade, silently missing every later write. (--link leaves no pg_control there to compare.)
+        die "it ran after ${DATA_DIR} was upgraded from it, so ${DATA_DIR} holds older data. To upgrade again, delete ${DATA_DIR}; to keep it, delete ${old_data}"
     fi
 fi
 # The first start on a different image fixes, before the server serves clients, what an image change breaks in an

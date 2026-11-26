@@ -109,6 +109,15 @@ test("the previous release's cluster is upgraded at start, refused where it must
   const oldData = `/var/lib/postgresql/${oldMajor === major ? major - 1 : oldMajor}/docker`;
   const newData = `/var/lib/postgresql/${major}/docker`;
 
+  // A cluster of a major this image cannot upgrade from stops at once, naming the major it needs; left in place, it is
+  // the older decoy the upgrade below must pass over for the newest cluster.
+  await onVolume(
+    "mkdir -p /var/lib/postgresql/16/docker && echo 16 > /var/lib/postgresql/16/docker/PG_VERSION"
+  );
+  const unsupported = await stopped(await start(upgradeImage));
+  expect(unsupported.code).toBe(1);
+  expect(unsupported.log).toContain(`upgrades only from PostgreSQL ${oldMajor}`);
+
   // The previous release makes the cluster; regproc is a type pg_upgrade refuses in user tables (a real failure).
   // The previous release has no PGBACKREST_PG1_PATH of its own, so its containers get the one an operator would write.
   const oldEnv = [`PGDATA=${oldData}`, `PGBACKREST_PG1_PATH=${oldData}`, ...BACKREST];
@@ -160,6 +169,8 @@ test("the previous release's cluster is upgraded at start, refused where it must
   const failed = await stopped(await start(upgradeImage, [], ["--network", "none"]));
   expect(failed.code).toBe(1);
   expect(failed.log).toContain("upgrade failed");
+  // pg_upgrade's own report names the cause (the regproc table) before the cleanup deletes it.
+  expect(failed.log).toContain("blocks");
   // Rollback: the previous release starts on the old cluster again, data intact, and PGDATA holds no half cluster.
   expect(await onVolume(`ls -A ${newData}`)).toBe("");
   const restored = await start(PREVIOUS, oldEnv);
@@ -200,4 +211,20 @@ test("the previous release's cluster is upgraded at start, refused where it must
       .quiet()
       .text();
   expect(state.trim().split("\n").at(-1)).toBe(server.trim());
+
+  // Rollback: the previous release runs on the kept cluster, as an operator returning to it would; this image must then
+  // refuse to serve the copy taken at the upgrade. With --link the kept cluster is unusable by design, so no rollback.
+  if (upgradedLog.includes("(--link)")) {
+    console.log(
+      "pg_upgrade --link: the kept cluster is no rollback, so the rollback guard is not exercised"
+    );
+    return;
+  }
+  await $`docker stop ${upgraded}`.quiet();
+  const back = await start(PREVIOUS, oldEnv);
+  await waitForPostgres({ container: back, timeout: 120 });
+  await $`docker stop ${back}`.quiet();
+  const refused = await stopped(await start(upgradeImage));
+  expect(refused.code).toBe(1);
+  expect(refused.log).toContain(`so ${newData} holds older data`);
 }, 280_000);

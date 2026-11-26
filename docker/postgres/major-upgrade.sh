@@ -72,6 +72,12 @@ set_template1_connections() { # bindir datadir true|false
 }
 
 restore_old() {
+  # pg_upgrade writes why it failed into NEW_PGDATA (problem lists such as loadable_libraries.txt, the servers' logs),
+  # which the cleanup below deletes: show them first, or the operator learns only that it failed.
+  local report
+  for report in "$new_data"/pg_upgrade_output.d/*/*.txt "$new_data"/pg_upgrade_output.d/*/log/*.log; do
+    [ -f "$report" ] && { echo "--- ${report##*/}:"; tail -n 40 "$report"; } >&2
+  done
   find "$new_data" -mindepth 1 -delete # the directory itself is the entrypoint's lock
   [ -f "$old_data/global/pg_control.old" ] && [ ! -f "$old_data/global/pg_control" ] &&
     mv "$old_data/global/pg_control.old" "$old_data/global/pg_control"
@@ -81,6 +87,12 @@ restore_old() {
 
 # A previous-image container still running on OLD_PGDATA (releases before the entrypoint flock never lock it) would see
 # its files change under it; pg_upgrade checks only postmaster.pid, which the other container may not have written yet.
+# The pinned old server runs only its own major's clusters; Nix names its store path <hash>-postgresql-and-plugins-<version>.
+old_major=$(sed -n 2p "$LAYERS") && old_major=${old_major##*-} && old_major=${old_major%%.*}
+[ "$(cat "$old_data/PG_VERSION")" = "$old_major" ] || {
+  log "ERROR: ${old_data} is PostgreSQL $(cat "$old_data/PG_VERSION"); this image upgrades only from PostgreSQL ${old_major}. Start a PostgreSQL ${old_major} release on it first"
+  exit 1
+}
 exec {old_lock}<"$old_data"
 flock -n "$old_lock" || { log "ERROR: another container uses ${old_data}; stop it first"; exit 1; }
 fetch_old_store
@@ -111,10 +123,15 @@ done
 shopt -u dotglob nullglob
 cd /tmp # pg_upgrade writes its logs and delete_old_cluster.sh to the working directory
 # --clone (reflinks: OLD_PGDATA stays a usable rollback, no extra space) needs the filesystem to clone between the two
-# directories, which is what cp --reflink=always does; --link otherwise. A file probe costs milliseconds, a
-# pg_upgrade --check probe a second full consistency pass.
-mode=--link
-cp --reflink=always "$old_data/PG_VERSION" "$new_data/.clone-probe" 2>/dev/null && mode=--clone
+# directories, which is what cp --reflink=always does (a file probe costs milliseconds, a pg_upgrade --check probe a
+# second full consistency pass). Else --link, which hard-links and so needs both on one filesystem. Else --copy (a
+# per-major mount): slower and needs the space, but OLD_PGDATA stays a complete rollback.
+mode=--copy
+if cp --reflink=always "$old_data/PG_VERSION" "$new_data/.clone-probe" 2>/dev/null; then
+  mode=--clone
+elif [ "$(stat -c %d "$old_data")" = "$(stat -c %d "$new_data")" ]; then
+  mode=--link
+fi
 rm -f "$new_data/.clone-probe"
 log "upgrading ${old_data} into ${new_data} (pg_upgrade ${mode})"
 pg_upgrade -b "$old_bin" -B "$new_bin" -d "$old_data" -D "$new_data" -U "$superuser" -o "$server_opts" -O "$server_opts" "$mode" >&2
@@ -125,6 +142,9 @@ trap - ERR
 [ "$(cat "$new_data/aza-pg-image" 2>/dev/null)" != "$(readlink -f "$(command -v postgres)")" ] || rm "$new_data/aza-pg-image"
 [ "$template1_closed" = no ] || set_template1_connections "$new_bin" "$new_data" false
 chmod -R u+w "$STORE" && rm -rf "$STORE" # the old server is never needed again: OLD_PGDATA rolls back with the previous image
-# OLD_PGDATA stays: --clone and --link share its blocks or files with NEW_PGDATA, so deleting it frees little, and until
-# the new server starts it is the rollback (pg_upgrade docs, --link).
-log "done: ${new_data} holds the upgraded cluster; ${old_data} is kept (the rollback with --clone; unusable with --link once the new server starts): delete it when done"
+# OLD_PGDATA stays: --clone and --link share its blocks or files with NEW_PGDATA, so deleting it frees little, and it is
+# the rollback (with --link only until the new server starts: pg_upgrade docs). Rolling back is guarded at the next start
+# of this image (entrypoint: an older cluster newer than PGDATA stops it).
+rollback="the previous image starts on it"
+[ "$mode" != --link ] || rollback="unusable once the new server starts (--link)"
+log "done: ${new_data} holds the upgraded cluster; ${old_data} is kept (${rollback}): delete it when you no longer need it"

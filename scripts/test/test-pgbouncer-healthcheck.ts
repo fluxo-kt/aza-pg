@@ -102,7 +102,7 @@ try {
     // reuses the most recent server first), so the second execution must run on a different pid.
     const script = `SELECT pg_backend_pid() \\parse s1
 \\bind_named s1 \\g
-\\! PGPASSWORD='${POSTGRES_PASSWORD}' psql -X -h pgbouncer -p 6432 -U ${SUPERUSER} -d postgres -c 'BEGIN; SELECT pg_sleep(2); COMMIT' >/dev/null &
+\\! psql -X -h pgbouncer -p 6432 -U ${SUPERUSER} -d postgres -c 'BEGIN; SELECT pg_sleep(2); COMMIT' >/dev/null &
 \\! sleep 0.5
 \\bind_named s1 \\g
 `;

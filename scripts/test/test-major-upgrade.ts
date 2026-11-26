@@ -169,8 +169,9 @@ test("the previous release's cluster is upgraded at start, refused where it must
   const failed = await stopped(await start(upgradeImage, [], ["--network", "none"]));
   expect(failed.code).toBe(1);
   expect(failed.log).toContain("upgrade failed");
-  // pg_upgrade's own report names the cause (the regproc table) before the cleanup deletes it.
-  expect(failed.log).toContain("blocks");
+  // pg_upgrade's report file, which the cleanup deletes, is printed first and names the cause (the regproc table); the
+  // "--- <file>:" header comes only from that printing, so a log merely mentioning the table cannot pass.
+  expect(failed.log).toMatch(/^--- \S+\.txt:\n(?:.*\n)*?.*\bblocks\b/m);
   // Rollback: the previous release starts on the old cluster again, data intact, and PGDATA holds no half cluster.
   expect(await onVolume(`ls -A ${newData}`)).toBe("");
   const restored = await start(PREVIOUS, oldEnv);

@@ -100,14 +100,14 @@ docker compose logs -f postgres   # [MAJOR-UPGRADE] and [AUTO-CONFIG] lines repo
 
 The entrypoint finds the previous major's cluster (`/var/lib/postgresql/18/docker`) beside an empty PGDATA and upgrades it before any client connects:
 
-- It downloads the previous release's server from its registry (digest-checked, removed when done) and runs `pg_upgrade`, with `--clone` where the filesystem supports reflinks, else `--link`: neither copies data files (reflinks or hard links), so its time does not grow with the data.
+- It downloads the previous release's server from its registry (digest-checked, removed when done) and runs `pg_upgrade`, with `--clone` where the filesystem supports reflinks, else `--link` when both directories share a filesystem (neither copies data files, so its time does not grow with the data), else `--copy` (PGDATA on its own mount: slower, needs the space).
 - It carries everything else in the old data directory: `pg_hba.conf`, `ALTER SYSTEM` settings, the pgsodium root key, TLS files.
-- Its first-start migration then updates every extension, analyses statistics `pg_upgrade` does not carry, and runs `pgbackrest stanza-upgrade` for each configured stanza. The repository must be reachable; the stanza's next backup is a full one.
+- Its first-start migration then updates every extension, analyses statistics `pg_upgrade` does not carry, and runs `pgbackrest stanza-upgrade` for each configured stanza. The repository must be reachable. Unmeasured: the stanza's next backup is expected to be a full one.
 - On any failure the container stops and the old cluster is left as it was: the previous image still starts on it.
 
-The old cluster stays in the volume (the log names it). With `--clone` it is a complete rollback: start the previous image with `PGDATA` set to it. With `--link` it is unusable once the new server has started. Delete it when you no longer need it.
+The old cluster stays in the volume (the log names it). With `--clone` or `--copy` it is a complete rollback: start the previous image with `PGDATA` set to it. Once it has run, this image refuses to start on the upgraded PGDATA, which then holds older data: delete PGDATA to upgrade again, or the old cluster to keep PGDATA. With `--link` it is unusable once the new server has started. Delete it when you no longer need it.
 
-The container stops instead of upgrading, naming the reason, for a **replica** (upgrade the primary, then re-clone the replica from it) and on an image that does not carry the upgrade.
+The container stops instead of upgrading, naming the reason, for a **replica** (upgrade the primary, then re-clone the replica from it) and on an image that does not carry the upgrade, and for a cluster of a major other than the one the image upgrades from.
 
 **Option B: Backup → Restore** (slower, safer)
 

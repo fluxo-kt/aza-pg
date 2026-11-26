@@ -98,12 +98,16 @@ try {
   await step("a named prepared statement survives a pooled backend switch", async () => {
     // The docs tell clients to keep driver prepared statements behind the pooler: PgBouncer tracks protocol-level ones
     // in transaction mode (max_prepared_statements, on by default since 1.24), so a statement parsed on one server
-    // must still run after the client lands on another. A config setting it to 0 makes that advice false. The second client takes the backend just released (PgBouncer
-    // reuses the most recent server first), so the second execution must run on a different pid.
+    // must still run after the client lands on another. A config setting it to 0 makes that advice false.
+    // A second client takes the backend just released (PgBouncer reuses the most recent server first) and holds it,
+    // so the second execution must run on another pid. The script waits until the holder's query is visible, never
+    // a delay; the long hold outlasts any host stall and dies with the stack.
+    const psqlArgs = `psql -X -tA -h pgbouncer -p 6432 -U ${SUPERUSER} -d postgres`;
+    const holding = `SELECT count(*) FROM pg_stat_activity WHERE query LIKE 'BEGIN; SELECT pg_sleep%'`;
     const script = `SELECT pg_backend_pid() \\parse s1
 \\bind_named s1 \\g
-\\! psql -X -h pgbouncer -p 6432 -U ${SUPERUSER} -d postgres -c 'BEGIN; SELECT pg_sleep(2); COMMIT' >/dev/null &
-\\! sleep 0.5
+\\! ${psqlArgs} -c 'BEGIN; SELECT pg_sleep(600); COMMIT' >/dev/null &
+\\! until [ "$(${psqlArgs} -c "${holding}")" = 1 ]; do :; done
 \\bind_named s1 \\g
 `;
     const proc = Bun.spawn(

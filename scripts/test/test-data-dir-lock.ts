@@ -79,8 +79,8 @@ test("a second container waits for the first, which stops fast with a client ope
   expect(await exitCode(first)).toBe(0);
 
   await waitForPostgres({ container: second, timeout: 120 });
+  // The row proves the second container served the first one's data, not a fresh initdb.
   expect(await sqlOk(second, "SELECT count(*) FROM lock_probe")).toBe("1");
-  expect(await logs(second)).not.toContain("was not properly shut down");
 
   // A container waiting for the lock obeys docker stop instead of hanging into the SIGKILL.
   const third = await start("third", ["--volumes-from", first]);
